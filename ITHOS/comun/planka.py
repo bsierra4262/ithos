@@ -75,11 +75,48 @@ class Planka:
         return self._req(f"/api/cards/{card_id}", "PATCH",
                          {"listId": list_id, "position": position}).get("item", {})
 
+    def mover_a_board(self, card_id, board_id, list_id, position=POS_STEP):
+        """Mueve la tarjeta a OTRO board (a una lista de ese board). Conserva la MISMA tarjeta
+        (id, asignados, comentarios). Se usa para 'arrastrar' lo no terminado al cambiar de
+        semana/mes. Verificado contra Planka 2.1.1 (PATCH boardId+listId)."""
+        return self._req(f"/api/cards/{card_id}", "PATCH",
+                         {"boardId": board_id, "listId": list_id, "position": position}).get("item", {})
+
     def actualizar_tarjeta(self, card_id, **campos):
         return self._req(f"/api/cards/{card_id}", "PATCH", campos).get("item", {})
 
     def borrar_tarjeta(self, card_id):
         self._req(f"/api/cards/{card_id}", "DELETE")
+
+    # ------------------------------------------------------------------ estructura (proyecto/board/lista)
+    def crear_proyecto(self, nombre, tipo="private"):
+        """Crea un proyecto nuevo (el dueño de la API key queda como manager). Devuelve su item."""
+        return self._req("/api/projects", "POST", {"name": nombre, "type": tipo}).get("item", {})
+
+    def crear_board(self, project_id, nombre, position=POS_STEP):
+        """Crea un board dentro de un proyecto. Devuelve su item."""
+        return self._req(f"/api/projects/{project_id}/boards", "POST",
+                         {"name": nombre, "position": position}).get("item", {})
+
+    def crear_lista(self, board_id, nombre, position=POS_STEP, tipo="active"):
+        """Crea una lista (columna) en un board. Devuelve su item."""
+        return self._req(f"/api/boards/{board_id}/lists", "POST",
+                         {"name": nombre, "position": position, "type": tipo}).get("item", {})
+
+    def borrar_board(self, board_id):
+        self._req(f"/api/boards/{board_id}", "DELETE")
+
+    def borrar_proyecto(self, project_id):
+        """Borra un proyecto. Planka exige que NO tenga boards: primero se borran sus boards.
+        (No lo usa el rollover —que conserva el historial— pero completa el cliente.)"""
+        _items, inc = self.proyectos()
+        for b in (inc.get("boards", []) if isinstance(inc, dict) else []):
+            if str(b.get("projectId")) == str(project_id):
+                try:
+                    self.borrar_board(b["id"])
+                except PlankaError:
+                    pass
+        self._req(f"/api/projects/{project_id}", "DELETE")
 
     # ------------------------------------------------------------------ asignación
     def asignar(self, card_id, user_id):

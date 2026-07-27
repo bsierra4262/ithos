@@ -43,14 +43,17 @@
         "url": "https://TU-PLANKA.ejemplo.com",
         "api_key": "API-KEY-DE-PLANKA-DEL-USUARIO-ITHOS",
         "ithos_user_id": "ID-DEL-USUARIO-ITHOS-EN-PLANKA",
-        "board_id": "ID-DEL-BOARD-DEL-MES",
+        "project_id": "ID-DEL-PROYECTO-DEL-MES-ACTUAL",
+        "board_id": "ID-DEL-BOARD-DEL-MES-ACTUAL",
+        "mes_legacy": "2026-07",
         "resumen_hora": "09:00",
         "seguimiento_desde": "10:00",
         "seguimiento_hasta": "18:00",
         "usuarios": [
           {"planka_id": "ID-EN-PLANKA", "nombre": "Nombre Apellido", "telefono": "5491111111111"}
         ],
-        "_nota": "OPCIONAL. Tablero Kanban del equipo por WhatsApp (auth por header X-API-Key). Resumen 09:00 + seguimiento cada hora 10-18 (Lun-Vie) + alta/mover tareas diciendo 'ithos, ...'. Solo se activa si existe esta sección."
+        "_nota": "OPCIONAL. Tablero Kanban del equipo por WhatsApp (auth por header X-API-Key). Resumen 09:00 + seguimiento cada hora 10-18 (Lun-Vie) + alta/mover tareas diciendo 'ithos, ...'. Solo se activa si existe esta sección.",
+        "_nota_rollover": "mes_legacy='YYYY-MM': ese mes (y anteriores) usan el board mensual configurado; A PARTIR del mes siguiente ITHOS arma SOLO un proyecto por mes y un board por SEMANA, y ARRASTRA lo no terminado al cambiar de semana/mes. Poné acá el mes en curso al dar de alta."
       }
     }
   ]

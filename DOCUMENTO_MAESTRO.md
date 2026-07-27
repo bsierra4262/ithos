@@ -93,6 +93,11 @@ Integración `ITHOS/central/planka_integrador.py` (cliente `ITHOS/comun/planka.p
 - **Mover / crear por WhatsApp**: "ithos, terminé X" → a Hecho; "ithos, cargá tal tarea para Carlos en
   haciendo" → crea la tarjeta asignada. Intérprete **conservador**: si es ambiguo, no adivina.
 - **Escucha proactiva** + trigger **"ithos"** obligatorio en todo mensaje (audio o texto).
+- **Rollover automático** (`ITHOS/central/planka_rollover.py`): de Agosto en adelante, un **proyecto por
+  mes** ("Agosto 2026") con un **board por semana** (lun-vie), cada uno con las 4 listas. Al cambiar de
+  semana/mes ITHOS crea lo que falte y **arrastra lo no terminado** (todo lo que no esté en "Hecho") al
+  nuevo período, en su misma lista; lo terminado queda de historial. Julio y meses anteriores no se tocan
+  (`mes_legacy`). Idempotente y **sobrevive reinicios** (persiste la semana/board en curso).
 
 ---
 

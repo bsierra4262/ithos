@@ -10,6 +10,9 @@ Mantiene el tablero Kanban del equipo (Planka) 100% actualizado desde WhatsApp:
   · ESCUCHA PROACTIVA: cualquiera, desde su número, dice "ithos, terminé/empecé tal tarea"
     (aunque ITHOS no haya preguntado) -> la IA lo interpreta y MUEVE la tarjeta sola.
   · @mención al ASIGNAR una tarjeta a alguien (evento puntual).
+  · ROLLOVER automático (de Agosto en adelante, ver planka_rollover.py): un proyecto por mes y un
+    board por semana; al cambiar de semana/mes crea lo que falte y ARRASTRA lo no terminado. Julio y
+    meses anteriores quedan como están (board mensual heredado; config 'mes_legacy'). Sobrevive reinicios.
 
 El trigger "ithos" ya lo aplica el handler de WhatsApp (comun/whatsapp.py); acá solo llega lo que
 ya lo mencionó. Reusa el MISMO grupo/conexión de WhatsApp del cliente. La cadencia (cada 1h) fue
@@ -24,10 +27,20 @@ import asyncio
 import logging
 from datetime import datetime, timedelta
 
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+_AQUI = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, os.path.join(_AQUI, ".."))
+sys.path.insert(0, _AQUI)
 from comun import planka as PK   # noqa: E402
+import planka_rollover as RO      # noqa: E402
 
 log = logging.getLogger("planka.integ")
+
+# Estado del período (semana/board en curso) para el rollover: sobrevive reinicios.
+_DATA = os.environ.get("ITHOS_DATA") or os.path.join(os.path.expanduser("~"), ".ithos")
+try:
+    os.makedirs(_DATA, exist_ok=True)
+except OSError:
+    _DATA = _AQUI
 
 ZONA_DEFAULT = "America/Argentina/Buenos_Aires"
 # Mapeo nombre-de-lista (en el board) -> clave interna. Tolerante a acentos/variantes.
@@ -73,6 +86,13 @@ class PlankaIntegrador:
         self._segui_key = None    # hora del último seguimiento ("YYYY-MM-DD-HH")
         self._ult_pregunta = {}   # planka_id -> [card_ids] que ITHOS preguntó recién (contexto para "esa/eso")
         self._arrancado = False
+        # --- rollover automático semanal/mensual (de Agosto en adelante; ver planka_rollover.py) ---
+        self._roll = RO.Rollover(self.pk, self.ithos_id)
+        self._board_cfg = self.board_id           # board configurado (Julio 'MENSUAL' = mensual heredado)
+        self._mes_legacy = str(self.cfg.get("mes_legacy") or "")  # "YYYY-MM": ese mes y anteriores = mensual
+        self._periodo_key = None                  # semana ISO en curso ("YYYY-Www"); None = aún no arrancó
+        self._estado_file = os.path.join(_DATA, "planka_estado_periodo.json")
+        self._cargar_periodo()                    # restaura board/semana del último arranque (si hubo)
 
     # ------------------------------------------------------------------ helpers
     def _ahora(self):
@@ -97,6 +117,60 @@ class PlankaIntegrador:
                 self._clave_a_id[clave] = str(l["id"])
                 self._id_a_clave[str(l["id"])] = clave
         return bool(self._clave_a_id)
+
+    # ------------------------------------------------------------------ período (rollover semanal/mensual)
+    def _cargar_periodo(self):
+        """Restaura {semana, board} del último arranque, para no re-arrastrar ni perder el hilo
+        si ITHOS se reinició (incluso justo en un cambio de semana/mes)."""
+        try:
+            d = json.load(open(self._estado_file, encoding="utf-8"))
+            if d.get("board_id"):
+                self.board_id = str(d["board_id"])
+                self._periodo_key = d.get("skey")
+        except (OSError, ValueError):
+            pass
+
+    def _guardar_periodo(self):
+        try:
+            json.dump({"skey": self._periodo_key, "board_id": self.board_id},
+                      open(self._estado_file, "w", encoding="utf-8"), ensure_ascii=False)
+        except OSError as e:  # noqa: BLE001
+            log.debug("Planka: no pude guardar el estado del período: %s", e)
+
+    def _asegurar_periodo(self, ahora):
+        """Resuelve el BOARD del período actual (semana ISO). Para 'mes_legacy' y anteriores usa el
+        board mensual configurado (Julio). Después: proyecto del mes + board de la semana (creándolos
+        si faltan) y ARRASTRA lo no terminado del board anterior. Barato si el período no cambió."""
+        skey = RO.semana_key(ahora)
+        if skey == self._periodo_key and self.board_id and self._clave_a_id:
+            return                                            # mismo período: nada que hacer
+        primera_vez = self._periodo_key is None
+        if self._mes_legacy and RO.mes_key(ahora) <= self._mes_legacy:
+            nuevo = self._board_cfg                           # modo mensual heredado (Julio y anteriores)
+        else:
+            try:
+                nuevo = self._roll.asegurar_semana(ahora).get("board_id")
+            except Exception as e:  # noqa: BLE001
+                log.warning("Planka rollover: no pude asegurar el período: %s", e)
+                return
+        if nuevo and nuevo != self.board_id:
+            prev = self.board_id
+            self.board_id = nuevo
+            self._clave_a_id, self._id_a_clave = {}, {}
+            self._asegurar_listas()
+            if not primera_vez and prev:                      # cambió de semana/mes -> arrastrar lo pendiente
+                try:
+                    mov = self._roll.arrastrar(prev, nuevo)
+                    if mov:
+                        log.info("Planka rollover: arrastré %d tarjeta(s) al nuevo período (%s).", mov, skey)
+                except Exception as e:  # noqa: BLE001
+                    log.warning("Planka rollover: no pude arrastrar: %s", e)
+                self._arrancado = False                       # re-baseline (no avisar 'asignación' de lo arrastrado)
+                self._miembros, self._estado = {}, {}
+        elif nuevo and not self._clave_a_id:
+            self._asegurar_listas()
+        self._periodo_key = skey
+        self._guardar_periodo()
 
     def _snapshot(self):
         """{card_id: {"nombre","list":clave,"list_id","miembros":set(pid)}} del board actual."""
@@ -268,7 +342,12 @@ class PlankaIntegrador:
     async def vigilar(self, enviar, stop=None):
         """Loop: detecta asignaciones (@mención) + dispara el resumen (09:00) y el seguimiento
         (10:00-18:00 en punto, Lun-Vie). `enviar(texto, telefonos)` manda al grupo con @menciones."""
-        self.pk.asegurar_acceso(self.project_id, self.board_id, self.ithos_id)
+        if self.project_id:
+            self.pk.asegurar_acceso(self.project_id, self.board_id, self.ithos_id)
+        try:
+            self._asegurar_periodo(self._ahora())             # resuelve la semana/mes actual (o board legacy)
+        except Exception as e:  # noqa: BLE001
+            log.warning("Planka: no pude resolver el período inicial: %s", e)
         if not self._asegurar_listas():
             log.warning("Planka integrador: no pude resolver las listas del board; reintento en loop.")
         log.info("Planka integrador activo (board %s, %d usuarios).", self.board_id, len(self._por_pid))
@@ -280,10 +359,11 @@ class PlankaIntegrador:
             await asyncio.sleep(30)
 
     def _tick(self, enviar):
+        ahora = self._ahora()
+        self._asegurar_periodo(ahora)              # crea/rota el board de la semana/mes si hace falta
         if not self._asegurar_listas():
             return
         snap = self._snapshot()
-        ahora = self._ahora()
         # 1) detectar cambios de lista (para el skip <1h) y ASIGNACIONES nuevas (@mención)
         primero = not self._arrancado
         for cid, c in snap.items():
