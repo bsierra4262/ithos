@@ -94,10 +94,14 @@ Integración `ITHOS/central/planka_integrador.py` (cliente `ITHOS/comun/planka.p
   haciendo" → crea la tarjeta asignada. Intérprete **conservador**: si es ambiguo, no adivina.
 - **Escucha proactiva** + trigger **"ithos"** obligatorio en todo mensaje (audio o texto).
 - **Rollover automático** (`ITHOS/central/planka_rollover.py`): de Agosto en adelante, un **proyecto por
-  mes** ("Agosto 2026") con un **board por semana** (lun-vie), cada uno con las 4 listas. Al cambiar de
-  semana/mes ITHOS crea lo que falte y **arrastra lo no terminado** (todo lo que no esté en "Hecho") al
-  nuevo período, en su misma lista; lo terminado queda de historial. Julio y meses anteriores no se tocan
-  (`mes_legacy`). Idempotente y **sobrevive reinicios** (persiste la semana/board en curso).
+  mes** ("Agosto 2026") con un **board por semana** en bloques del mes (1–7, 8–14, 15–21, 22–28, 29–fin,
+  así el mes cierra limpio) más un board **MENSUAL** de archivo. Al cambiar de semana/mes crea lo que falte
+  y **arrastra lo no terminado** (todo lo que no esté en "Hecho") en su misma lista; al **cerrar el mes** lo
+  consolida entero en su MENSUAL. Agrega a cada persona del equipo como **miembro del board** (requisito de
+  Planka para poder asignarla). Julio y meses anteriores no se tocan (`mes_legacy`). Idempotente y
+  **sobrevive reinicios** (persiste semana/mes/board en curso).
+- **Formato de los avisos**: el resumen y el seguimiento listan **una tarea por línea**, agrupadas por lista
+  con su contador, para que se lean claras aunque la persona tenga muchas.
 
 ---
 

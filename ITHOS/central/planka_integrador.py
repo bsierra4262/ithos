@@ -10,9 +10,11 @@ Mantiene el tablero Kanban del equipo (Planka) 100% actualizado desde WhatsApp:
   · ESCUCHA PROACTIVA: cualquiera, desde su número, dice "ithos, terminé/empecé tal tarea"
     (aunque ITHOS no haya preguntado) -> la IA lo interpreta y MUEVE la tarjeta sola.
   · @mención al ASIGNAR una tarjeta a alguien (evento puntual).
-  · ROLLOVER automático (de Agosto en adelante, ver planka_rollover.py): un proyecto por mes y un
-    board por semana; al cambiar de semana/mes crea lo que falte y ARRASTRA lo no terminado. Julio y
-    meses anteriores quedan como están (board mensual heredado; config 'mes_legacy'). Sobrevive reinicios.
+  · ROLLOVER automático (de Agosto en adelante, ver planka_rollover.py): un proyecto por mes, un board
+    por semana (bloques del mes: 1-7, 8-14, ...) y un board MENSUAL de archivo. Al cambiar de semana/mes
+    crea lo que falte, ARRASTRA lo no terminado y al cerrar el mes lo consolida en su MENSUAL. Agrega al
+    equipo como miembro de cada board (para poder asignarlos). Julio y meses anteriores quedan como están
+    (board mensual heredado; config 'mes_legacy'). Idempotente y sobrevive reinicios.
 
 El trigger "ithos" ya lo aplica el handler de WhatsApp (comun/whatsapp.py); acá solo llega lo que
 ya lo mencionó. Reusa el MISMO grupo/conexión de WhatsApp del cliente. La cadencia (cada 1h) fue
@@ -87,12 +89,16 @@ class PlankaIntegrador:
         self._ult_pregunta = {}   # planka_id -> [card_ids] que ITHOS preguntó recién (contexto para "esa/eso")
         self._arrancado = False
         # --- rollover automático semanal/mensual (de Agosto en adelante; ver planka_rollover.py) ---
-        self._roll = RO.Rollover(self.pk, self.ithos_id)
+        _equipo = [u.get("planka_id") for u in self.cfg.get("usuarios", []) if u.get("planka_id")]
+        self._roll = RO.Rollover(self.pk, self.ithos_id, _equipo)
         self._board_cfg = self.board_id           # board configurado (Julio 'MENSUAL' = mensual heredado)
         self._mes_legacy = str(self.cfg.get("mes_legacy") or "")  # "YYYY-MM": ese mes y anteriores = mensual
-        self._periodo_key = None                  # semana ISO en curso ("YYYY-Www"); None = aún no arrancó
+        self._periodo_key = None                  # semana en curso ("YYYY-MM-Wn"); None = aún no arrancó
+        self._mes_key = None                      # mes en curso ("YYYY-MM"), para detectar el cierre de mes
+        self._meses_cerrados = set()              # meses ya archivados en su board MENSUAL (no re-copiar)
         self._estado_file = os.path.join(_DATA, "planka_estado_periodo.json")
-        self._cargar_periodo()                    # restaura board/semana del último arranque (si hubo)
+        self._reenviar_flag = os.path.join(_DATA, "planka_reenviar_resumen.flag")  # bandera de reenvío manual
+        self._cargar_periodo()                    # restaura board/semana/mes del último arranque (si hubo)
 
     # ------------------------------------------------------------------ helpers
     def _ahora(self):
@@ -120,34 +126,50 @@ class PlankaIntegrador:
 
     # ------------------------------------------------------------------ período (rollover semanal/mensual)
     def _cargar_periodo(self):
-        """Restaura {semana, board} del último arranque, para no re-arrastrar ni perder el hilo
-        si ITHOS se reinició (incluso justo en un cambio de semana/mes)."""
+        """Restaura {semana, board, mes, meses_cerrados} del último arranque, para no re-arrastrar ni
+        re-consolidar ni perder el hilo si ITHOS se reinició (incluso justo en un cambio de semana/mes)."""
         try:
             d = json.load(open(self._estado_file, encoding="utf-8"))
             if d.get("board_id"):
                 self.board_id = str(d["board_id"])
                 self._periodo_key = d.get("skey")
+                self._mes_key = d.get("mes_key")
+                self._meses_cerrados = set(d.get("meses_cerrados") or [])
         except (OSError, ValueError):
             pass
 
     def _guardar_periodo(self):
         try:
-            json.dump({"skey": self._periodo_key, "board_id": self.board_id},
+            json.dump({"skey": self._periodo_key, "board_id": self.board_id,
+                       "mes_key": self._mes_key, "meses_cerrados": sorted(self._meses_cerrados)},
                       open(self._estado_file, "w", encoding="utf-8"), ensure_ascii=False)
         except OSError as e:  # noqa: BLE001
             log.debug("Planka: no pude guardar el estado del período: %s", e)
 
     def _asegurar_periodo(self, ahora):
-        """Resuelve el BOARD del período actual (semana ISO). Para 'mes_legacy' y anteriores usa el
-        board mensual configurado (Julio). Después: proyecto del mes + board de la semana (creándolos
-        si faltan) y ARRASTRA lo no terminado del board anterior. Barato si el período no cambió."""
+        """Resuelve el BOARD del período actual (semana = bloque del mes). Para 'mes_legacy' y anteriores
+        usa el board mensual configurado (Julio). Después: proyecto del mes + board de la semana + MENSUAL
+        (creándolos si faltan), CONSOLIDA en su MENSUAL el mes que cierra, y ARRASTRA lo no terminado al
+        nuevo período. Barato si el período no cambió."""
         skey = RO.semana_key(ahora)
         if skey == self._periodo_key and self.board_id and self._clave_a_id:
             return                                            # mismo período: nada que hacer
         primera_vez = self._periodo_key is None
-        if self._mes_legacy and RO.mes_key(ahora) <= self._mes_legacy:
+        mkey = RO.mes_key(ahora)
+        if self._mes_legacy and mkey <= self._mes_legacy:
             nuevo = self._board_cfg                           # modo mensual heredado (Julio y anteriores)
         else:
+            # ¿cambió el MES (ya en modo semanal)? consolidar el mes que cierra en su MENSUAL (una sola vez).
+            if (self._mes_key and self._mes_key != mkey and not primera_vez
+                    and self._mes_key > self._mes_legacy and self._mes_key not in self._meses_cerrados):
+                try:
+                    a, m = self._mes_key.split("-")
+                    cop = self._roll.copiar_a_mensual(int(a), int(m))
+                    self._meses_cerrados.add(self._mes_key)
+                    log.info("Planka rollover: cerré %s -> %d tarjeta(s) archivadas en MENSUAL.",
+                             self._mes_key, cop)
+                except Exception as e:  # noqa: BLE001
+                    log.warning("Planka rollover: no pude consolidar el mes %s: %s", self._mes_key, e)
             try:
                 nuevo = self._roll.asegurar_semana(ahora).get("board_id")
             except Exception as e:  # noqa: BLE001
@@ -169,6 +191,7 @@ class PlankaIntegrador:
                 self._miembros, self._estado = {}, {}
         elif nuevo and not self._clave_a_id:
             self._asegurar_listas()
+        self._mes_key = mkey
         self._periodo_key = skey
         self._guardar_periodo()
 
@@ -200,31 +223,41 @@ class PlankaIntegrador:
         return out
 
     # ------------------------------------------------------------------ textos
-    def _linea_tarjetas(self, cards):
-        """Agrupa 'nombre (Lista)' por lista para un texto lindo."""
+    @staticmethod
+    def _limpiar(nombre):
+        """Deja el título de la tarjeta prolijo para leer: sin espacios de más ni punto/coma final."""
+        return re.sub(r"\s+", " ", (nombre or "").strip()).rstrip(" .,;")
+
+    def _bloques_tarjetas(self, cards):
+        """Texto agrupado por lista, UNA tarjeta por línea (legible aunque haya muchas)."""
         por = {}
         for _cid, c in cards:
             por.setdefault(c["list"], []).append(c["nombre"])
-        partes = []
+        bloques = []
         for clave in ("por_hacer", "haciendo", "en_espera"):
-            if por.get(clave):
-                partes.append(f"{_EMOJI_LISTA[clave]} *{_ETIQ[clave]}*: " + ", ".join(por[clave]))
-        return partes
+            items = por.get(clave)
+            if not items:
+                continue
+            lineas = "\n".join(f"   •  {self._limpiar(n)}" for n in items)
+            bloques.append(f"{_EMOJI_LISTA[clave]} *{_ETIQ[clave]}*  ({len(items)})\n{lineas}")
+        return "\n\n".join(bloques)
 
     def resumen(self, u, snap):
-        """Texto del RESUMEN diario para una persona (o None si no tiene nada pendiente)."""
+        """RESUMEN diario para una persona (o None si no tiene nada pendiente). Una tarjeta por línea,
+        agrupada por lista, para que se lea claro aunque tenga muchas."""
         cards = self._cards_usuario(str(u["planka_id"]), snap,
                                     listas=("por_hacer", "haciendo", "en_espera"))
         if not cards:
             return None
-        partes = self._linea_tarjetas(cards)
         nom = u["nombre"].split()[0]
-        return (f"Buen día {nom} 👋 Esto tenés para hoy:\n" + "\n".join(partes) +
-                "\n\n(Cuando avances, avisame: \"ithos, terminé tal tarea\".)")
+        return (f"Buen día {nom} 👋\n"
+                f"Esto es lo que tenés para hoy:\n\n"
+                f"{self._bloques_tarjetas(cards)}\n\n"
+                "Cuando termines o avances con alguna, escribime: _ithos, terminé…_")
 
     def seguimiento(self, u, snap, ahora):
-        """Texto del '¿cómo vas?' horario: solo Haciendo + En espera, salteando lo movido hace <1h.
-        Registra qué tarjetas preguntó (contexto para resolver un 'terminé eso' vago después)."""
+        """'¿cómo vas?' horario: solo Haciendo + En espera, salteando lo movido hace <1h. Una tarjeta
+        por línea si hay varias. Registra qué preguntó (contexto para resolver un 'terminé eso' vago)."""
         pid = str(u["planka_id"])
         activos = []
         for cid, c in self._cards_usuario(pid, snap, listas=("haciendo", "en_espera")):
@@ -237,9 +270,14 @@ class PlankaIntegrador:
             return None
         self._ult_pregunta[pid] = [cid for cid, _ in activos]   # contexto para el próximo mensaje
         nom = u["nombre"].split()[0]
-        lista = " y ".join(f"\"{n}\"" for _, n in activos)
-        return (f"{nom}, ¿cómo venís con {lista}? "
-                "Si ya terminaste o pasaste a otra, decime (\"ithos, terminé X\") y lo actualizo.")
+        if len(activos) == 1:
+            cuerpo = f"¿cómo venís con *{self._limpiar(activos[0][1])}*?"
+        else:
+            lineas = "\n".join(f"   •  {self._limpiar(n)}" for _, n in activos)
+            cuerpo = "¿cómo venís con estas?\n" + lineas
+        return (f"{nom}, {cuerpo}\n\n"
+                "Si ya terminaste alguna o la pasaste a otra etapa, avisame "
+                "(_ithos, terminé…_) y la actualizo.")
 
     # ------------------------------------------------------------------ interpretar mensajes
     def interpretar(self, remitente_tel, texto):
@@ -318,6 +356,7 @@ class PlankaIntegrador:
             asignado = self._match_persona(para) or u
         try:
             card = self.pk.crear_tarjeta(self._clave_a_id[clave], titulo)
+            self.pk.agregar_miembro_board(self.board_id, str(asignado["planka_id"]))  # miembro del board primero
             self.pk.asignar(card["id"], str(asignado["planka_id"]))
             log.info("Planka: creada '%s' en %s para %s (por %s).", titulo, clave,
                      asignado["nombre"], u["nombre"])
@@ -383,6 +422,21 @@ class PlankaIntegrador:
             if cid not in snap:
                 self._estado.pop(cid, None); self._miembros.pop(cid, None)
         self._arrancado = True
+
+        # Reenvío MANUAL del resumen (bandera que crea soporte): manda el resumen a todos UNA vez,
+        # con el formato actual. Sirve para corregir un envío mal formateado sin esperar al otro día.
+        if os.path.exists(self._reenviar_flag):
+            try:
+                os.remove(self._reenviar_flag)
+            except OSError:
+                pass
+            n = 0
+            for u in self._por_pid.values():
+                txt = self.resumen(u, snap)
+                if txt:
+                    enviar(txt, [u["telefono"]])
+                    n += 1
+            log.info("Planka: resumen REENVIADO manualmente a %d persona(s).", n)
 
         # 2) scheduler (solo días hábiles Lun-Vie)
         if ahora.weekday() >= 5:

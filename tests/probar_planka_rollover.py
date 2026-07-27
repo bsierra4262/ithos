@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Test del ROLLOVER de Planka (semanal/mensual + arrastre).
+Test del ROLLOVER de Planka (semanas por bloques del mes + cierre mensual + arrastre + miembros).
 
-  NIVEL 1 (unitario, SIN red): cálculo de semanas ISO, nombres de mes/board, gaplessness.
-  NIVEL 2 (integración, contra la Planka real): crea proyecto/boards/listas, arrastra lo no
-          terminado, y prueba el integrador Julio->Agosto. TODO en proyectos 'ZZ_TEST_*' que se
-          BORRAN en finally (jamás toca 'Julio'). Sin secretos hardcodeados: las credenciales
-          salen de env (PLANKA_URL/PLANKA_KEY/PLANKA_ITHOS) o de central/clientes.json.
+  NIVEL 1 (unitario, SIN red): bloques de semana dentro del mes, nombres, gaplessness, bordes.
+  NIVEL 2 (integración, contra la Planka real): crea proyecto/semanas/MENSUAL, agrega al equipo como
+          miembro, asigna, arrastra, y consolida el mes al cerrar (Julio->Agosto->Septiembre). TODO en
+          proyectos 'ZZ_TEST_*' que se BORRAN en finally (jamás toca 'Julio'). Sin secretos hardcodeados:
+          credenciales de env (PLANKA_URL/PLANKA_KEY/PLANKA_ITHOS/PLANKA_TEAM) o de central/clientes.json.
 
 Uso:   python tests/probar_planka_rollover.py
 """
@@ -15,18 +15,17 @@ import os
 import sys
 import json
 import tempfile
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 
 try:
     sys.stdout.reconfigure(encoding="utf-8")
 except Exception:
     pass
 
-RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))          # jarvis-cloud/
+RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 APP = os.path.join(RAIZ, "ITHOS")
-sys.path.insert(0, APP)                                                     # from comun import ...
-sys.path.insert(0, os.path.join(APP, "central"))                           # import planka_rollover / integrador
-# aislar el estado del período en un temp (no ensuciar ~/.ithos)
+sys.path.insert(0, APP)
+sys.path.insert(0, os.path.join(APP, "central"))
 os.environ["ITHOS_DATA"] = tempfile.mkdtemp(prefix="ithos_test_")
 
 from comun import planka as PK          # noqa: E402
@@ -42,69 +41,63 @@ def chk(cond, msg):
         _fallos.append(msg)
 
 
-# =====================================================================  NIVEL 1: fechas (sin red)
+# =====================================================================  NIVEL 1: bloques (sin red)
 def nivel1():
-    print("\n=== NIVEL 1 · cálculo de semanas (sin red) ===")
+    print("\n=== NIVEL 1 · semanas por bloques del mes (sin red) ===")
     chk(RO.nombre_mes(2026, 8) == "Agosto 2026", "nombre_mes(2026,8) == 'Agosto 2026'")
-    chk(RO.nombre_mes(2027, 1) == "Enero 2027", "nombre_mes(2027,1) == 'Enero 2027'")
+    chk(RO.ultimo_dia(2026, 2) == 28 and RO.ultimo_dia(2026, 8) == 31, "ultimo_dia (feb=28, ago=31)")
 
     sem = RO.semanas_del_mes(2026, 8)
-    lunes = [s["lunes"] for s in sem]
-    chk(all(l.weekday() == 0 for l in lunes), "todos los inicios son LUNES")
-    chk(all(l.month == 8 for l in lunes), "todos los lunes son de Agosto")
-    chk(all((lunes[i + 1] - lunes[i]).days == 7 for i in range(len(lunes) - 1)),
-        "lunes consecutivos separados 7 días")
-    chk(lunes[0].day <= 7, "la 1ra semana arranca el primer lunes del mes")
-    chk((lunes[0] - timedelta(days=7)).month != 8, "no hay lunes de Agosto antes de la 1ra semana")
-    chk(all(s["viernes"] == s["lunes"] + timedelta(days=4) for s in sem), "viernes = lunes + 4")
-    chk(sem[0]["nombre"].startswith("Semana 1 · "), f"nombre 1ra semana ok ({sem[0]['nombre']})")
-    print(f"      Agosto 2026 -> {len(sem)} semanas: " + ", ".join(s["nombre"] for s in sem))
+    chk(len(sem) == 5, f"Agosto tiene 5 bloques ({len(sem)})")
+    chk(sem[0]["desde"] == date(2026, 8, 1) and sem[-1]["hasta"] == date(2026, 8, 31),
+        "el 1er bloque arranca el 1 y el último termina el 31 (cierre limpio)")
+    chk(all(s["desde"].month == 8 and s["hasta"].month == 8 for s in sem),
+        "ningún bloque cruza a otro mes")
+    chk(all((sem[i + 1]["desde"] - sem[i]["desde"]).days == 7 for i in range(len(sem) - 1)),
+        "bloques separados 7 días")
+    chk(sem[0]["nombre"] == "Semana 1 · 01–07/08", f"nombre del 1er bloque ({sem[0]['nombre']})")
+    print("      Agosto 2026 -> " + ", ".join(s["nombre"] for s in sem))
 
-    # mes que arranca en lunes (para cubrir el borde): Junio 2026 arranca lunes 1
-    j = RO.semanas_del_mes(2026, 6)
-    chk(j[0]["lunes"] == date(2026, 6, 1), "mes que arranca lunes: 1ra semana = día 1")
+    chk(len(RO.semanas_del_mes(2026, 2)) == 4, "Febrero (28d) = 4 bloques")
+    chk(RO.semanas_del_mes(2026, 9)[-1]["hasta"] == date(2026, 9, 30), "Septiembre (30d) cierra el 30")
 
-    # spill: un día de principios de mes cae en la semana de su lunes (mes anterior)
-    d = date(2026, 9, 1)
-    chk(RO.mes_key(d) == RO._lunes(d).strftime("%Y-%m"), "mes_key sigue al lunes de la semana")
+    chk(RO.semana_actual(date(2026, 8, 10))[2]["num"] == 2, "10/08 cae en la Semana 2")
+    chk(RO.semana_actual(date(2026, 8, 31))[2]["num"] == 5, "31/08 cae en la Semana 5")
+    chk(RO.semana_key(date(2026, 8, 10)) == "2026-08-W2", "semana_key(10/08) == '2026-08-W2'")
+    chk(RO.semana_key(date(2026, 8, 8)) == RO.semana_key(date(2026, 8, 14)),
+        "semana_key estable dentro del bloque")
+    chk(RO.semana_key(date(2026, 8, 14)) != RO.semana_key(date(2026, 8, 15)),
+        "semana_key cambia al bloque siguiente")
+    chk(RO.mes_key(date(2026, 9, 1)) == "2026-09", "mes_key(01/09) == '2026-09' (sin cruce)")
 
-    # semana_key estable dentro de la semana, cambia entre semanas
-    lun = date(2026, 8, 10)
-    chk(RO.semana_key(lun) == RO.semana_key(lun + timedelta(days=4)), "semana_key igual lun..vie")
-    chk(RO.semana_key(lun) != RO.semana_key(lun + timedelta(days=7)), "semana_key cambia a la semana siguiente")
-
-    # GAPLESS + consistencia: cada día cae en exactamente una semana de su mes
-    d = date(2026, 7, 27)
-    fin = date(2026, 10, 5)
+    # GAPLESS: cada día de agosto cae en un bloque que lo contiene
     malos = 0
-    while d <= fin:
-        y, m, s = RO.semana_actual(d)
-        pool = RO.semanas_del_mes(y, m)
-        if s["lunes"] != RO._lunes(d) or not any(x["lunes"] == s["lunes"] for x in pool):
+    for dd in range(1, 32):
+        _y, _m, s = RO.semana_actual(date(2026, 8, dd))
+        if not (s["desde"].day <= dd <= s["hasta"].day):
             malos += 1
-        d += timedelta(days=1)
-    chk(malos == 0, f"gapless: cada día (27/07–05/10) cae en su semana ({malos} inconsistencias)")
+    chk(malos == 0, f"gapless: cada día de agosto cae en su bloque ({malos} fuera)")
 
 
 # =====================================================================  NIVEL 2: integración (red)
 def _conn():
-    """(url, key, ithos_id) de env o de central/clientes.json. None si no hay."""
     u, k, i = os.environ.get("PLANKA_URL"), os.environ.get("PLANKA_KEY"), os.environ.get("PLANKA_ITHOS")
+    team = [x for x in (os.environ.get("PLANKA_TEAM") or "").split(",") if x.strip()]
     if u and k:
-        return u, k, (i or "")
+        return u, k, (i or ""), team
     try:
         d = json.load(open(os.path.join(APP, "central", "clientes.json"), encoding="utf-8"))
         for c in d.get("clientes", []):
             p = c.get("planka") or {}
             if p.get("url") and p.get("api_key"):
-                return p["url"], p["api_key"], str(p.get("ithos_user_id") or "")
+                team = [str(x.get("planka_id")) for x in p.get("usuarios", []) if x.get("planka_id")]
+                return p["url"], p["api_key"], str(p.get("ithos_user_id") or ""), team
     except Exception:
         pass
     return None
 
 
 def _borrar_tests(pk):
-    """Borra TODO proyecto cuyo nombre empiece con 'ZZ_TEST' (boards primero, como exige Planka)."""
     try:
         items, inc = pk.proyectos()
     except Exception:
@@ -125,7 +118,6 @@ def _borrar_tests(pk):
 
 
 def _cards_por_board(pk, board_id):
-    """{clave_lista: [nombres]} del board."""
     inc = pk.board(board_id)
     id2clave = {str(l["id"]): RO.clave_lista(l.get("name")) for l in inc.get("lists", [])}
     out = {}
@@ -142,88 +134,90 @@ def nivel2():
     if not cn:
         print("  [SKIP] sin credenciales (PLANKA_URL/PLANKA_KEY o clientes.json). Integración omitida.")
         return
-    url, key, ithos = cn
+    url, key, ithos, equipo = cn
     pk = PK.Planka(url, key)
-    _borrar_tests(pk)                                   # por si quedó basura de una corrida anterior
-    creados = []
+    _borrar_tests(pk)
     try:
-        roll = RO.Rollover(pk, ithos)
-
-        # --- idempotencia: crear proyecto/board/listas dos veces devuelve lo mismo
-        pid1 = roll.asegurar_proyecto("ZZ_TEST_ROLLOVER")
-        pid2 = roll.asegurar_proyecto("ZZ_TEST_ROLLOVER")
-        creados.append(pid1)
-        chk(pid1 and pid1 == pid2, "asegurar_proyecto idempotente")
-        bidA = roll.asegurar_board(pid1, "Semana A", RO.POS)
-        chk(bidA and bidA == roll.asegurar_board(pid1, "Semana A", RO.POS), "asegurar_board idempotente")
-        la = roll.asegurar_listas(bidA)
-        chk(set(la.keys()) == {"por_hacer", "haciendo", "en_espera", "hecho"},
-            f"asegurar_listas crea las 4 claves ({sorted(la.keys())})")
-        chk(roll.asegurar_listas(bidA) == la, "asegurar_listas idempotente (no duplica)")
-
-        # --- ARRASTRE: cards en A (una en Hecho) -> B; solo lo no-Hecho se mueve, en su misma lista
-        bidB = roll.asegurar_board(pid1, "Semana B", 2 * RO.POS)
-        lb = roll.asegurar_listas(bidB)
-        pk.crear_tarjeta(la["por_hacer"], "Tarea PENDIENTE")
-        pk.crear_tarjeta(la["haciendo"], "Tarea EN CURSO")
-        pk.crear_tarjeta(la["en_espera"], "Tarea TRABADA")
-        pk.crear_tarjeta(la["hecho"], "Tarea TERMINADA")
-        mov = roll.arrastrar(bidA, bidB)
-        chk(mov == 3, f"arrastrar movió 3 (las no terminadas), no 4 ({mov})")
-        ca, cb = _cards_por_board(pk, bidA), _cards_por_board(pk, bidB)
-        chk(ca.get("hecho") == ["Tarea TERMINADA"], "la TERMINADA quedó en el board viejo (historial)")
-        chk("Tarea PENDIENTE" in cb.get("por_hacer", []), "PENDIENTE llegó a 'Por hacer' del nuevo")
-        chk("Tarea EN CURSO" in cb.get("haciendo", []), "EN CURSO llegó a 'Haciendo' (misma lista)")
-        chk("Tarea TRABADA" in cb.get("en_espera", []), "TRABADA llegó a 'En espera' (misma lista)")
-        chk(not ca.get("por_hacer") and not ca.get("haciendo") and not ca.get("en_espera"),
-            "el board viejo quedó sin pendientes (se arrastraron)")
-
-        # --- asegurar_semana end-to-end (con nombre de mes TEMPORAL para no crear el mes real)
         _orig = RO.nombre_mes
-        RO.nombre_mes = lambda a, m: f"ZZ_TEST_MES {a}-{m:02d}"
+        RO.nombre_mes = lambda a, m: f"ZZ_TEST {a}-{m:02d}"
         try:
-            roll2 = RO.Rollover(pk, ithos)
-            info = roll2.asegurar_semana(datetime(2026, 8, 10, 11, 0))     # 10/08 = Semana 2
-            creados.append(info["project_id"])
-            chk(info["board_id"], "asegurar_semana devolvió board de la semana actual")
-            chk("Semana 2" in info["semana"], f"la semana actual del 10/08 es la 2 ({info['semana']})")
-            _it, inc = pk.proyectos()
-            nb = sum(1 for b in inc.get("boards", []) if str(b.get("projectId")) == str(info["project_id"]))
-            chk(nb == len(RO.semanas_del_mes(2026, 8)),
-                f"creó un board por cada semana del mes ({nb})")
+            roll = RO.Rollover(pk, ithos, equipo)
+
+            # --- asegurar_mes: proyecto + 5 semanas + MENSUAL + 4 listas cada uno
+            info = roll.asegurar_mes(2026, 8)
+            chk(len(info["semanas"]) == 5, f"asegurar_mes creó 5 boards de semana ({len(info['semanas'])})")
+            chk(bool(info["mensual_board_id"]), "creó el board MENSUAL")
+            btest = info["semanas"][2]
+            chk(set(roll.asegurar_listas(btest)) == {"por_hacer", "haciendo", "en_espera", "hecho"},
+                "cada semana tiene las 4 listas")
+            info2 = roll.asegurar_mes(2026, 8)
+            chk(info2["semanas"] == info["semanas"] and info2["mensual_board_id"] == info["mensual_board_id"],
+                "asegurar_mes idempotente (no duplica boards)")
+
+            # --- el EQUIPO quedó como miembro del board: se puede asignar (si no, daría 404)
+            if equipo:
+                lst = roll.asegurar_listas(btest)
+                card = pk.crear_tarjeta(lst["por_hacer"], "Tarea para miembro")
+                ok = pk.asignar(card["id"], equipo[0])
+                inc = pk.board(btest)
+                asignado = any(str(m.get("cardId")) == str(card["id"]) and str(m.get("userId")) == equipo[0]
+                               for m in inc.get("cardMemberships", []))
+                chk(ok and asignado, "se puede ASIGNAR a un miembro del equipo (quedó miembro del board)")
+            else:
+                print("  [SKIP] sin PLANKA_TEAM: no verifico asignación de equipo")
+
+            # --- cierre de mes: copiar_a_mensual archiva TODO el mes en MENSUAL
+            l2 = roll.asegurar_listas(btest)
+            pk.crear_tarjeta(l2["haciendo"], "Archivo EN CURSO")
+            pk.crear_tarjeta(l2["hecho"], "Archivo TERMINADA")
+            copiadas = roll.copiar_a_mensual(2026, 8)
+            mens = _cards_por_board(pk, info["mensual_board_id"])
+            total_mens = sum(len(v) for v in mens.values())
+            chk(copiadas >= 2 and total_mens == copiadas,
+                f"copiar_a_mensual archivó {copiadas} tarjeta(s) en MENSUAL (hechas + pendientes)")
+            chk("Archivo TERMINADA" in mens.get("hecho", []) and "Archivo EN CURSO" in mens.get("haciendo", []),
+                "el archivo MENSUAL conserva la lista de cada tarjeta")
         finally:
             RO.nombre_mes = _orig
 
-        # --- INTEGRADOR Julio(legacy) -> Agosto: arrastra lo pendiente al cambiar de mes
-        legacy_p = roll.asegurar_proyecto("ZZ_TEST_LEGACY")
-        creados.append(legacy_p)
-        legacy_b = roll.asegurar_board(legacy_p, "MENSUAL", RO.POS)
-        ll = roll.asegurar_listas(legacy_b)
+        # --- INTEGRADOR: Julio(legacy) -> Agosto (arrastra) -> Septiembre (cierra Agosto en MENSUAL)
+        roll0 = RO.Rollover(pk, ithos, equipo)
+        legacy_p = roll0.asegurar_proyecto("ZZ_TEST_LEGACY")
+        legacy_b = roll0.asegurar_board(legacy_p, "MENSUAL", RO.POS)
+        ll = roll0.asegurar_listas(legacy_b)
         pk.crear_tarjeta(ll["haciendo"], "Pendiente de Julio")
-        cfg = {"url": url, "api_key": key, "ithos_user_id": ithos,
-               "project_id": legacy_p, "board_id": legacy_b, "mes_legacy": "2026-07", "usuarios": []}
+        cfg = {"url": url, "api_key": key, "ithos_user_id": ithos, "project_id": legacy_p,
+               "board_id": legacy_b, "mes_legacy": "2026-07",
+               "usuarios": [{"planka_id": e, "nombre": f"User {e[-3:]}", "telefono": ""} for e in equipo]}
         integ = PI.PlankaIntegrador(cfg, ia=None)
-        RO.nombre_mes = lambda a, m: f"ZZ_TEST_AGO {a}-{m:02d}"
+        RO.nombre_mes = lambda a, m: f"ZZ_TEST_M {a}-{m:02d}"
         try:
-            integ._asegurar_periodo(datetime(2026, 7, 28, 10, 0))          # Julio: sigue en el board legacy
-            chk(integ.board_id == legacy_b, "en Julio el integrador usa el board mensual (legacy)")
-            integ._asegurar_periodo(datetime(2026, 8, 10, 10, 0))          # Agosto: rota + arrastra
-            chk(integ.board_id not in (legacy_b, None), "en Agosto el integrador cambió al board semanal")
-            destino = _cards_por_board(pk, integ.board_id)
-            chk("Pendiente de Julio" in destino.get("haciendo", []),
-                "el integrador ARRASTRÓ la tarea pendiente de Julio a Agosto (misma lista)")
-            origen = _cards_por_board(pk, legacy_b)
-            chk("Pendiente de Julio" not in origen.get("haciendo", []),
-                "la tarea ya no está en el board de Julio (se movió, no se duplicó)")
-            for b in pk.proyectos()[1].get("boards", []):
-                if b.get("name", "").startswith("ZZ_TEST_AGO"):
-                    creados.append("_")  # marca: hay proyecto ZZ_TEST_AGO (se limpia por prefijo)
-                    break
+            integ._asegurar_periodo(datetime(2026, 7, 28, 10, 0))       # Julio: board legacy
+            chk(integ.board_id == legacy_b, "en Julio usa el board mensual heredado")
+            integ._asegurar_periodo(datetime(2026, 8, 10, 10, 0))       # Agosto: rota + arrastra
+            ago_b = integ.board_id
+            chk(ago_b not in (legacy_b, None), "en Agosto cambió al board semanal (bloque)")
+            chk("Pendiente de Julio" in _cards_por_board(pk, ago_b).get("haciendo", []),
+                "arrastró la tarea de Julio a Agosto (misma lista)")
+            pk.crear_tarjeta(integ._clave_a_id["hecho"], "Terminada en Agosto")   # algo hecho en agosto
+            integ._asegurar_periodo(datetime(2026, 9, 5, 10, 0))        # Septiembre: cierra Agosto + arrastra
+            sep_b = integ.board_id
+            chk(sep_b not in (legacy_b, ago_b, None), "en Septiembre cambió a otro board (nuevo mes)")
+            # Agosto quedó consolidado en su MENSUAL
+            ago_info = roll0.asegurar_mes(2026, 8)
+            arch = _cards_por_board(pk, ago_info["mensual_board_id"])
+            chk("Terminada en Agosto" in arch.get("hecho", []) and "Pendiente de Julio" in arch.get("haciendo", []),
+                "al cerrar Agosto, MENSUAL archivó TODO el mes (hecho + pendiente)")
+            # lo pendiente se arrastró a Septiembre; lo hecho NO
+            sep = _cards_por_board(pk, sep_b)
+            chk("Pendiente de Julio" in sep.get("haciendo", []),
+                "lo pendiente siguió a Septiembre (misma lista)")
+            chk("Terminada en Agosto" not in sum(sep.values(), []),
+                "lo terminado NO se arrastró a Septiembre (quedó de historial)")
         finally:
             RO.nombre_mes = _orig
     finally:
-        _borrar_tests(pk)                               # limpieza TOTAL por prefijo
-        # verificación de limpieza
+        _borrar_tests(pk)
         try:
             items, _ = pk.proyectos()
             quedan = [p.get("name") for p in items if str(p.get("name", "")).startswith("ZZ_TEST")]

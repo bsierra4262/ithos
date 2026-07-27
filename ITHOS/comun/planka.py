@@ -141,6 +141,17 @@ class Planka:
         self._req(f"/api/cards/{card_id}/comments", "POST", {"text": texto})
 
     # ------------------------------------------------------------------ acceso (admin)
+    def agregar_miembro_board(self, board_id, user_id, role="editor"):
+        """Agrega un usuario como MIEMBRO del board. Es REQUISITO de Planka para poder asignarle
+        tarjetas (asignar a alguien que no es miembro del board da 404 'User not found'). Igual que
+        cuando se agrega a una persona a mano. Idempotente: si ya es miembro, no es fatal."""
+        try:
+            self._req(f"/api/boards/{board_id}/board-memberships", "POST",
+                      {"userId": str(user_id), "role": role})
+            return True
+        except PlankaError:
+            return False
+
     def asegurar_acceso(self, project_id, board_id, user_id):
         """El admin GLOBAL de Planka NO puede gestionar un proyecto/board ajeno hasta ser manager/
         miembro de ESE proyecto. ITHOS (admin) se auto-agrega. Idempotente (si ya está, se ignora)."""
