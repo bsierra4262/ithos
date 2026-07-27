@@ -1,0 +1,13 @@
+# Normalización de fin de línea (CRLF rompe bash/Docker en Linux — ver H41)
+* text=auto
+*.sh text eol=lf
+*.py text eol=lf
+Dockerfile text eol=lf
+Caddyfile text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+.env.example text eol=lf
+# Solo-Windows
+*.ps1 text eol=crlf
+*.bat text eol=crlf
+*.iss text eol=crlf

@@ -1,0 +1,60 @@
+# =============================================================================
+# ITHOS - .gitignore
+# Secretos, datos por cliente y artefactos NUNCA se suben. El repo es reproducible:
+# se instala pidiendo secretos NUEVOS (ver ITHOS/central/clientes.ejemplo.json + .env.example).
+# =============================================================================
+
+# --- SECRETOS y config real (NUNCA subir) ---
+.env
+.env.demo
+ITHOS/.env
+ITHOS/central/clientes.json
+ITHOS/central/clientes.demo.json
+ITHOS/central/clientes.json.bak-*
+ITHOS/agente/config.json
+ITHOS/agente/config.json.bak-*
+**/_gestor_admin.token
+**/_gestor_admin.hash
+**/_gestor_master.key
+**/_alta_tokens.json
+**/alta_tokens.json
+**/cuota_*.json
+**/planes_ia.json
+# Firma de codigo: el .pfx tiene la CLAVE PRIVADA (el .cer publico si se reparte)
+*.pfx
+
+# --- DATOS / ESTADO por cliente (runtime) ---
+*.log
+*.sqlite3
+**/wa_session*
+**/memoria_*
+**/metricas_*
+**/*_estado_*.json
+**/reporte_estado_*.json
+**/proactivo_estado_*.json
+**/agenda.json
+ITHOS/agente/voz_cache/
+ITHOS/comun/voz_cache/
+
+# --- ARTEFACTOS de compilacion (se regeneran con compilador/build) ---
+compilador/dist/
+compilador/build/exe/
+compilador/build/work/
+compilador/build/agente/
+build/
+dist/
+compilador/build/ithos.ico
+compilador/build/ithos.png
+compilador/build/ithos_wizard*.bmp
+compilador/build/ithos-publisher.cer
+
+# --- Python ---
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# --- Sistema ---
+.DS_Store
+Thumbs.db

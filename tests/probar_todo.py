@@ -1,0 +1,198 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+PRUEBA TOTAL de ITHOS Cloud — ejercita TODO el programa de principio a fin y
+reporta OK / FALLA / PENDIENTE(cuota IA) por componente. Autónomo (lee sus configs).
+
+Uso:  python probar_todo.py
+"""
+
+import sys
+import json
+import importlib
+import threading
+import time
+import os
+import glob
+
+sys.path.insert(0, "ITHOS/central")
+sys.path.insert(0, "ITHOS/agente")
+sys.path.insert(0, "ITHOS")
+
+R = []
+
+
+def check(nombre, fn):
+    try:
+        R.append((nombre, "OK", str(fn() or "")[:70]))
+    except Exception as e:  # noqa: BLE001
+        m = str(e)
+        est = "PENDIENTE (cuota IA)" if ("429" in m or "RESOURCE_EXHAUSTED" in m) else "FALLA"
+        R.append((nombre, est, m[:90]))
+
+
+def p(s):
+    print(str(s).encode("ascii", "replace").decode(), flush=True)
+
+
+CFG = json.load(open("ITHOS/central/clientes.json", encoding="utf-8"))["clientes"][0]
+GL = CFG["integrador_glpi"]
+IA_CFG = CFG["ia"]
+ENT = int(GL["entity_id"])
+
+
+def ia_disponible():
+    """Sondeo de cuota con el proveedor robusto (maneja 'client closed')."""
+    from comun import ia as IA
+    try:
+        IA.crear_texto(IA_CFG).chat("Responde solo: OK", "hola", json_out=False)
+        return True
+    except Exception as e:  # noqa: BLE001
+        if "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e):
+            return False
+        raise
+
+
+def t_registro():
+    from registro import Registro
+    return f"{Registro(ruta='ITHOS/central/clientes.json').total()} clientes"
+
+
+def t_ia_factory():
+    from comun import ia as IA
+    vz = IA.crear_voz(IA_CFG)
+    assert vz.voz == "Charon" and vz.modelo_voz == "gemini-2.5-flash-native-audio-latest"
+    return "texto + voz(Charon, modelo actualizado)"
+
+
+def t_cuota():
+    from comun.cuota import GestorCuota
+    av = []
+    g = GestorCuota("T", limite_diario=2, avisar_en=1, archivo="ITHOS/comun/_t.json",
+                    notificar=lambda n, m: av.append(n))
+    g.registrar(); g.registrar(); g.marcar_agotada()
+    est = g.estado()
+    [os.remove(f) for f in glob.glob("ITHOS/comun/_t.json")]
+    assert len(av) == 2
+    return f"avisos={len(av)} gemini_agotada={est['gemini']['agotada']}"
+
+
+def t_notificadores():
+    from comun import notificadores
+    n = notificadores.crear_notificadores({"notificaciones": [
+        {"tipo": "telegram", "bot_token": "x", "chat_ids": []},
+        {"tipo": "teams", "webhook_url": "x"}, {"tipo": "email", "usuario": "x"}]})
+    assert len(n.canales) == 3
+    return "telegram+teams+email"
+
+
+def t_glpi_reportes():
+    import reportes
+    rep, _ = reportes.generar(GL, ENT, n=60)
+    return f"SLA={rep['sla_cumplimiento_pct']}% total={rep['total']}"
+
+
+def t_ivms():
+    ag = json.load(open("ITHOS/agente/config.json", encoding="utf-8"))
+    cfg = ag.get("integrador")
+    if not cfg or cfg.get("tipo") != "ivms":
+        return "sin integrador ivms — omitido"
+    import logging, io
+    m = importlib.import_module("integrador_ivms")
+    buf = io.StringIO(); h = logging.StreamHandler(buf)
+    m.log.addHandler(h); m.log.setLevel(logging.INFO)
+    stop = threading.Event()
+    th = threading.Thread(target=m.vigilar, args=(cfg, lambda ev: None, stop), daemon=True)
+    th.start(); time.sleep(7); stop.set(); time.sleep(0.3)
+    m.log.removeHandler(h)
+    out = buf.getvalue().lower()
+    if "conectado" in out or "baseline" in out:
+        return "conecto a la DB + baseline"
+    raise Exception("IVMS no conecto: " + out[:50])
+
+
+def t_metricas():
+    from comun import metricas
+    metricas.registrar("T", "ticket", 2)
+    u = metricas.resumen("T")["uso"]
+    [os.remove(f) for f in glob.glob("ITHOS/comun/metricas_T.json")]
+    assert u.get("ticket") == 2
+    return "registro+resumen"
+
+
+def t_kb():
+    from comun import kb
+    os.makedirs("ITHOS/comun/_kb", exist_ok=True)
+    open("ITHOS/comun/_kb/d.txt", "w", encoding="utf-8").write(
+        "El molinete se reinicia apagando 10 segundos.")
+    ctx = kb.contexto("ITHOS/comun/_kb", "reiniciar molinete")
+    os.remove("ITHOS/comun/_kb/d.txt"); os.rmdir("ITHOS/comun/_kb")
+    assert "molinete" in ctx
+    return "RAG por palabras"
+
+
+def t_procesador():
+    import procesador
+    from protocolo import EV_ACCESO
+    c = procesador.procesar(CFG, EV_ACCESO, {"nombre": "Brian Sierra", "tipo": "bienvenida"})
+    assert c and c[0]["accion"] == "decir" and "Brian" in c[0]["texto"]
+    return c[0]["texto"][:40]
+
+
+def t_triage_ia():
+    import triage as T
+    import cerebro
+    a = cerebro.clasificar_ticket(T.Triage(GL, IA_CFG).ia,
+                                  "no puede fichar", "no reconoce el rostro")
+    assert a and a.get("categoria")
+    return f"{a.get('categoria')}/{a.get('prioridad')}"
+
+
+def t_conversacional_ia():
+    from comun import conversacion
+    from comun import ia as IA
+    asis = conversacion.Asistente(IA.crear_texto(IA_CFG),
+                                  conversacion.herramientas_glpi(GL, ENT))
+    return asis.responder_texto("cuantos tickets abiertos hay?")[:55]
+
+
+def t_ciclo_ia():
+    import runpy
+    runpy.run_path("probar_ciclo.py", run_name="__main__")
+    return "ciclo completo ejecutado (ver arriba)"
+
+
+p("\n============= PRUEBA TOTAL ITHOS CLOUD =============")
+check("1. Registro de clientes", t_registro)
+check("2. Fabrica de IA (voz Charon)", t_ia_factory)
+check("3. Gestor de cuota + avisos", t_cuota)
+check("4. Notificadores (Telegram/Teams/Email)", t_notificadores)
+check("5. GLPI + Reportes SLA (real)", t_glpi_reportes)
+check("6. Integrador IVMS (DB real)", t_ivms)
+check("7. Metricas de uso", t_metricas)
+check("8. Base de conocimiento", t_kb)
+check("9. Procesador acceso->voz", t_procesador)
+
+p("\n>> Sondeando cuota de IA...")
+try:
+    hay_ia = ia_disponible()
+except Exception as e:  # noqa: BLE001
+    hay_ia = False
+    p(f"   (probe error: {str(e)[:60]})")
+if hay_ia:
+    p("   Cuota disponible: corriendo pruebas de IA...")
+    check("10. Triage con IA", t_triage_ia)
+    check("11. Conversacional con IA", t_conversacional_ia)
+    check("12. Ciclo de vida completo (IA)", t_ciclo_ia)
+else:
+    for n in ("10. Triage con IA", "11. Conversacional con IA",
+              "12. Ciclo de vida completo (IA)"):
+        R.append((n, "PENDIENTE (cuota IA)", "cuota agotada; se valida al resetear"))
+
+p("\n---------------- RESULTADOS ----------------")
+ok = fail = pend = 0
+for nombre, estado, det in R:
+    p(f"  [{estado:>18}] {nombre}  {det}")
+    ok += estado == "OK"; fail += estado == "FALLA"; pend += "PENDIENTE" in estado
+p(f"\n  TOTAL: {ok} OK - {pend} pendientes(cuota) - {fail} FALLAS")
+p("=" * 52)

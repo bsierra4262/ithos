@@ -1,0 +1,47 @@
+# ============================================================================
+# JARVIS Cloud — dependencias COMPLETAS (demo + central + agente).
+# Instalar:  python -m pip install -r requirements.txt
+# Además hay que instalar ffmpeg (sistema) para las notas de voz por WhatsApp/
+# Telegram, y el driver ODBC de SQL Server si se usa IVMS (ver INSTALACION.md).
+# ============================================================================
+
+# --- Servidor central (FastAPI + WebSocket) ---------------------------------
+fastapi>=0.110
+uvicorn[standard]>=0.29
+python-multipart>=0.0.9     # login por formulario del panel + subida de archivos KB (FastAPI Form/File)
+cryptography>=42.0          # cifrado EN REPOSO de secretos del cliente (AES-256-GCM, comun/cifrado.py)
+websockets>=12.0
+
+# --- Inteligencia artificial -------------------------------------------------
+google-genai>=2.7           # Gemini (texto + voz Charon)
+
+# --- WhatsApp no-oficial (neonize / whatsmeow) ------------------------------
+neonize>=0.3
+segno>=1.5                  # QR de vinculación
+
+# --- Voz: TTS / reproducción / ajuste de velocidad --------------------------
+edge-tts>=6.1.10            # voz JARVIS GRATIS (Jorge MX) + notas de voz
+pygame>=2.5                 # reproducción de audio en la demo
+pydub>=0.25                 # ajuste de velocidad (x1.25)
+audiotsm>=0.1.2             # time-stretch de audio (agente)
+
+# --- Micrófono / captura / detección de voz (VAD) ---------------------------
+sounddevice>=0.4            # capturar el micrófono
+numpy>=1.24                 # audio / VAD
+onnxruntime>=1.17           # Silero VAD (comun/silero_vad.onnx) y voz-id
+webrtcvad-wheels>=2.0.14    # VAD liviano de respaldo (import: webrtcvad)
+pvporcupine>=3.0            # palabra clave "Jarvis" (wake word) en el agente
+
+# --- Reportes ITIL (PDF) -----------------------------------------------------
+reportlab>=4.0             # informes ITIL en PDF (métricas: SLA, MTTR, por técnico…)
+pypdf>=4.0                 # leer PDFs de instructivos para la base de conocimiento
+
+# --- Bases de datos / integraciones -----------------------------------------
+pyodbc>=5.1                 # IVMS: leer la tabla de fichajes (SQL Server)
+PyMySQL>=1.1                # osTicket: leer/cerrar por su base MySQL
+
+# --- Calidad de código / auditoría (dev/test) -------------------------------
+pyflakes>=3.4               # lint: nombres indefinidos / imports sin usar (auditoría de calidad)
+
+tzdata>=2024.1            # base de zonas horarias (ZoneInfo) — reportes en la hora del cliente
+vosk>=0.3.45              # wake-word "ITHOS" OPEN-SOURCE (STT local, sin registro ni limites)

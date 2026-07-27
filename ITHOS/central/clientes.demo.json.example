@@ -1,0 +1,36 @@
+{
+  "_comentario": "EMPRESAS DE DEMO (sandbox). Copiá a central/clientes.demo.json y poné credenciales de PRUEBA (grupo de WhatsApp de demo, entidad GLPI de prueba, etc.). NUNCA credenciales de un cliente real: este stack es aparte de producción y sus datos se borran al bajarlo. Hace lo MISMO que producción pero sobre recursos sandbox.",
+  "clientes": [
+    {
+      "api_key": "DEMO-empresa-0001",
+      "agente_token": "DEMO-token-de-agente-cambialo",
+      "nombre": "EMPRESA DEMO S.A.",
+      "email": "demo@ejemplo.com",
+      "activo": true,
+      "idioma": "es-AR",
+      "zona_horaria": "America/Argentina/Buenos_Aires",
+      "velocidad": 1.25,
+      "ia": {
+        "proveedor": "gemini",
+        "voz": "Charon",
+        "gemini_api_key": "PONE-UNA-CLAVE-GEMINI-DE-PRUEBA",
+        "limite_diario": 200
+      },
+      "integrador": "ninguno",
+      "integrador_config": {},
+      "tickets": { "tipo": "glpi" },
+      "integrador_glpi": {
+        "ubicacion": "central",
+        "glpi_url": "https://glpi-de-prueba/ejemplo/apirest.php",
+        "glpi_app_token": "APP-TOKEN-DE-PRUEBA",
+        "glpi_user_token": "USER-TOKEN-DE-PRUEBA",
+        "entity_id": 0,
+        "poll_interval": 5
+      },
+      "notificaciones": [
+        { "tipo": "whatsapp_no_oficial", "respuesta": "ambos", "enabled": true, "grupo": "GRUPO-DE-WHATSAPP-DE-DEMO" }
+      ],
+      "facturacion": { "propietario": true }
+    }
+  ]
+}

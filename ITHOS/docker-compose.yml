@@ -1,0 +1,61 @@
+# ITHOS Gestor — despliegue en la VPS (Hostinger, Linux con Docker).
+#   1) Copiá .env.example a .env y poné una clave fuerte (ITHOS_ADMIN_TOKEN).
+#   2) Editá el Caddyfile con tu dominio.
+#   3) docker compose up -d --build
+# El agente del cliente se conecta a  wss://TU-DOMINIO/ws  (cifrado, solo sale hacia afuera).
+# Solo Caddy publica puertos (80/443). El Gestor (8080) y el Panel (8090) NO se exponen al
+# público: se llegan por HTTPS a través de Caddy. Al Gestor accede SOLO INTELLIHELP (login).
+services:
+  central:                        # el cerebro: WebSocket del agente + webhooks (MercadoPago/WhatsApp)
+    build: ./central
+    expose:
+      - "8080"                    # interno (solo Caddy/panel lo alcanzan por la red de Docker)
+    volumes:
+      - ./central/clientes.json:/app/clientes.json
+      - ./comun:/app/comun
+      - ithos_data:/data         # cachés/estado persistente (planes IA, etc.)
+    environment:
+      - ITHOS_CLIENTES=/app/clientes.json
+      - ITHOS_DATA=/data
+    env_file:
+      - .env                      # ITHOS_ADMIN_USER / ITHOS_ADMIN_TOKEN
+    restart: unless-stopped
+    # Al detenerse (deploy/reinicio), el Gestor avisa 'mantenimiento' a los clientes por sus canales
+    # ANTES de morir: le damos margen para que esos mensajes salgan antes del SIGKILL.
+    stop_grace_period: 30s
+
+  panel:                          # panel superadmin + dashboard del cliente + alta (todo con auth)
+    build: ./central
+    command: ["uvicorn", "panel:app", "--host", "0.0.0.0", "--port", "8090"]
+    expose:
+      - "8090"                    # interno: NO se publica (se entra por HTTPS vía Caddy)
+    volumes:
+      - ./central/clientes.json:/app/clientes.json
+      - ./comun:/app/comun
+      - ithos_data:/data
+    environment:
+      - ITHOS_CENTRAL_URL=http://central:8080     # el panel consulta el estado al central (red interna)
+      - ITHOS_ALTA_FILE=/data/alta_tokens.json    # tokens de alta de un solo uso (persistente)
+      - ITHOS_DATA=/data
+    env_file:
+      - .env                      # MISMO ITHOS_ADMIN_USER/TOKEN que el central (login del panel)
+    depends_on:
+      - central
+    restart: unless-stopped
+
+  caddy:                          # TLS/WSS automático (Let's Encrypt) + ÚNICO que publica puertos
+    image: caddy:2
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - caddy_data:/data
+    depends_on:
+      - central
+      - panel
+    restart: unless-stopped
+
+volumes:
+  caddy_data:
+  ithos_data:

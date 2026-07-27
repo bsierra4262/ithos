@@ -1,0 +1,19 @@
+# HTTPS/WSS automático (Let's Encrypt) para ITHOS Gestor.
+# Cambiá tu-dominio.com por el dominio real (Hostinger). Caddy saca el certificado solo,
+# termina TLS y rutea:
+#   · /ws (WebSocket del AGENTE) y /webhook/* (MercadoPago / WhatsApp)  -> CENTRAL (8080)
+#   · TODO lo demás (panel superadmin, alta, dashboard del cliente, /api/*) -> PANEL (8090)
+# Así el panel superadmin queda DETRÁS de HTTPS (no expuesto en HTTP plano) y con login.
+tu-dominio.com {
+    # Endurecimiento: fuerza HTTPS (HSTS), anti-clickjacking/sniffing, sin filtrar referer ni versión.
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+        Referrer-Policy "no-referrer"
+        -Server
+    }
+    @central path /ws /webhook/*
+    reverse_proxy @central central:8080
+    reverse_proxy panel:8090
+}

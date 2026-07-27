@@ -1,0 +1,57 @@
+{
+  "_como_usar": "COPIÁ un bloque de 'clientes', pegalo, y cambiá SOLO los valores en MAYÚSCULAS. No hace falta tocar código.",
+  "clientes": [
+    {
+      "api_key": "CLAVE-UNICA-DEL-AGENTE-DE-ESTE-CLIENTE",
+      "nombre": "NOMBRE DEL CLIENTE",
+      "activo": true,
+      "voz": "Charon",
+      "idioma": "es-AR",
+      "velocidad": 1.25,
+
+      "ia": {
+        "proveedor": "gemini",
+        "gemini_api_key": "PEGA-AQUI-LA-API-KEY-DE-GEMINI",
+        "modelo_texto": "gemini-2.5-flash",
+        "limite_diario": 200,
+        "avisar_en": 15,
+        "ilimitada": false,
+        "_nota": "Si el cliente compra su propia API key de Google: pega su key en gemini_api_key y pone ilimitada=true (deja de avisar por cuota)."
+      },
+
+      "integrador_glpi": {
+        "ubicacion": "central",
+        "glpi_url": "https://EL-GLPI-DEL-CLIENTE/apirest.php",
+        "glpi_app_token": "APP-TOKEN-DEL-CLIENTE-API-EN-GLPI",
+        "glpi_user_token": "USER-TOKEN-DE-LECTURA",
+        "glpi_jarvis_token": "USER-TOKEN-DEL-USUARIO-JARVIS",
+        "entity_id": 12,
+        "poll_interval": 5,
+        "_nota": "ubicacion='central' si el GLPI está en la nube; 'agente' si está en la red interna del cliente (privado)."
+      },
+
+      "whatsapp": {
+        "enabled": true,
+        "tipo": "oficial",
+        "phone_number_id": "ID-DEL-NUMERO-EN-META",
+        "access_token": "TOKEN-DE-META",
+        "destinatarios": ["5491111111111", "5492222222222"],
+        "_nota": "tipo='oficial' (WhatsApp Business API, manda a NÚMEROS). Para grupo interno: tipo='no_oficial', grupo='NOMBRE', session='wa_session_CLIENTE.sqlite3'."
+      },
+
+      "planka": {
+        "url": "https://TU-PLANKA.ejemplo.com",
+        "api_key": "API-KEY-DE-PLANKA-DEL-USUARIO-ITHOS",
+        "ithos_user_id": "ID-DEL-USUARIO-ITHOS-EN-PLANKA",
+        "board_id": "ID-DEL-BOARD-DEL-MES",
+        "resumen_hora": "09:00",
+        "seguimiento_desde": "10:00",
+        "seguimiento_hasta": "18:00",
+        "usuarios": [
+          {"planka_id": "ID-EN-PLANKA", "nombre": "Nombre Apellido", "telefono": "5491111111111"}
+        ],
+        "_nota": "OPCIONAL. Tablero Kanban del equipo por WhatsApp (auth por header X-API-Key). Resumen 09:00 + seguimiento cada hora 10-18 (Lun-Vie) + alta/mover tareas diciendo 'ithos, ...'. Solo se activa si existe esta sección."
+      }
+    }
+  ]
+}
