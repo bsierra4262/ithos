@@ -234,6 +234,33 @@ def nivel2():
                 "lo terminado NO se arrastró a Septiembre (quedó de historial)")
         finally:
             RO.nombre_mes = _orig
+
+        # --- CIERRE DE AÑO (nombres TEMPORALES): junta los meses del año en "AÑO" y borra los mensuales
+        _om, _oa = RO.nombre_mes, RO.nombre_anio
+        RO.nombre_mes = lambda a, m: f"ZZ_TEST_Y {a}-{m:02d}"
+        RO.nombre_anio = lambda a: f"ZZ_TEST_ANIO {a}"
+        try:
+            ry = RO.Rollover(pk, ithos, equipo)
+            for mm in (11, 12):                                      # armo 2 meses del 2026 y los cierro
+                inf = ry.asegurar_mes(2026, mm)
+                l1 = ry.asegurar_listas(inf["semanas"][1])
+                pk.crear_tarjeta(l1["por_hacer"], f"Tarea mes {mm}")
+                ry.copiar_a_mensual(2026, mm)
+            antes = [p["name"] for p in pk.proyectos()[0] if p["name"].startswith("ZZ_TEST_Y")]
+            cop, borr = ry.consolidar_y_cerrar_anio(2026)
+            items, inc = pk.proyectos()
+            nombres = [p["name"] for p in items]
+            chk(borr >= 2 and borr == len(antes), f"cierre de año: borró los {borr} proyectos mensuales")
+            chk("ZZ_TEST_ANIO 2026" in nombres, "cierre de año: creó el proyecto 'AÑO 2026'")
+            chk(not any(n.startswith("ZZ_TEST_Y ") for n in nombres),
+                "cierre de año: no quedó ningún proyecto mensual suelto (todo en AÑO)")
+            apid = next((p["id"] for p in items if p["name"] == "ZZ_TEST_ANIO 2026"), None)
+            boards_anio = [b["name"] for b in inc.get("boards", []) if str(b.get("projectId")) == str(apid)]
+            chk("Noviembre" in boards_anio and "Diciembre" in boards_anio,
+                f"cierre de año: 'AÑO 2026' tiene un board por mes ({sorted(boards_anio)})")
+            chk(cop >= 2, f"cierre de año: copió las tarjetas del año al archivo ({cop})")
+        finally:
+            RO.nombre_mes, RO.nombre_anio = _om, _oa
     finally:
         _borrar_tests(pk)
         try:

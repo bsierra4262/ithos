@@ -12,7 +12,10 @@ De AGOSTO en adelante el tablero del equipo se organiza por SEMANAS DENTRO DEL M
 
 Al cambiar de semana o de mes se crea lo que falte y se ARRASTRA lo NO terminado (todo lo que
 no esté en "Hecho") al nuevo período, en su MISMA lista; lo terminado queda de historial. Al
-cambiar de MES, además, se consolida el mes que cierra en su board "MENSUAL".
+cambiar de MES, además, se consolida el mes que cierra en su board "MENSUAL". Al cambiar de AÑO
+se juntan todos los meses del año en un proyecto "AÑO <a>" (un board por mes) y se BORRAN los
+proyectos mensuales ya consolidados, dejando el workspace ordenado. Todo con la fecha REAL: nada
+se dispara antes de tiempo.
 
 Cada persona del equipo se agrega como MIEMBRO de cada board (requisito de Planka para poder
 asignarle tarjetas). Todo es IDEMPOTENTE. Julio (y meses anteriores) NO se tocan: siguen con su
@@ -52,6 +55,10 @@ def clave_lista(nombre):
 
 def nombre_mes(anio, mes):
     return f"{MESES[mes]} {anio}"
+
+
+def nombre_anio(anio):
+    return f"AÑO {anio}"
 
 
 def ultimo_dia(anio, mes):
@@ -212,30 +219,63 @@ class Rollover:
         return movidas
 
     # ------------------------------------------------------------------ cierre de mes (archivo MENSUAL)
+    def _copiar_cards(self, origen_board, destino_listas, desde=0):
+        """Copia las tarjetas de un board a las listas destino (por clave), conservando asignados.
+        Devuelve cuántas copió. Los asignados deben ser miembros del board destino (asegurar_board
+        ya agrega al equipo)."""
+        inc = self.pk.board(origen_board)
+        id2clave = {str(l["id"]): clave_lista(l.get("name")) for l in inc.get("lists", [])}
+        memb = {}
+        for m in inc.get("cardMemberships", []):
+            memb.setdefault(str(m.get("cardId")), []).append(str(m.get("userId")))
+        n = 0
+        for c in inc.get("cards", []):
+            cl = id2clave.get(str(c.get("listId")))
+            if not cl or cl not in destino_listas:
+                continue
+            try:
+                nueva = self.pk.crear_tarjeta(destino_listas[cl], c.get("name", ""),
+                                              c.get("description"), (desde + n + 1) * POS)
+                for uid in memb.get(str(c["id"]), []):
+                    self.pk.asignar(nueva["id"], uid)
+                n += 1
+            except Exception as e:  # noqa: BLE001
+                log.warning("Planka rollover: no pude copiar la card %s: %s", c.get("id"), e)
+        return n
+
     def copiar_a_mensual(self, anio, mes):
         """Copia TODAS las tarjetas de las semanas del mes al board MENSUAL (archivo del mes), en su
         misma lista y conservando asignados. Devuelve cuántas copió. (Guardar el 'ya cerrado' es
         responsabilidad del que llama, para no duplicar si se corre dos veces.)"""
         info = self.asegurar_mes(anio, mes)
-        mens = info["mensual_board_id"]
-        destino = self.asegurar_listas(mens)                 # {clave: list_id}
-        copiadas = 0
+        destino = self.asegurar_listas(info["mensual_board_id"])
+        total = 0
         for _num, bid in sorted(info["semanas"].items()):
-            inc = self.pk.board(bid)
-            id2clave = {str(l["id"]): clave_lista(l.get("name")) for l in inc.get("lists", [])}
-            memb = {}
-            for m in inc.get("cardMemberships", []):
-                memb.setdefault(str(m.get("cardId")), []).append(str(m.get("userId")))
-            for c in inc.get("cards", []):
-                cl = id2clave.get(str(c.get("listId")))
-                if not cl or cl not in destino:
-                    continue
-                try:
-                    nueva = self.pk.crear_tarjeta(destino[cl], c.get("name", ""),
-                                                  c.get("description"), (copiadas + 1) * POS)
-                    for uid in memb.get(str(c["id"]), []):
-                        self.pk.asignar(nueva["id"], uid)
-                    copiadas += 1
-                except Exception as e:  # noqa: BLE001
-                    log.warning("Planka rollover: no pude copiar la card %s a MENSUAL: %s", c.get("id"), e)
-        return copiadas
+            total += self._copiar_cards(bid, destino, total)
+        return total
+
+    # ------------------------------------------------------------------ cierre de AÑO
+    def consolidar_y_cerrar_anio(self, anio):
+        """Crea el proyecto 'AÑO <anio>' con un board por mes (= el archivo MENSUAL de cada mes que
+        exista), copia ahí cada mes y BORRA los proyectos mensuales del año (ya consolidados). Deja
+        el workspace ordenado: un único archivo del año. Devuelve (tarjetas_copiadas, proyectos_borrados).
+        El que llama debe registrar el año como 'cerrado' para no repetirlo."""
+        self._reindex()
+        anio_proj = self.asegurar_proyecto(nombre_anio(anio))
+        copiadas, borrados = 0, 0
+        for mes in range(1, 13):
+            mpid = self._proj.get(nombre_mes(anio, mes))
+            if not mpid or mpid == anio_proj:
+                continue
+            mens_id = self._boards.get((mpid, MENSUAL))
+            if mens_id:                                       # copiar el archivo del mes a AÑO/<Mes>
+                dest = self.asegurar_board(anio_proj, MESES[mes], mes * POS)
+                copiadas += self._copiar_cards(mens_id, self.asegurar_listas(dest))
+            try:
+                self.pk.borrar_proyecto(mpid)                 # borra boards y luego el proyecto
+                borrados += 1
+                log.info("Planka rollover: proyecto mensual '%s' consolidado y borrado.", nombre_mes(anio, mes))
+            except Exception as e:  # noqa: BLE001
+                log.warning("Planka rollover: no pude borrar el proyecto %s: %s", nombre_mes(anio, mes), e)
+        self._proj, self._boards, self._listas = {}, {}, {}   # caches obsoletas tras borrar
+        return copiadas, borrados

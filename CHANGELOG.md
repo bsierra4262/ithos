@@ -11,6 +11,10 @@ y el versionado, [SemVer](https://semver.org/lang/es/).
   (bloques del mes: 1–7, 8–14, 15–21, 22–28, 29–fin, de modo que el mes cierra exacto el último
   día). Al cambiar de semana o de mes se crea lo que falte y se arrastra lo no terminado a su
   misma lista; al cerrar el mes se consolida entero en un board **MENSUAL** de archivo.
+- **Planka — cierre de año automático.** Al cambiar de año, junta los meses en un proyecto
+  «AÑO 2026» (un board por mes con su archivo) y borra los proyectos mensuales ya consolidados;
+  arranca «Enero 2027» arrastrando lo pendiente. Los meses se nombran con el año («Julio 2026»).
+  Todo con la fecha real: nada se dispara antes de tiempo.
 - **Planka — asignación por membresía de board.** Se agrega a cada persona del equipo como
   miembro del board antes de asignarle una tarjeta, tal como se hace de forma manual.
 - **Planka — reenvío manual del resumen** por bandera, para corregir un envío sin esperar al

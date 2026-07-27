@@ -12,9 +12,10 @@ Mantiene el tablero Kanban del equipo (Planka) 100% actualizado desde WhatsApp:
   · @mención al ASIGNAR una tarjeta a alguien (evento puntual).
   · ROLLOVER automático (de Agosto en adelante, ver planka_rollover.py): un proyecto por mes, un board
     por semana (bloques del mes: 1-7, 8-14, ...) y un board MENSUAL de archivo. Al cambiar de semana/mes
-    crea lo que falte, ARRASTRA lo no terminado y al cerrar el mes lo consolida en su MENSUAL. Agrega al
-    equipo como miembro de cada board (para poder asignarlos). Julio y meses anteriores quedan como están
-    (board mensual heredado; config 'mes_legacy'). Idempotente y sobrevive reinicios.
+    crea lo que falte, ARRASTRA lo no terminado y al cerrar el mes lo consolida en su MENSUAL; al cerrar
+    el AÑO junta los 12 meses en "AÑO <a>" y borra los proyectos mensuales. Agrega al equipo como miembro
+    de cada board (para poder asignarlos). Todo con la fecha REAL (nada se dispara antes de tiempo). Julio
+    y meses anteriores quedan como están (config 'mes_legacy'). Idempotente y sobrevive reinicios.
 
 El trigger "ithos" ya lo aplica el handler de WhatsApp (comun/whatsapp.py); acá solo llega lo que
 ya lo mencionó. Reusa el MISMO grupo/conexión de WhatsApp del cliente. La cadencia (cada 1h) fue
@@ -96,6 +97,7 @@ class PlankaIntegrador:
         self._periodo_key = None                  # semana en curso ("YYYY-MM-Wn"); None = aún no arrancó
         self._mes_key = None                      # mes en curso ("YYYY-MM"), para detectar el cierre de mes
         self._meses_cerrados = set()              # meses ya archivados en su board MENSUAL (no re-copiar)
+        self._anios_cerrados = set()              # años ya consolidados en "AÑO <a>" (no re-cerrar)
         self._estado_file = os.path.join(_DATA, "planka_estado_periodo.json")
         self._reenviar_flag = os.path.join(_DATA, "planka_reenviar_resumen.flag")  # bandera de reenvío manual
         self._cargar_periodo()                    # restaura board/semana/mes del último arranque (si hubo)
@@ -135,13 +137,15 @@ class PlankaIntegrador:
                 self._periodo_key = d.get("skey")
                 self._mes_key = d.get("mes_key")
                 self._meses_cerrados = set(d.get("meses_cerrados") or [])
+                self._anios_cerrados = set(d.get("anios_cerrados") or [])
         except (OSError, ValueError):
             pass
 
     def _guardar_periodo(self):
         try:
             json.dump({"skey": self._periodo_key, "board_id": self.board_id,
-                       "mes_key": self._mes_key, "meses_cerrados": sorted(self._meses_cerrados)},
+                       "mes_key": self._mes_key, "meses_cerrados": sorted(self._meses_cerrados),
+                       "anios_cerrados": sorted(self._anios_cerrados)},
                       open(self._estado_file, "w", encoding="utf-8"), ensure_ascii=False)
         except OSError as e:  # noqa: BLE001
             log.debug("Planka: no pude guardar el estado del período: %s", e)
@@ -191,6 +195,20 @@ class PlankaIntegrador:
                 self._miembros, self._estado = {}, {}
         elif nuevo and not self._clave_a_id:
             self._asegurar_listas()
+        # CIERRE DE AÑO: al entrar (con la fecha REAL) a un año nuevo estando en modo semanal, junta
+        # el año viejo en "AÑO <a>" (un board por mes) y borra sus proyectos mensuales. Lo pendiente
+        # de diciembre ya se arrastró a enero más arriba, así que borrar el año viejo no pierde nada.
+        # Sólo corre cuando el año realmente cambia (dic->ene); nunca antes.
+        if not primera_vez and self._mes_key and not (self._mes_legacy and mkey <= self._mes_legacy):
+            anio_viejo, anio_nuevo = self._mes_key[:4], mkey[:4]
+            if anio_viejo != anio_nuevo and anio_viejo not in self._anios_cerrados:
+                try:
+                    cop, borr = self._roll.consolidar_y_cerrar_anio(int(anio_viejo))
+                    self._anios_cerrados.add(anio_viejo)
+                    log.info("Planka rollover: cerré el AÑO %s -> %d tarjeta(s) archivadas, %d proyecto(s) borrados.",
+                             anio_viejo, cop, borr)
+                except Exception as e:  # noqa: BLE001
+                    log.warning("Planka rollover: no pude cerrar el año %s: %s", anio_viejo, e)
         self._mes_key = mkey
         self._periodo_key = skey
         self._guardar_periodo()
