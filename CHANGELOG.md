@@ -23,6 +23,9 @@ y el versionado, [SemVer](https://semver.org/lang/es/).
 ### Changed
 - **Avisos de Planka más legibles.** El resumen diario y el seguimiento listan una tarea por
   línea, agrupadas por lista y con su contador, en lugar de una única línea con comas.
+- **Seguimiento acotado a lo activo.** El «¿cómo venís?» pregunta únicamente por Haciendo y
+  En revisión/Esperando. Cuando la persona termina todo lo que tenía en curso, ITHOS le pregunta
+  qué tarea sigue (ofreciendo lo de Por hacer) o cuál nueva quiere agregar.
 - **Triage de GLPI más robusto.** Respeta la asignación manual del técnico, detecta pedidos de
   coordinación sólo del lado del técnico (no del cliente), deja notas internas privadas y ajusta
   el SLA por calendario y horario de atención (Lun–Vie 09–18).

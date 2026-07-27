@@ -89,6 +89,7 @@ class PlankaIntegrador:
         self._segui_key = None    # hora del último seguimiento ("YYYY-MM-DD-HH")
         self._ult_pregunta = {}   # planka_id -> [card_ids] que ITHOS preguntó recién (contexto para "esa/eso")
         self._arrancado = False
+        self._activo_prev = set() # pids con tareas activas el último seguimiento (para "terminó -> ¿qué sigue?")
         # --- rollover automático semanal/mensual (de Agosto en adelante; ver planka_rollover.py) ---
         _equipo = [u.get("planka_id") for u in self.cfg.get("usuarios", []) if u.get("planka_id")]
         self._roll = RO.Rollover(self.pk, self.ithos_id, _equipo)
@@ -297,6 +298,25 @@ class PlankaIntegrador:
                 "Si ya terminaste alguna o la pasaste a otra etapa, avisame "
                 "(_ithos, terminé…_) y la actualizo.")
 
+    def _tiene_activas(self, pid, snap):
+        """¿La persona tiene alguna tarjeta en Haciendo o En revisión/Esperando? (sin el skip <1h)."""
+        return bool(self._cards_usuario(pid, snap, listas=("haciendo", "en_espera")))
+
+    def pregunta_siguiente(self, u, snap):
+        """Cuando la persona TERMINÓ todo lo que tenía en Haciendo + En revisión/Esperando: le pregunta
+        qué sigue. Le ofrece lo que tenga en 'Por hacer' o que cargue una tarea nueva."""
+        nom = u["nombre"].split()[0]
+        pendientes = [c["nombre"] for _cid, c in
+                      self._cards_usuario(str(u["planka_id"]), snap, listas=("por_hacer",))]
+        if pendientes:
+            lineas = "\n".join(f"   •  {self._limpiar(n)}" for n in pendientes)
+            cola = ("Te queda esto en *Por hacer*:\n" + lineas +
+                    "\n\n¿Con cuál seguís? Decime _ithos, empiezo…_ y la paso a *Haciendo*, "
+                    "o _ithos, agregá…_ si querés cargar una nueva.")
+        else:
+            cola = "¿Qué tarea vas a hacer ahora? Decime _ithos, agregá…_ y la creo."
+        return f"¡Bien {nom}! 🙌 Terminaste todo lo que tenías en curso.\n{cola}"
+
     # ------------------------------------------------------------------ interpretar mensajes
     def interpretar(self, remitente_tel, texto):
         """Un miembro escribió (ya con 'ithos'). Si MUEVE una tarjeta suya o pide CREAR una tarea nueva,
@@ -469,14 +489,24 @@ class PlankaIntegrador:
                 if txt:
                     enviar(txt, [u["telefono"]])
             log.info("Planka: resumen diario enviado (%s).", dia)
-        # SEGUIMIENTO 10:00-18:00 en punto (una vez por hora)
+        # SEGUIMIENTO 10:00-18:00 en punto (una vez por hora): pregunta SOLO por Haciendo + En
+        # revisión/Esperando. Cuando alguien TERMINA todo lo que tenía en curso, le pregunta qué sigue.
         desde = int(str(self.cfg.get("seguimiento_desde", "10:00"))[:2])
         hasta = int(str(self.cfg.get("seguimiento_hasta", "18:00"))[:2])
         hkey = ahora.strftime("%Y-%m-%d-%H")
         if ahora.minute == 0 and desde <= ahora.hour <= hasta and self._segui_key != hkey:
             self._segui_key = hkey
+            activo_ahora = set()
             for u in self._por_pid.values():
-                txt = self.seguimiento(u, snap, ahora)
-                if txt:
-                    enviar(txt, [u["telefono"]])
+                pid = str(u["planka_id"])
+                if self._tiene_activas(pid, snap):
+                    activo_ahora.add(pid)
+                    txt = self.seguimiento(u, snap, ahora)     # ¿cómo venís? (respeta el skip <1h)
+                    if txt:
+                        enviar(txt, [u["telefono"]])
+                elif pid in self._activo_prev:                 # tenía activas y ya no -> terminó
+                    txt = self.pregunta_siguiente(u, snap)
+                    if txt:
+                        enviar(txt, [u["telefono"]])
+            self._activo_prev = activo_ahora                   # base para detectar el próximo "terminó"
             log.info("Planka: seguimiento horario enviado (%s).", hkey)

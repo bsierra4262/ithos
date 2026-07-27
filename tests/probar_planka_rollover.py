@@ -79,6 +79,33 @@ def nivel1():
     chk(malos == 0, f"gapless: cada día de agosto cae en su bloque ({malos} fuera)")
 
 
+# =====================================================================  NIVEL 1b: seguimiento (sin red)
+def nivel_seguimiento():
+    print("\n=== NIVEL 1b · lógica del seguimiento (sin red) ===")
+    cfg = {"url": "x", "api_key": "x",
+           "usuarios": [{"planka_id": "U1", "nombre": "Ana Perez", "telefono": "1"}]}
+    integ = PI.PlankaIntegrador(cfg, ia=None)
+    u = cfg["usuarios"][0]
+
+    def card(cid, lista, nombre):
+        return (cid, {"nombre": nombre, "list": lista, "list_id": lista, "miembros": {"U1"}})
+
+    snap = dict([card("c1", "haciendo", "Tarea A"), card("c2", "en_espera", "Tarea B"),
+                 card("c3", "por_hacer", "Tarea C"), card("c4", "hecho", "Tarea D")])
+    ahora = datetime(2026, 7, 27, 12, 0)
+    txt = integ.seguimiento(u, snap, ahora)
+    chk(bool(txt) and "Tarea A" in txt and "Tarea B" in txt, "seguimiento incluye Haciendo + En espera")
+    chk(bool(txt) and "Tarea C" not in txt and "Tarea D" not in txt,
+        "seguimiento NO incluye Por hacer ni Hecho")
+    chk(integ._tiene_activas("U1", snap) is True, "_tiene_activas True cuando hay activas")
+
+    snap2 = dict([card("c3", "por_hacer", "Tarea C"), card("c4", "hecho", "Tarea D")])
+    chk(integ._tiene_activas("U1", snap2) is False, "_tiene_activas False cuando terminó las activas")
+    q = integ.pregunta_siguiente(u, snap2)
+    chk(bool(q) and "Terminaste" in q and "Tarea C" in q,
+        "pregunta_siguiente felicita y ofrece lo de Por hacer")
+
+
 # =====================================================================  NIVEL 2: integración (red)
 def _conn():
     u, k, i = os.environ.get("PLANKA_URL"), os.environ.get("PLANKA_KEY"), os.environ.get("PLANKA_ITHOS")
@@ -274,6 +301,7 @@ def nivel2():
 
 if __name__ == "__main__":
     nivel1()
+    nivel_seguimiento()
     nivel2()
     print("\n" + ("=" * 60))
     if _fallos:
