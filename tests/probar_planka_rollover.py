@@ -154,6 +154,24 @@ def nivel2():
             chk(info2["semanas"] == info["semanas"] and info2["mensual_board_id"] == info["mensual_board_id"],
                 "asegurar_mes idempotente (no duplica boards)")
 
+            # --- ARRASTRE al mes/semana nuevo: pasan Por hacer + Haciendo + En revisión/Esperando
+            #     (todo lo NO terminado), cada una a su MISMA lista; 'Hecho' NO pasa (queda de archivo).
+            bA, bB = info["semanas"][4], info["semanas"][5]
+            lA = roll.asegurar_listas(bA)
+            pk.crear_tarjeta(lA["por_hacer"], "AR Por hacer")
+            pk.crear_tarjeta(lA["haciendo"], "AR Haciendo")
+            pk.crear_tarjeta(lA["en_espera"], "AR En revisión")
+            pk.crear_tarjeta(lA["hecho"], "AR Hecho")
+            mov = roll.arrastrar(bA, bB)
+            cA, cB = _cards_por_board(pk, bA), _cards_por_board(pk, bB)
+            chk(mov == 3, f"arrastra 3 (Por hacer + Haciendo + En rev/Esperando), no 4 ({mov})")
+            chk("AR Por hacer" in cB.get("por_hacer", []) and "AR Haciendo" in cB.get("haciendo", [])
+                and "AR En revisión" in cB.get("en_espera", []),
+                "las 3 NO terminadas pasan a su MISMA lista en el período nuevo")
+            chk(cA.get("hecho") == ["AR Hecho"] and not cA.get("por_hacer")
+                and not cA.get("haciendo") and not cA.get("en_espera"),
+                "'Hecho' NO se arrastra (queda de archivo del mes)")
+
             # --- el EQUIPO quedó como miembro del board: se puede asignar (si no, daría 404)
             if equipo:
                 lst = roll.asegurar_listas(btest)
