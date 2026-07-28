@@ -8,6 +8,8 @@ Fase 2: acá se enchufa Gemini (voz/triage) y el resto de la lógica que ya tene
 El Central NO reproduce audio: solo decide qué debe decir/hacer el agente.
 """
 
+import os
+import json
 import random
 from datetime import datetime
 
@@ -20,17 +22,18 @@ ALERTAS = [
     "Entrada restringida.",
 ]
 
-# Plantillas de BIENVENIDA (entrada). {n} = nombre de la persona, {emp} = empresa del CLIENTE (nombre
-# o abreviatura). El saludo en vivo se elige por (persona + DÍA): cada día ITHOS le dice un saludo
-# distinto a la misma persona (variedad diaria), pero es DETERMINISTA para ese día -> coincide con una
-# de las variantes pre-cacheadas -> cache hit -> instantáneo. Se pre-cachean TODAS las variantes.
+# Plantillas de BIENVENIDA (entrada). {s} = saludo COHERENTE con la hora (Buenos días / Buenas tardes /
+# Buenas noches, según la zona del cliente), {n} = nombre de la persona, {emp} = empresa del CLIENTE. El
+# saludo en vivo se elige por (persona + DÍA): cada día un saludo distinto (variedad diaria), determinista
+# para ese día -> coincide con una variante pre-cacheada -> cache hit -> instantáneo. Se pre-cachean TODAS
+# las variantes en las 3 franjas horarias.
 BIENVENIDAS = [
-    "Bienvenido, {n}, a {emp}.",
-    "Bienvenido, {n}. Es un placer tenerlo de vuelta en {emp}.",
-    "Bienvenido, {n}. Es un gusto tenerlo de regreso en {emp}.",
-    "Bienvenido, {n}, que tenga un buen día en {emp}.",
-    "Hola, {n}. Bienvenido nuevamente a {emp}.",
-    "Buen día, {n}. Un placer recibirlo en {emp}.",
+    "{s}, {n}. Bienvenido a {emp}.",
+    "{s}, {n}. Un placer tenerlo de vuelta en {emp}.",
+    "{s}, {n}. Qué gusto tenerlo de regreso en {emp}.",
+    "{s}, {n}. Que tenga una buena jornada en {emp}.",
+    "{s}, {n}. Bienvenido nuevamente a {emp}.",
+    "{s}, {n}. Un placer recibirlo en {emp}.",
 ]
 
 # Plantillas de SALIDA (terminal de salida). Misma lógica de variedad diaria que la bienvenida.
@@ -50,6 +53,59 @@ _FREC_DEFAULT = {"entrada": "1_por_dia", "salida": "1_por_dia", "sala": "siempre
 # siempre. Estado en memoria del gestor por (cliente, tipo): {(cliente,tipo): (fecha, set|contador)}.
 _saludados_hoy = {}
 _saludados_alguna = {}   # frecuencia '1_por_persona' (una sola vez de por vida): {cliente: set(nombre|tipo)}
+
+# El dedup PERSISTE en disco: si el central se reinicia durante el día, NO vuelve a saludar a quien ya
+# fichó (la 2ª fichada del día sigue en silencio). Se guarda en ITHOS_DATA.
+_DATA = os.environ.get("ITHOS_DATA") or os.path.join(os.path.expanduser("~"), ".ithos")
+try:
+    os.makedirs(_DATA, exist_ok=True)
+except OSError:
+    _DATA = os.path.dirname(os.path.abspath(__file__))
+_ESTADO_SALUDOS = os.path.join(_DATA, "portero_saludados.json")
+
+# Saludo coherente con la hora (zona del cliente).
+_SALUDOS_HORA = ["Buenos días", "Buenas tardes", "Buenas noches"]
+
+
+def _saludo_hora(tz, hora=None):
+    """'Buenos días' (05-11), 'Buenas tardes' (12-19) o 'Buenas noches' (20-04) en la zona del cliente."""
+    if hora is None:
+        try:
+            from zoneinfo import ZoneInfo
+            hora = (datetime.now(ZoneInfo(tz)) if tz else datetime.now()).hour
+        except Exception:  # noqa: BLE001
+            hora = datetime.now().hour
+    if 5 <= hora < 12:
+        return "Buenos días"
+    if 12 <= hora < 20:
+        return "Buenas tardes"
+    return "Buenas noches"
+
+
+def _cargar_saludados():
+    try:
+        d = json.load(open(_ESTADO_SALUDOS, encoding="utf-8"))
+        for k, v in (d.get("hoy") or {}).items():
+            cli, _, tipo = k.partition("\t")
+            _saludados_hoy[(cli, tipo)] = (v.get("fecha"), set(v.get("nombres") or []))
+        for cli, lst in (d.get("alguna") or {}).items():
+            _saludados_alguna[cli] = set(lst or [])
+    except (OSError, ValueError):
+        pass
+
+
+def _guardar_saludados():
+    try:
+        hoy = {f"{cli}\t{tipo}": {"fecha": f, "nombres": sorted(nombres)}
+               for (cli, tipo), (f, nombres) in _saludados_hoy.items()}
+        alguna = {cli: sorted(s) for cli, s in _saludados_alguna.items()}
+        json.dump({"hoy": hoy, "alguna": alguna},
+                  open(_ESTADO_SALUDOS, "w", encoding="utf-8"), ensure_ascii=False)
+    except OSError:
+        pass
+
+
+_cargar_saludados()
 
 
 def _conf(cliente):
@@ -98,6 +154,7 @@ def _ya_saludado(cliente_id, nombre, tipo, frecuencia, tz):
         if k in vistos:
             return True
         vistos.add(k)
+        _guardar_saludados()
         return False
     # '1_por_dia' (default): dedup por día, por tipo
     hoy = _hoy(tz)
@@ -107,8 +164,9 @@ def _ya_saludado(cliente_id, nombre, tipo, frecuencia, tz):
         nombres = set()
         _saludados_hoy[ck] = (hoy, nombres)
     if nombre in nombres:
-        return True
+        return True                        # ya lo saludamos hoy -> la 2ª fichada queda en silencio
     nombres.add(nombre)
+    _guardar_saludados()
     return False
 
 
@@ -152,10 +210,11 @@ def _nombre_norm(nombre):
     return n
 
 
-def _frase_acceso(datos, empresa="la empresa", abrev="", saludo_custom="", dia=0, variante=None):
+def _frase_acceso(datos, empresa="la empresa", abrev="", saludo_custom="", dia=0, variante=None, saludo_h="Hola"):
     """Frase del portero. `dia` rota el saludo día a día (entrada/salida); `variante` fuerza una plantilla
-    concreta (se usa al pre-cachear TODAS las variantes). La SALA y los saludos personalizados por
-    terminal son ÚNICOS (sin variedad diaria). El nombre de la empresa es estable por persona."""
+    concreta (se usa al pre-cachear TODAS las variantes); `saludo_h` es el saludo coherente con la hora
+    (Buenos días/tardes/noches) que va en la ENTRADA. La SALA y los saludos personalizados por terminal
+    son ÚNICOS (sin variedad diaria). El nombre de la empresa es estable por persona."""
     nombre = _nombre_norm(datos.get("nombre", ""))
     tipo = datos.get("tipo", "entrada")
     tipo = "entrada" if tipo == "bienvenida" else tipo
@@ -164,19 +223,29 @@ def _frase_acceso(datos, empresa="la empresa", abrev="", saludo_custom="", dia=0
     opciones_emp = [e for e in (empresa, abrev) if e] or ["la empresa"]
     base = sum(ord(c) for c in nombre) if nombre else 0
     emp = opciones_emp[base % len(opciones_emp)]
-    # Saludo PERSONALIZADO por terminal (si el cliente lo cargó): admite {n}=nombre, {emp}=empresa.
+    # Saludo PERSONALIZADO por terminal (si el cliente lo cargó): admite {n}=nombre, {emp}=empresa, {s}=hora.
     if saludo_custom:
         try:
-            return saludo_custom.format(n=nombre, emp=emp, nombre=nombre, empresa=emp), True
+            return saludo_custom.format(n=nombre, emp=emp, nombre=nombre, empresa=emp, s=saludo_h), True
         except Exception:  # noqa: BLE001 (plantilla mal escrita -> usar texto tal cual)
             return saludo_custom, True
     if tipo == "sala":
         return f"Acceso autorizado, {nombre}. Entrando a la Sala Técnica.", True
     # ENTRADA / SALIDA: variedad. En vivo -> plantilla por (persona + día); al pre-cachear -> `variante`
     # explícita (0..N-1). Determinista para ese día => coincide con la variante pre-cacheada (cache hit).
+    # La ENTRADA además arranca con el saludo coherente con la hora ({s}); la SALIDA no lo usa.
     plantillas = DESPEDIDAS if tipo == "salida" else BIENVENIDAS
     i = variante if variante is not None else (base + dia)
-    return plantillas[i % len(plantillas)].format(n=nombre, emp=emp), True
+    return plantillas[i % len(plantillas)].format(n=nombre, emp=emp, s=saludo_h), True
+
+
+def _textos_precache(n, tipo, empresa, abrev, variante):
+    """Textos a pre-cachear para (persona, tipo, variante). La ENTRADA se cachea en las 3 franjas horarias
+    (Buenos días / Buenas tardes / Buenas noches) para que sea instantánea a cualquier hora; el resto, una."""
+    if tipo == "entrada":
+        return [_frase_acceso({"nombre": n, "tipo": tipo}, empresa, abrev, variante=variante, saludo_h=s)[0]
+                for s in _SALUDOS_HORA]
+    return [_frase_acceso({"nombre": n, "tipo": tipo}, empresa, abrev, variante=variante)[0]]
 
 
 def procesar(cliente, evento, datos):
@@ -199,7 +268,7 @@ def procesar(cliente, evento, datos):
         if _ya_saludado(cid, nombre, tipo, frecuencia, tz):
             return []                           # según la frecuencia de esta terminal -> no repetir
         texto, cachear = _frase_acceso({**datos, "tipo": tipo}, empresa, abrev, saludo_custom,
-                                       dia=_dia_ordinal(tz))
+                                       dia=_dia_ordinal(tz), saludo_h=_saludo_hora(tz))
         return [comando(AC_DECIR, texto=texto, cachear=cachear)]
     if evento == EV_PRECACHE:
         # Pre-cacheo: mandamos con solo_cachear=True los saludos que ITHOS podría decir, para que la 1ª
@@ -232,8 +301,8 @@ def procesar(cliente, evento, datos):
         for n in nombres:
             for tipo in ("entrada", "salida"):
                 if tipo in tipos_var:
-                    texto, _ = _frase_acceso({"nombre": n, "tipo": tipo}, empresa, abrev, variante=0)
-                    _agregar(texto)
+                    for texto in _textos_precache(n, tipo, empresa, abrev, 0):
+                        _agregar(texto)
             for tipo, saludo_custom in otros:
                 texto, _ = _frase_acceso({"nombre": n, "tipo": tipo}, empresa, abrev, saludo_custom)
                 _agregar(texto)
@@ -244,8 +313,8 @@ def procesar(cliente, evento, datos):
                 continue
             for i in range(1, len(plantillas)):
                 for n in nombres:
-                    texto, _ = _frase_acceso({"nombre": n, "tipo": tipo}, empresa, abrev, variante=i)
-                    _agregar(texto)
+                    for texto in _textos_precache(n, tipo, empresa, abrev, i):
+                        _agregar(texto)
         return cmds
     if evento == EV_TICKET:
         asunto = str(datos.get("asunto", "")).strip()

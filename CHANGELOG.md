@@ -7,6 +7,10 @@ y el versionado, [SemVer](https://semver.org/lang/es/).
 ## [Unreleased]
 
 ### Added
+- **Portero — saludo de entrada coherente con la hora.** En los dispositivos de ENTRADA el saludo
+  arranca con «Buenos días / Buenas tardes / Buenas noches» según la hora de la zona del cliente. La
+  salida mantiene su despedida. El dedup «una vez por día por persona» ahora **persiste** en disco, así
+  la 2ª fichada queda en silencio aunque el central se reinicie.
 - **Planka — rollover automático mensual/semanal.** Un proyecto por mes y un board por semana
   (bloques del mes: 1–7, 8–14, 15–21, 22–28, 29–fin, de modo que el mes cierra exacto el último
   día). Al cambiar de semana o de mes se crea lo que falte y se arrastra lo no terminado a su
