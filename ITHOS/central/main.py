@@ -583,10 +583,13 @@ async def ws(websocket: WebSocket):
                         except Exception as e:  # noqa: BLE001
                             log.warning("Planka integrador %s: %s", cliente, e)
 
-                    def _consulta(tipo, contenido, mime, remitente, _orig=_wa_on_consulta, _pk=_planka):
-                        if _pk is not None and tipo == "texto" and contenido and remitente:
+                    def _consulta(tipo, contenido, mime, remitente=None, nombre=None,
+                                  _orig=_wa_on_consulta, _pk=_planka):
+                        # Planka primero: identifica al remitente por teléfono o, si WhatsApp lo ocultó
+                        # con un LID, por nombre (PushName). Si no es sobre el tablero, sigue el asistente.
+                        if _pk is not None and tipo == "texto" and contenido and (remitente or nombre):
                             try:
-                                r = _pk.interpretar(remitente, contenido)
+                                r = _pk.interpretar(remitente, contenido, nombre)
                                 if r:
                                     return r
                             except Exception as e:  # noqa: BLE001

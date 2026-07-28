@@ -373,6 +373,12 @@ class WhatsAppNoOficial:
             remitente = _numero_remitente(src)
             if not remitente and getattr(src, "IsFromMe", False):
                 remitente = self.mi_numero
+            # Nombre visible de quien escribe (PushName): permite identificarlo cuando WhatsApp oculta
+            # el teléfono con un LID (respaldo por nombre en integraciones como Planka).
+            try:
+                nombre_rem = (getattr(ev.Info, "PushName", "") or getattr(src, "PushName", "") or "").strip()
+            except Exception:  # noqa: BLE001
+                nombre_rem = ""
             msg = ev.Message
             es_audio = msg.HasField("audioMessage")
             texto = "" if es_audio else (msg.conversation or (
@@ -415,11 +421,11 @@ class WhatsAppNoOficial:
                 threading.Thread(target=self._safe, args=(
                     self.on_audio, audio_data, audio_mime, remitente), daemon=True).start()
             if es_audio and not texto:                   # audio sin transcribir -> tal cual
-                resp = self._llamar(self.on_consulta, "audio", audio_data, audio_mime, remitente)
+                resp = self._llamar(self.on_consulta, "audio", audio_data, audio_mime, remitente, nombre_rem)
             else:
                 if not (texto or "").strip():
                     return
-                resp = self._llamar(self.on_consulta, "texto", texto, None, remitente)
+                resp = self._llamar(self.on_consulta, "texto", texto, None, remitente, nombre_rem)
             if not resp:
                 return
             self._ultima_respuesta = resp                # para filtrar el eco de esta nota de voz
@@ -480,14 +486,19 @@ class WhatsAppNoOficial:
             log.warning("callback de audio (voz-id): %s", e)
 
     @staticmethod
-    def _llamar(fn, tipo, contenido, mime, remitente):
-        """Llama on_consulta pasándole el remitente si lo acepta (4º arg); si no, sin él."""
+    def _llamar(fn, tipo, contenido, mime, remitente, nombre=""):
+        """Llama on_consulta con el remitente (4º arg) y el nombre/PushName (5º arg) si los acepta;
+        si no, con menos argumentos."""
         try:
             import inspect
             params = len(inspect.signature(fn).parameters)
         except Exception:  # noqa: BLE001
             params = 3
-        return fn(tipo, contenido, mime, remitente) if params >= 4 else fn(tipo, contenido, mime)
+        if params >= 5:
+            return fn(tipo, contenido, mime, remitente, nombre)
+        if params >= 4:
+            return fn(tipo, contenido, mime, remitente)
+        return fn(tipo, contenido, mime)
 
     def _es_mi_grupo(self, chat):
         """True SOLO si el chat es el grupo configurado (ignora DMs, otros grupos y

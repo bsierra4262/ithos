@@ -30,6 +30,12 @@ y el versionado, [SemVer](https://semver.org/lang/es/).
   coordinación sólo del lado del técnico (no del cliente), deja notas internas privadas y ajusta
   el SLA por calendario y horario de atención (Lun–Vie 09–18).
 
+### Fixed
+- **Planka no reconocía a quien escribía por WhatsApp** cuando el número venía con otro formato o
+  WhatsApp lo ocultaba con un LID: el «ithos, terminé…» caía al asistente en vez de mover la tarjeta.
+  Ahora identifica al remitente por los últimos 10 dígitos del teléfono y, si no hay teléfono, por su
+  nombre visible (PushName).
+
 ### Security
 - Cifrado en reposo (AES-256-GCM) de los secretos por cliente, con clave maestra separada.
 - Alta de un solo uso, cookies `secure`/`httponly`, *rate-limit* de login y HSTS en Caddy.

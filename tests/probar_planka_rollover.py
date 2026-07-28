@@ -106,6 +106,20 @@ def nivel_seguimiento():
         "pregunta_siguiente felicita y ofrece lo de Por hacer")
 
 
+# =====================================================================  NIVEL 1c: identidad (sin red)
+def nivel_identidad():
+    print("\n=== NIVEL 1c · identificación del remitente (sin red) ===")
+    cfg = {"url": "x", "api_key": "x",
+           "usuarios": [{"planka_id": "P1", "nombre": "Brian Sierra", "telefono": "5491156660181"}]}
+    integ = PI.PlankaIntegrador(cfg, ia=None)
+    chk(integ._usuario_de("5491156660181") is not None, "identifica por teléfono completo")
+    chk(integ._usuario_de("1156660181") is not None, "identifica por últimos 10 dígitos")
+    chk(integ._usuario_de("+54 9 11 5666-0181") is not None, "identifica con formato (+54, espacios, guiones)")
+    chk(integ._usuario_de("", "Brian") is not None, "identifica por NOMBRE (PushName) cuando WhatsApp da LID")
+    chk(integ._usuario_de("", "Brian Sierra") is not None, "identifica por nombre completo")
+    chk(integ._usuario_de("5490000000000", "Nadie XYZ") is None, "no identifica a un desconocido")
+
+
 # =====================================================================  NIVEL 2: integración (red)
 def _conn():
     u, k, i = os.environ.get("PLANKA_URL"), os.environ.get("PLANKA_KEY"), os.environ.get("PLANKA_ITHOS")
@@ -302,6 +316,7 @@ def nivel2():
 if __name__ == "__main__":
     nivel1()
     nivel_seguimiento()
+    nivel_identidad()
     nivel2()
     print("\n" + ("=" * 60))
     if _fallos:

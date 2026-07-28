@@ -79,6 +79,8 @@ class PlankaIntegrador:
             tel = re.sub(r"\D", "", str(u.get("telefono") or ""))
             if tel:
                 self._por_tel[tel] = u
+                if len(tel) >= 10:
+                    self._por_tel.setdefault(tel[-10:], u)   # también por últimos 10 dígitos (robusto a +54/549)
             if u.get("planka_id"):
                 self._por_pid[str(u["planka_id"])] = u
         self._clave_a_id = {}     # clave interna ('hecho'...) -> list_id
@@ -318,11 +320,19 @@ class PlankaIntegrador:
         return f"¡Bien {nom}! 🙌 Terminaste todo lo que tenías en curso.\n{cola}"
 
     # ------------------------------------------------------------------ interpretar mensajes
-    def interpretar(self, remitente_tel, texto):
+    def _usuario_de(self, remitente_tel, nombre=None):
+        """Identifica a quién del equipo escribió: por teléfono (completo o últimos 10 dígitos) o, si
+        WhatsApp ocultó el teléfono con un LID, por su NOMBRE visible (PushName). None si no es del equipo."""
+        tel = re.sub(r"\D", "", str(remitente_tel or ""))
+        u = self._por_tel.get(tel) or (self._por_tel.get(tel[-10:]) if len(tel) >= 10 else None)
+        if not u and nombre:                        # sin teléfono válido (LID) -> matchear por nombre visible
+            u = self._match_persona(nombre)
+        return u
+
+    def interpretar(self, remitente_tel, texto, nombre=None):
         """Un miembro escribió (ya con 'ithos'). Si MUEVE una tarjeta suya o pide CREAR una tarea nueva,
         lo hace y devuelve la confirmación; si no es sobre el tablero, devuelve None (lo maneja el asistente)."""
-        tel = re.sub(r"\D", "", str(remitente_tel or ""))
-        u = self._por_tel.get(tel) or self._por_tel.get(tel[-10:])   # tolera prefijo país
+        u = self._usuario_de(remitente_tel, nombre)
         if not u or not (texto or "").strip():
             return None
         if not self._asegurar_listas():
