@@ -574,11 +574,11 @@ async def ws(websocket: WebSocket):
                     # tarjeta del tablero del equipo; si el mensaje no es sobre tareas, sigue el
                     # asistente normal. El trigger "ithos" ya lo aplicó el handler del grupo.
                     _planka = None
-                    if conf.get("planka") and ia and not _suspendido:
+                    if conf.get("planka") and ia_texto and not _suspendido:
                         try:
                             import planka_integrador as _PKI
                             _planka = _PKI.PlankaIntegrador(
-                                conf["planka"], ia,
+                                conf["planka"], ia_texto,   # el OBJETO de IA (tiene .chat), no el dict de config
                                 zona=conf.get("zona_horaria", "America/Argentina/Buenos_Aires"))
                         except Exception as e:  # noqa: BLE001
                             log.warning("Planka integrador %s: %s", cliente, e)

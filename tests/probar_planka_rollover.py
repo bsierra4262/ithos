@@ -41,6 +41,15 @@ def chk(cond, msg):
         _fallos.append(msg)
 
 
+class _FakeIA:
+    """IA de mentira con la MISMA firma que el ProveedorIA real: chat(system, prompt, json_out, ...)."""
+    def __init__(self, respuesta):
+        self._r = respuesta
+
+    def chat(self, system, prompt, json_out=True, max_tokens=None):
+        return self._r
+
+
 # =====================================================================  NIVEL 1: bloques (sin red)
 def nivel1():
     print("\n=== NIVEL 1 · semanas por bloques del mes (sin red) ===")
@@ -236,6 +245,24 @@ def nivel2():
                 f"copiar_a_mensual archivó {copiadas} tarjeta(s) en MENSUAL (hechas + pendientes)")
             chk("Archivo TERMINADA" in mens.get("hecho", []) and "Archivo EN CURSO" in mens.get("haciendo", []),
                 "el archivo MENSUAL conserva la lista de cada tarjeta")
+
+            # --- interpretar END-TO-END con IA simulada: identifica y MUEVE la tarjeta por NÚMERO
+            if equipo:
+                bt = info["semanas"][3]
+                lt = roll.asegurar_listas(bt)
+                card = pk.crear_tarjeta(lt["haciendo"], "Tarea interpretar demo")
+                pk.asignar(card["id"], equipo[0])
+                cfg_i = {"url": url, "api_key": key, "ithos_user_id": ithos, "board_id": bt,
+                         "mes_legacy": "2099-12",   # queda en modo legacy: usa este board, sin rollover
+                         "usuarios": [{"planka_id": equipo[0], "nombre": "Tester Uno", "telefono": "5491156660181"}]}
+                it = PI.PlankaIntegrador(cfg_i, _FakeIA('{"accion":"mover","n":1,"lista":"hecho"}'))
+                it._asegurar_listas()
+                r = it.interpretar("5491156660181", "ithos, terminé la tarea demo", "Tester")
+                chk(bool(r) and "hecho" in (r or "").lower(), f"interpretar responde que la movió ({r})")
+                chk("Tarea interpretar demo" in _cards_por_board(pk, bt).get("hecho", []),
+                    "la tarjeta quedó en Hecho tras 'terminé' (IA simulada, elección por número)")
+                chk(it._usuario_de("", "Tester") is not None,
+                    "interpretar identifica al remitente por nombre aunque no haya teléfono (LID)")
         finally:
             RO.nombre_mes = _orig
 

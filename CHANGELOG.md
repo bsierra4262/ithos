@@ -31,10 +31,14 @@ y el versionado, [SemVer](https://semver.org/lang/es/).
   el SLA por calendario y horario de atención (Lun–Vie 09–18).
 
 ### Fixed
+- **Planka no ejecutaba las órdenes por WhatsApp** («ithos, terminé…» / «ithos, agregá…»): al
+  integrador se le pasaba el diccionario de configuración de IA en lugar del objeto ProveedorIA, así
+  que la interpretación con IA fallaba siempre y el mensaje caía al asistente. Ahora recibe el
+  ProveedorIA real; el intérprete elige la tarjeta por **número** (no copia IDs largos), entiende
+  muchas más formas de decirlo (terminé/listo/ya está/empecé/trabé/…) y deja logs de diagnóstico.
 - **Planka no reconocía a quien escribía por WhatsApp** cuando el número venía con otro formato o
-  WhatsApp lo ocultaba con un LID: el «ithos, terminé…» caía al asistente en vez de mover la tarjeta.
-  Ahora identifica al remitente por los últimos 10 dígitos del teléfono y, si no hay teléfono, por su
-  nombre visible (PushName).
+  WhatsApp lo ocultaba con un LID: ahora identifica al remitente por los últimos 10 dígitos del
+  teléfono y, si no hay teléfono, por su nombre visible (PushName).
 
 ### Security
 - Cifrado en reposo (AES-256-GCM) de los secretos por cliente, con clave maestra separada.

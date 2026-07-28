@@ -67,6 +67,9 @@ class PlankaIntegrador:
     def __init__(self, cfg, ia, zona=ZONA_DEFAULT):
         self.cfg = cfg or {}
         self.ia = ia
+        if ia is not None and not callable(getattr(ia, "chat", None)):
+            log.warning("Planka: el objeto IA no tiene método .chat (%s); mover/crear tarjetas por "
+                        "WhatsApp NO funcionará hasta pasar un ProveedorIA real.", type(ia).__name__)
         self.zona = zona
         self.pk = PK.Planka(self.cfg.get("url"), self.cfg.get("api_key"))
         self.ithos_id = str(self.cfg.get("ithos_user_id") or "")
@@ -331,62 +334,90 @@ class PlankaIntegrador:
 
     def interpretar(self, remitente_tel, texto, nombre=None):
         """Un miembro escribió (ya con 'ithos'). Si MUEVE una tarjeta suya o pide CREAR una tarea nueva,
-        lo hace y devuelve la confirmación; si no es sobre el tablero, devuelve None (lo maneja el asistente)."""
+        lo hace y devuelve la confirmación; si no es sobre el tablero, devuelve None (lo maneja el asistente).
+        El IA elige la tarjeta por NÚMERO (no copia IDs largos) y entiende muchas formas de decirlo."""
         u = self._usuario_de(remitente_tel, nombre)
-        if not u or not (texto or "").strip():
+        if not u:
+            if (texto or "").strip():
+                log.info("Planka: no reconocí al remitente (tel=%r nombre=%r) para: %s",
+                         remitente_tel, nombre, (texto or "")[:50])
             return None
-        if not self._asegurar_listas():
+        if not (texto or "").strip() or not self._asegurar_listas():
             return None
         try:
             snap = self._snapshot()
         except PK.PlankaError:
             return None
         pid = str(u["planka_id"])
-        cards = self._cards_usuario(pid, snap)
-        by_id = {cid: c for cid, c in cards}
-        lista_cards = [{"id": cid, "nombre": c["nombre"], "lista": _ETIQ[c["list"]]} for cid, c in cards]
-        ctx = [by_id[cid]["nombre"] for cid in self._ult_pregunta.get(pid, []) if cid in by_id]
-        equipo = [x["nombre"] for x in self._por_pid.values()]
+        cards = self._cards_usuario(pid, snap)                  # [(cid, c)] -> índice estable = posición
+        ctx_ids = set(self._ult_pregunta.get(pid, []))
+        numeradas = "\n".join(
+            f"{i + 1}. [{_ETIQ[c['list']]}] {self._limpiar(c['nombre'])}"
+            for i, (cid, c) in enumerate(cards)) or "(no tiene tarjetas asignadas)"
+        ctx = ", ".join(str(i + 1) for i, (cid, _c) in enumerate(cards) if cid in ctx_ids)
+        equipo = ", ".join(x["nombre"] for x in self._por_pid.values())
+        prompt = (
+            "Sos el asistente del tablero Kanban del equipo. Estados/listas: 'por_hacer' (Por hacer), "
+            "'haciendo' (Haciendo), 'en_espera' (En revisión/Esperando), 'hecho' (Hecho).\n"
+            "Un integrante te escribió por WhatsApp (puede empezar con 'ithos', ignoralo). Interpretá "
+            "CUALQUIER forma de decirlo, aunque use sinónimos, lo diga incompleto, informal o con errores "
+            "de tipeo:\n"
+            "  · TERMINÓ (→ 'hecho'): terminé, ya está, listo, hecho, completé, finalicé, cerré, la saqué, "
+            "resuelto, ya la hice, la terminamos, quedó lista.\n"
+            "  · EMPEZÓ (→ 'haciendo'): empecé, arranqué, ya me puse, estoy con, comencé, la agarré, "
+            "me pongo con, estoy haciendo.\n"
+            "  · TRABADA / en revisión / esperando (→ 'en_espera'): la trabé, quedó esperando, en revisión, "
+            "pendiente de respuesta, esperando a alguien, para revisar.\n"
+            "  · vuelve a PENDIENTE (→ 'por_hacer'): todavía no la empecé, la dejo para después, la desprioricé.\n"
+            "Acciones:\n"
+            "- 'mover': avisa que UNA de SUS tareas cambió de estado. Devolvé 'n' = el NÚMERO de la tarea "
+            "en la lista de abajo (matcheá por el TEMA aunque lo diga distinto, incompleto o con typos) y "
+            "'lista' destino. Si es vago ('terminé eso', 'la de recién') usá el CONTEXTO. Si de verdad no se "
+            "distingue cuál es, 'nada'.\n"
+            "- 'crear': pide dar de ALTA una tarea NUEVA (cargá/creá/agregá/anotá/sumá/nueva tarea/recordame) "
+            "-> 'titulo' claro y corto, 'lista' (default 'por_hacer'), 'para' (nombre del EQUIPO; 'yo' si es "
+            "para quien escribe).\n"
+            "- 'nada': saludo, pregunta, charla o algo que NO toca el tablero.\n"
+            "Respondé SOLO JSON válido: "
+            "{\"accion\":\"mover|crear|nada\",\"n\":0,\"lista\":\"por_hacer|haciendo|en_espera|hecho\","
+            "\"titulo\":\"\",\"para\":\"\"}.\n"
+            f"SUS TAREAS (elegí por número):\n{numeradas}\n"
+            f"EQUIPO: {equipo}"
+            + (f"\nCONTEXTO: recién le preguntaste por las tareas número {ctx}." if ctx else "")
+        )
         try:
-            r = self.ia.chat(
-                "Sos el asistente del tablero Kanban del equipo (listas: Por hacer, Haciendo, En espera, "
-                "Hecho). Un integrante escribió por WhatsApp. Decidí la acción:\n"
-                "- 'mover': movió/actualizó UNA de SUS tarjetas -> card_id + lista destino ('hecho'=terminó, "
-                "'haciendo'=empezó, 'en_espera'=trabada, 'por_hacer'=todavía no). Movés SOLO si queda CLARO "
-                "cuál tarjeta (por tema/nombre). Si es VAGO ('terminé eso') usá el CONTEXTO; si sigue ambiguo, "
-                "'nada' (NO adivines).\n"
-                "- 'crear': pide dar de ALTA una tarea nueva ('cargá/creá/agregá/anotá tal cosa') -> titulo "
-                "(claro y corto), lista destino (default 'por_hacer'), y para (nombre de la persona del "
-                "EQUIPO a asignar; si dice 'a mí' o no aclara, poné 'yo').\n"
-                "- 'nada': saludo/pregunta/otra cosa que no toca el tablero.\n"
-                "Respondé SOLO JSON: {\"accion\":\"mover\"|\"crear\"|\"nada\",\"card_id\":\"\",\"lista\":"
-                "\"por_hacer\"|\"haciendo\"|\"en_espera\"|\"hecho\",\"titulo\":\"\",\"para\":\"\"}.\n"
-                "SUS TARJETAS: " + json.dumps(lista_cards, ensure_ascii=False) +
-                "\nEQUIPO: " + json.dumps(equipo, ensure_ascii=False) +
-                (("\nCONTEXTO (le preguntaste recién por estas): " + json.dumps(ctx, ensure_ascii=False)) if ctx else ""),
-                texto, json_out=True)
+            r = self.ia.chat(prompt, texto, json_out=True)
             d = json.loads(r)
         except Exception as e:  # noqa: BLE001
-            log.warning("Planka: no pude interpretar el mensaje: %s", str(e)[:120])
+            log.warning("Planka: no pude interpretar '%s' de %s: %s", (texto or "")[:40], u["nombre"], str(e)[:150])
             return None
-        if d.get("accion") == "crear":
+        accion = d.get("accion")
+        log.info("Planka interpretar (%s): '%s' -> accion=%s n=%s lista=%s [%d tareas]",
+                 u["nombre"].split()[0], (texto or "")[:50], accion, d.get("n"), d.get("lista"), len(cards))
+        if accion == "crear":
             return self._crear(u, d)
-        if d.get("accion") == "mover":
-            return self._mover(u, cards, d)
+        if accion == "mover":
+            try:
+                idx = int(d.get("n")) - 1
+            except (TypeError, ValueError):
+                return None
+            if 0 <= idx < len(cards):
+                cid, c = cards[idx]
+                return self._mover_card(u, cid, c, d.get("lista"))
         return None
 
-    def _mover(self, u, cards, d):
-        cid = str(d.get("card_id") or "")
-        clave = d.get("lista")
-        c = next((c for i, c in cards if i == cid), None)
-        if not c or clave not in self._clave_a_id or c["list"] == clave:
+    def _mover_card(self, u, cid, c, clave):
+        """Mueve la tarjeta de la persona a la lista 'clave'. Si ya estaba ahí, lo confirma igual."""
+        if clave not in self._clave_a_id:
             return None
+        if c["list"] == clave:
+            return f"👍 \"{self._limpiar(c['nombre'])}\" ya estaba en *{_ETIQ[clave]}*."
         try:
             self.pk.mover_tarjeta(cid, self._clave_a_id[clave])
             self._estado.setdefault(cid, {})["list"] = clave
             self._estado[cid]["ts"] = self._ahora().timestamp()
             log.info("Planka: '%s' -> %s (por %s)", c["nombre"], clave, u["nombre"])
-            return f"✅ Listo, moví \"{c['nombre']}\" a *{_ETIQ[clave]}*."
+            return f"✅ Listo, moví \"{self._limpiar(c['nombre'])}\" a *{_ETIQ[clave]}*."
         except PK.PlankaError as e:  # noqa: BLE001
             log.warning("Planka: no pude mover la tarjeta %s: %s", cid, e)
             return None
