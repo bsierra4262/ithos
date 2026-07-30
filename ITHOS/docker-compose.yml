@@ -13,6 +13,7 @@ services:
     volumes:
       - ./central/clientes.json:/app/clientes.json
       - ./comun:/app/comun
+      - ../DOCUMENTO_MAESTRO.md:/app/DOCUMENTO_MAESTRO.md:ro   # ITHOS explica el sistema desde acá
       - ithos_data:/data         # cachés/estado persistente (planes IA, etc.)
     environment:
       - ITHOS_CLIENTES=/app/clientes.json
@@ -32,6 +33,7 @@ services:
     volumes:
       - ./central/clientes.json:/app/clientes.json
       - ./comun:/app/comun
+      - ../DOCUMENTO_MAESTRO.md:/app/DOCUMENTO_MAESTRO.md:ro   # ITHOS explica el sistema desde acá
       - ithos_data:/data
     environment:
       - ITHOS_CENTRAL_URL=http://central:8080     # el panel consulta el estado al central (red interna)

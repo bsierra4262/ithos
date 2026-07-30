@@ -7,7 +7,7 @@ Mantiene el tablero Kanban del equipo (Planka) 100% actualizado desde WhatsApp:
   · 09:00  -> RESUMEN por persona: @menciona a cada uno con sus tarjetas asignadas.
   · 10:00-18:00, cada hora EN PUNTO (Lun-Vie) -> "¿cómo vas?" por las tarjetas ACTIVAS
     (Haciendo + En espera), salteando las que se movieron hace <1h.
-  · ESCUCHA PROACTIVA: cualquiera, desde su número, dice "ithos, terminé/empecé tal tarea"
+  · ESCUCHA PROACTIVA: cualquiera, desde su número, dice "Hey ITHOS, terminé/empecé tal tarea"
     (aunque ITHOS no haya preguntado) -> la IA lo interpreta y MUEVE la tarjeta sola.
   · @mención al ASIGNAR una tarjeta a alguien (evento puntual).
   · ROLLOVER automático (de Agosto en adelante, ver planka_rollover.py): un proyecto por mes, un board
@@ -277,7 +277,7 @@ class PlankaIntegrador:
         return (f"Buen día {nom} 👋\n"
                 f"Esto es lo que tenés para hoy:\n\n"
                 f"{self._bloques_tarjetas(cards)}\n\n"
-                "Cuando termines o avances con alguna, escribime: _ithos, terminé…_")
+                "Cuando termines o avances con alguna, escribime: _Hey ITHOS, terminé…_")
 
     def seguimiento(self, u, snap, ahora):
         """'¿cómo vas?' horario: solo Haciendo + En espera, salteando lo movido hace <1h. Una tarjeta
@@ -301,7 +301,7 @@ class PlankaIntegrador:
             cuerpo = "¿cómo venís con estas?\n" + lineas
         return (f"{nom}, {cuerpo}\n\n"
                 "Si ya terminaste alguna o la pasaste a otra etapa, avisame "
-                "(_ithos, terminé…_) y la actualizo.")
+                "(_Hey ITHOS, terminé…_) y la actualizo.")
 
     def _tiene_activas(self, pid, snap):
         """¿La persona tiene alguna tarjeta en Haciendo o En revisión/Esperando? (sin el skip <1h)."""
@@ -316,10 +316,10 @@ class PlankaIntegrador:
         if pendientes:
             lineas = "\n".join(f"   •  {self._limpiar(n)}" for n in pendientes)
             cola = ("Te queda esto en *Por hacer*:\n" + lineas +
-                    "\n\n¿Con cuál seguís? Decime _ithos, empiezo…_ y la paso a *Haciendo*, "
-                    "o _ithos, agregá…_ si querés cargar una nueva.")
+                    "\n\n¿Con cuál seguís? Decime _Hey ITHOS, empiezo…_ y la paso a *Haciendo*, "
+                    "o _Hey ITHOS, agregá…_ si querés cargar una nueva.")
         else:
-            cola = "¿Qué tarea vas a hacer ahora? Decime _ithos, agregá…_ y la creo."
+            cola = "¿Qué tarea vas a hacer ahora? Decime _Hey ITHOS, agregá…_ y la creo."
         return f"¡Bien {nom}! 🙌 Terminaste todo lo que tenías en curso.\n{cola}"
 
     # ------------------------------------------------------------------ interpretar mensajes

@@ -378,11 +378,17 @@ escribe). No hay alta de usuarios, a propósito. ITHOS **no escribe nada sin un 
 - **Contexto real**: antes de responder carga el panorama del cliente (tickets, SLA, estado) y usa su KB y
   su memoria. Responde corto por defecto y detalla cuando se lo piden. Nunca repite lo mismo dos veces en
   una respuesta.
-- **Conocimiento propietario**: el detalle técnico de cómo está construido ITHOS sólo se revela a las
-  **identidades del dueño** (sus números, email o usuario). A cualquier otro le responde que es un sistema
-  propietario de INTELLIHELP. Por **micrófono** (donde no hay identidad) existe una **clave de
-  administrador** que destraba una sola consulta y, además, se exige que la **voz coincida** con el perfil
-  del dueño (voz-id): saber la clave no alcanza.
+- **Conocimiento propietario y nivel de detalle**: ITHOS se explica a sí mismo **desde este documento**.
+  Cuando el **dueño** (sus números, email o usuario) pide **detalle** —"detallado", "todo", "listá",
+  "paso a paso"— la respuesta se arma con **este DOCUMENTO_MAESTRO completo** más el conocimiento técnico
+  interno (archivos, versiones, decisiones): así lo que responde es exactamente lo que está documentado y
+  no un texto paralelo que se desactualiza. Si no pide detalle, contesta **lo mismo pero resumido** (1-4
+  frases, al grano). A **cualquier otro** le cuenta **qué hace** ITHOS —el alcance, resumido— y **nunca**
+  cómo está construido: eso es propietario de INTELLIHELP. Por **micrófono** (donde no hay identidad)
+  existe una **clave de administrador** que destraba una sola consulta y, además, se exige que la **voz
+  coincida** con el perfil del dueño (voz-id): saber la clave no alcanza.
+  El documento se monta en el contenedor (`/app/DOCUMENTO_MAESTRO.md`, sólo lectura), así el Gestor
+  siempre lee la versión desplegada.
 - **Multi-idioma**: cada cliente elige su idioma; ITHOS interpreta y responde en ese idioma.
 - **Estado y mantenimiento**: el panel y el agente muestran si cada canal, el micrófono y el integrador
   están activos; al reiniciar el Gestor se puede avisar "en mantenimiento" y "disponible" por todos los

@@ -216,7 +216,7 @@ def mensaje_inicio(empresa="la empresa", ia_disponible=True, panorama=None, zona
     sin que se lo pidan. Si no hay cuota de IA, lo aclara con la hora de reinicio; si hay
     panorama (tickets+SLA), lo resume."""
     msg = (f"🤖 *ITHOS en línea* — {empresa}. Estoy operativo y escuchando. "
-           f"Escribime *ITHOS* + tu consulta.")
+           f"Llamame: *Hey ITHOS* + tu consulta (por texto o por audio).")
     if not ia_disponible:
         msg += "\n\n" + mensaje_sin_cuota(zona, gestor)
     else:
@@ -522,7 +522,11 @@ class Asistente:
         # Conocimiento TÉCNICO PROPIETARIO: para el DUEÑO (por identidad) o si se destrabó
         # con la CLAVE de administrador. Al resto, ITHOS niega los detalles (propietario).
         try:
-            sistema += conocimiento.bloque_sistema(remitente, canal, admin=es_admin)
+            # Si pidió DETALLE ("detallado / todo / listá / paso a paso"), el bloque suma la
+            # DOCUMENTACIÓN COMPLETA del sistema (DOCUMENTO_MAESTRO): así la respuesta detallada
+            # dice todo lo que dice el maestro, y la corta es ese mismo contenido resumido.
+            sistema += conocimiento.bloque_sistema(remitente, canal, admin=es_admin,
+                                                   detalle=_pide_detalle(texto))
         except Exception:  # noqa: BLE001
             pass
         prompt = (f"MEMORIA (conversación previa con este cliente):\n{hist}\n\n"

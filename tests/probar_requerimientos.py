@@ -3218,6 +3218,45 @@ except Exception as e:  # noqa: BLE001
     fail("no se pudo verificar el feedback interno del ciclo (H82)", repr(e))
 
 
+# H83) CONOCIMIENTO PROPIO: la respuesta DETALLADA sale del DOCUMENTO_MAESTRO (la documentación
+#   completa del sistema), no de un texto paralelo que se desactualiza; y SÓLO la ve el DUEÑO (sus
+#   números, o clave + voz-id por micrófono). A cualquier otro: el ALCANCE resumido (qué hace ITHOS),
+#   sin nada de cómo está hecho. Pedido de Brian: "lo detallado sólo al dueño; al resto la genérica".
+print("\n  H83) CONOCIMIENTO PROPIO: el detalle sale del maestro y sólo lo ve el dueño")
+try:
+    sys.path.insert(0, APP)
+    from comun import conocimiento as _K83
+    import importlib as _il83
+    _il83.reload(_K83)
+    _doc83 = _K83.documento_maestro()
+    _due_det = _K83.bloque_sistema("+5491151629038", "whatsapp", detalle=True)
+    _due_cor = _K83.bloque_sistema("+5491151629038", "whatsapp", detalle=False)
+    _otro83 = _K83.bloque_sistema("+5491199999999", "whatsapp", detalle=True)
+    _mic83 = _K83.bloque_sistema(None, "microfono", admin=True, detalle=True)
+    _comp83 = leer(os.path.join(APP, "docker-compose.yml"))
+    _conv83 = leer(os.path.join(APP, "comun", "conversacion.py"))
+    _MARCA83 = "DOCUMENTO_MAESTRO del proyecto"
+    hay_doc = len(_doc83) > 5000 and "Documento Maestro" in _doc83
+    detalle_ok = _MARCA83 in _due_det                      # el dueño, al pedir detalle, recibe el maestro
+    corto_ok = _MARCA83 not in _due_cor                    # sin pedir detalle no se manda (tokens)
+    ajeno_ok = ("QUÉ PUEDE HACER ITHOS" in _otro83         # a un tercero: alcance resumido
+                and "CONOCIMIENTO TÉCNICO PROPIETARIO" not in _otro83   # nada de implementación
+                and _MARCA83 not in _otro83)
+    clave_ok = _MARCA83 in _mic83                          # micrófono con clave + voz-id
+    montado = "DOCUMENTO_MAESTRO.md:/app/DOCUMENTO_MAESTRO.md:ro" in _comp83   # el contenedor lo ve
+    cableado = "detalle=_pide_detalle(texto)" in _conv83   # el asistente pasa el nivel de detalle
+    if hay_doc and detalle_ok and corto_ok and ajeno_ok and clave_ok and montado and cableado:
+        ok("conocimiento propio: el DETALLE sale del DOCUMENTO_MAESTRO (montado en el contenedor) y es "
+           "SÓLO del dueño (sus números, o clave + voz por micrófono); a cualquier otro, el alcance "
+           "RESUMIDO sin implementación — la corta y la detallada dicen lo mismo, en distinta medida")
+    else:
+        fail("el conocimiento propio no cumple la regla del dueño / el detalle no sale del maestro",
+             f"doc={hay_doc} detalle={detalle_ok} corto={corto_ok} ajeno={ajeno_ok} "
+             f"clave={clave_ok} montado={montado} cableado={cableado}")
+except Exception as e:  # noqa: BLE001
+    fail("no se pudo verificar el conocimiento propio", repr(e))
+
+
 print("\n  I) LATENCIA: procesos instantáneos (sin N+1 de red en el camino caliente)")
 # I) El reporte ITIL NO puede hacer una request por ticket (N+1) -> trae los técnicos asignados en
 #    UNA lectura masiva. Con 200 tickets: 0 requests '/Ticket/<id>/Ticket_User' y bulk presente.

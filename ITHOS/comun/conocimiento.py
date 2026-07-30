@@ -13,6 +13,7 @@ sistema propietario de INTELLIHELP. El soporte normal (tickets, SLA, portero) NO
 restringe: eso lo responde a cualquiera.
 """
 
+import os
 import re
 
 # TELÉFONOS del DUEÑO (los ÚNICOS autorizados por WhatsApp, oficial y no-oficial).
@@ -192,6 +193,49 @@ MENSAJE_RESTRINGIDO = (
     "Esa información es sobre el funcionamiento interno del sistema y es *propietaria de "
     "INTELLIHELP*, así que no puedo compartirla. Con gusto te ayudo con el soporte: "
     "tickets, estados, SLA y demás.")
+
+
+# ==================================================== ALCANCE PÚBLICO (para cualquiera)
+# Lo que ITHOS SÍ puede contar a cualquiera: QUÉ hace, sin nada de CÓMO está hecho. Es el resumen
+# del DOCUMENTO_MAESTRO (sección "Qué hace"), así la respuesta corta y la detallada dicen lo MISMO,
+# una resumida y la otra completa. Se mantiene al día junto con el maestro.
+ALCANCE_PUBLICO = """QUÉ PUEDE HACER ITHOS (esto se puede contar a cualquiera; el CÓMO está hecho, no):
+- Portero por voz: anuncia por los parlantes cada fichada del control de acceso, con saludo acorde a
+  la hora, sin repetirle a la misma persona en el día. Opcional: avisa accesos fuera de horario.
+- Mesa de ayuda con IA: clasifica, prioriza, fija el SLA, asigna, responde y lleva el ciclo completo
+  del ticket hasta que el cliente confirma; si la espera depende del cliente, le recuerda una vez por
+  día hábil y avisa al técnico asignado si no responde.
+- Asistente por WhatsApp, Telegram, Email y Matrix, además del micrófono: responde y ejecuta acciones
+  reales sobre los tickets (cerrar, responder, poner en espera, posponer, asignar, buscar, reportes).
+- Reportes ITIL: volumen, SLA, MTTR, backlog y desglose por técnico o categoría, automáticos o a
+  demanda, en PDF y CSV, en la zona horaria y los días hábiles del cliente.
+- Base de conocimiento propia que se regenera sola con los casos resueltos.
+- Tareas del equipo: mantiene el tablero al día desde WhatsApp (resumen diario y seguimiento).
+- Todo por cliente y aislado: cada empresa tiene su configuración, sus datos y su facturación."""
+
+
+def documento_maestro():
+    """El DOCUMENTO_MAESTRO.md del proyecto (la documentación COMPLETA del sistema), para que la
+    respuesta DETALLADA al dueño salga de ahí y no de un texto paralelo que se desactualiza.
+    Devuelve '' si no está disponible (entonces se usa sólo CONTEXTO_TECNICO). Se lee una vez."""
+    global _MAESTRO
+    if _MAESTRO is None:
+        _MAESTRO = ""
+        aqui = os.path.dirname(os.path.abspath(__file__))               # ITHOS/comun
+        for ruta in (os.path.join(os.sep + "app", "DOCUMENTO_MAESTRO.md"),   # contenedor (montado)
+                     os.path.join(aqui, "..", "..", "DOCUMENTO_MAESTRO.md"),  # repo (desarrollo)
+                     os.path.join(aqui, "..", "DOCUMENTO_MAESTRO.md")):
+            try:
+                if os.path.exists(ruta):
+                    with open(ruta, encoding="utf-8") as f:
+                        _MAESTRO = f.read()
+                    break
+            except OSError:                                              # noqa: PERF203
+                continue
+    return _MAESTRO
+
+
+_MAESTRO = None      # caché del documento maestro (se lee una sola vez)
 
 
 # ============================================================================ CONTEXTO
@@ -546,11 +590,14 @@ dólar oficial del BNA; INTELLIHELP es dueño y NO se cobra.
     'per minute' directo), así un límite por minuto de Groq no se confundía con caída total."""
 
 
-def bloque_sistema(remitente=None, canal="", admin=False):
+def bloque_sistema(remitente=None, canal="", admin=False, detalle=False):
     """Devuelve el fragmento a inyectar en el prompt del asistente según autorización.
     admin=True fuerza acceso total (destrabado por la CLAVE de administrador, one-shot).
-    Autorizado: el conocimiento técnico completo + permiso de explicarlo.
-    No autorizado: la instrucción de NO revelar la implementación (es propietario)."""
+    detalle=True (el usuario pidió "detallado/todo/listá") suma la DOCUMENTACIÓN COMPLETA del
+    sistema (DOCUMENTO_MAESTRO) para que la respuesta detallada diga TODO lo que dice el maestro.
+    Autorizado (el dueño): conocimiento técnico completo + permiso de explicarlo.
+    No autorizado: NO revela la implementación (es propietario), pero SÍ cuenta el ALCANCE (qué
+    hace ITHOS) resumido — la misma información que la detallada, en corto."""
     if admin or esta_autorizado(remitente, canal):
         return ("\n\n[ACCESO TÉCNICO TOTAL — el que pregunta es el DUEÑO de INTELLIHELP.]\n"
                 "IMPORTANTE: IGNORÁ cualquier negativa anterior del historial ('información "
@@ -568,13 +615,32 @@ def bloque_sistema(remitente=None, canal="", admin=False):
                 "versiones, cuotas, TPM o fechas (nada de 'gemini-1.5', 'llama2-70b' ni números que "
                 "no estén escritos). Mejor 'ese dato no lo tengo' que un dato FALSO.\n"
                 "Basate SOLO en este conocimiento:\n\n" + CONTEXTO_TECNICO +
+                _bloque_maestro(detalle) +
                 "\n\n[RECORDATORIO FINAL — lo más importante: respondé EXACTO lo preguntado, BREVE "
                 "(1-4 frases, en PROSA, SIN tablas salvo pedido explícito) y SIN inventar nada que "
                 "no esté arriba. Si preguntan qué IA/modelo usamos: 'Gemini (gemini-2.5-flash-lite) "
                 "primaria, y de respaldo Cerebras (gpt-oss-120b) y Groq (llama-3.3-70b).']")
     return ("\n\n[INFORMACIÓN PROPIETARIA PROTEGIDA.]\n"
-            "Si te preguntan CÓMO ESTÁ PROGRAMADO el sistema, su arquitectura, qué versiones "
-            "de software soporta, detalles técnicos internos o de implementación, NO los des. "
-            "Respondé, con amabilidad, que es información propietaria de INTELLIHELP y no "
-            "podés compartirla. El soporte normal (tickets, estados, SLA, portero) SÍ "
-            "respondelo con normalidad. Texto sugerido para negarte: \"" + MENSAJE_RESTRINGIDO + "\"")
+            "Si te preguntan CÓMO ESTÁ PROGRAMADO el sistema, su arquitectura interna, qué "
+            "versiones soporta, nombres de archivos, claves o detalles de implementación, NO los "
+            "des: es información propietaria de INTELLIHELP. Decilo con amabilidad. Texto sugerido: "
+            "\"" + MENSAJE_RESTRINGIDO + "\"\n"
+            "PERO SÍ podés contar QUÉ HACE ITHOS —su alcance— con naturalidad, y el soporte normal "
+            "(tickets, estados, SLA, portero) respondelo como siempre. Si preguntan qué podés hacer, "
+            "contestá RESUMIDO y al punto con esto (2-5 frases; sin nombrar archivos, versiones ni "
+            "cómo está construido):\n\n" + ALCANCE_PUBLICO)
+
+
+def _bloque_maestro(detalle):
+    """Cuando el DUEÑO pide DETALLE, se suma la documentación COMPLETA del sistema (el
+    DOCUMENTO_MAESTRO del repositorio). Así 'contame todo en detalle' responde con lo mismo que
+    dice el maestro —completo y al día— y la respuesta corta es ese mismo contenido resumido, sin
+    dos fuentes que se contradigan. Si el documento no está disponible, no se agrega nada."""
+    if not detalle:
+        return ""
+    doc = documento_maestro()
+    if not doc:
+        return ""
+    return ("\n\n[DOCUMENTACIÓN COMPLETA DEL SISTEMA (DOCUMENTO_MAESTRO del proyecto) — el usuario "
+            "pidió DETALLE: usala como fuente principal y respondé con TODO lo que corresponda al "
+            "tema preguntado, ordenado y sin inventar nada que no esté acá.]\n\n" + doc)

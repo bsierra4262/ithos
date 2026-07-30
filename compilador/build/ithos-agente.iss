@@ -7,7 +7,7 @@
 ;  Requisito previo: build\construir_agente.bat (deja build\exe\ithos-agente.exe + build\ithos.ico)
 ; ============================================================================
 #define MyAppName "ITHOS Agente"
-#define MyAppVersion "1.1.28"
+#define MyAppVersion "1.1.29"
 #define MyAppPublisher "INTELLIHELP S.A."
 #define MyAppExeName "ithos-agente.exe"
 
