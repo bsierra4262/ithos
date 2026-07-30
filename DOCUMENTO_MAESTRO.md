@@ -472,6 +472,12 @@ Integración `ITHOS/central/planka_integrador.py` (cliente `ITHOS/comun/planka.p
   revisión/Esperando), salteando las movidas hace menos de una hora.
 - **Mover / crear por WhatsApp**: "ithos, terminé X" → a Hecho; "ithos, cargá tal tarea para Carlos en
   haciendo" → crea la tarjeta asignada. Intérprete **conservador**: si es ambiguo, no adivina.
+- **Avisa los cambios del tablero**: en cada recorrido compara contra el **último estado conocido** de
+  cada tarjeta. Si alguna cambió de lista —la hayan movido a mano en el tablero o la haya movido ITHOS—
+  lo anuncia en el grupo diciendo **de qué estado viene, a cuál pasó y quién la tiene asignada**, y recién
+  después sigue con el seguimiento, de modo que el "¿cómo venís?" nunca pregunta por algo ya terminado.
+  Si no cambió nada, no dice nada. El estado de las tarjetas **persiste en disco**: si el Gestor se
+  reinicia, los movimientos que ocurrieron mientras estuvo fuera se avisan igual al volver.
 - **Escucha proactiva**: si alguien avisa que terminó algo sin que se le pregunte, igual se procesa.
   La **llamada "Hey ITHOS"** es obligatoria en todo mensaje (texto o audio).
 - **Rollover automático** (`planka_rollover.py`): un **proyecto por mes** con un **board por semana** en
@@ -553,6 +559,7 @@ manejan el certificado. Del repositorio se puede reconstruir el agente completo.
   - `probar_portero_saludo.py` — saludo coherente con la hora y una vez por día por persona.
   - `probar_ciclo.py` · `probar_produccion.py` · `probar_sistema.py` — ciclo de vida real del ticket, flujo
     del vigilante y circuito completo por HTTP.
+  - `probar_planka_cambios.py` — avisos de cambio de estado del tablero (sin red).
   - `probar_planka_rollover.py` — rollover semanal/mensual/anual contra la API real (con proyectos de
     prueba que se borran al terminar).
 - **Cada requerimiento nuevo se agrega como chequeo** en `probar_requerimientos.py`; cuando un

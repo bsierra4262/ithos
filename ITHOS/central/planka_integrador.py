@@ -105,8 +105,13 @@ class PlankaIntegrador:
         self._meses_cerrados = set()              # meses ya archivados en su board MENSUAL (no re-copiar)
         self._anios_cerrados = set()              # años ya consolidados en "AÑO <a>" (no re-cerrar)
         self._estado_file = os.path.join(_DATA, "planka_estado_periodo.json")
+        # Estado de CADA TARJETA (lista, momento del último cambio y miembros). Persiste en disco: si
+        # el Gestor se reinicia, ITHOS sigue sabiendo dónde estaba cada tarjeta y avisa los cambios que
+        # hayan pasado mientras estuvo fuera, en vez de tomarlos como punto de partida y callarlos.
+        self._tarjetas_file = os.path.join(_DATA, "planka_estado_tarjetas.json")
         self._reenviar_flag = os.path.join(_DATA, "planka_reenviar_resumen.flag")  # bandera de reenvío manual
         self._cargar_periodo()                    # restaura board/semana/mes del último arranque (si hubo)
+        self._cargar_tarjetas()                   # restaura dónde estaba cada tarjeta (avisos tras reinicio)
 
     # ------------------------------------------------------------------ helpers
     def _ahora(self):
@@ -155,6 +160,35 @@ class PlankaIntegrador:
                       open(self._estado_file, "w", encoding="utf-8"), ensure_ascii=False)
         except OSError as e:  # noqa: BLE001
             log.debug("Planka: no pude guardar el estado del período: %s", e)
+
+    def _cargar_tarjetas(self):
+        """Restaura el estado de las tarjetas del último arranque. Si no hay archivo, el primer
+        recorrido es el punto de partida (no se avisa nada) — sólo la primerísima vez."""
+        try:
+            d = json.load(open(self._tarjetas_file, encoding="utf-8"))
+            self._estado = {k: v for k, v in (d.get("estado") or {}).items()}
+            self._miembros = {k: set(v) for k, v in (d.get("miembros") or {}).items()}
+            self._arrancado = bool(self._estado)   # ya hay referencia -> los cambios SÍ se avisan
+        except (OSError, ValueError):
+            pass
+
+    def _guardar_tarjetas(self):
+        try:
+            json.dump({"estado": self._estado,
+                       "miembros": {k: sorted(v) for k, v in self._miembros.items()}},
+                      open(self._tarjetas_file, "w", encoding="utf-8"), ensure_ascii=False)
+        except OSError as e:  # noqa: BLE001
+            log.debug("Planka: no pude guardar el estado de las tarjetas: %s", e)
+
+    def _aviso_movimiento(self, c, desde, hacia):
+        """Texto del aviso cuando una tarjeta cambia de estado, con quién la tiene asignada."""
+        quienes = [self._por_pid[p]["nombre"] for p in c["miembros"] if p in self._por_pid]
+        de = _ETIQ.get(desde, desde or "?")
+        a = _ETIQ.get(hacia, hacia or "?")
+        txt = (f"{_EMOJI_LISTA.get(hacia, '🔄')} *{self._limpiar(c['nombre'])}*\n"
+               f"   {de} → *{a}*")
+        return txt + (f" · asignada a {', '.join(quienes)}" if quienes
+                      else " · sin asignar")
 
     def _asegurar_periodo(self, ahora):
         """Resuelve el BOARD del período actual (semana = bloque del mes). Para 'mes_legacy' y anteriores
@@ -416,6 +450,7 @@ class PlankaIntegrador:
             self.pk.mover_tarjeta(cid, self._clave_a_id[clave])
             self._estado.setdefault(cid, {})["list"] = clave
             self._estado[cid]["ts"] = self._ahora().timestamp()
+            self._guardar_tarjetas()   # ya se lo confirmamos a quien lo pidió: no re-avisarlo como cambio
             log.info("Planka: '%s' -> %s (por %s)", c["nombre"], clave, u["nombre"])
             return f"✅ Listo, moví \"{self._limpiar(c['nombre'])}\" a *{_ETIQ[clave]}*."
         except PK.PlankaError as e:  # noqa: BLE001
@@ -482,24 +517,39 @@ class PlankaIntegrador:
         if not self._asegurar_listas():
             return
         snap = self._snapshot()
-        # 1) detectar cambios de lista (para el skip <1h) y ASIGNACIONES nuevas (@mención)
+        # 1) Comparar contra el ÚLTIMO ESTADO CONOCIDO de cada tarjeta. Si alguna CAMBIÓ DE LISTA —la
+        #    hayan movido a mano en el tablero o la haya movido ITHOS por WhatsApp— se avisa al grupo
+        #    con el estado del que viene, el nuevo y quién la tiene asignada, ANTES de cualquier
+        #    seguimiento: así el "¿cómo venís?" de más abajo ya habla del estado actual y nunca
+        #    pregunta por algo que la persona ya terminó. Si no cambió nada, no se dice nada.
         primero = not self._arrancado
+        movimientos, cambio = [], False
         for cid, c in snap.items():
             prev = self._estado.get(cid)
             if prev is None or prev.get("list") != c["list"]:
+                if prev is not None and not primero:      # cambio real de estado -> se avisa
+                    movimientos.append(self._aviso_movimiento(c, prev.get("list"), c["list"]))
                 self._estado[cid] = {"list": c["list"], "ts": ahora.timestamp()}
+                cambio = True
             nuevos = c["miembros"] - self._miembros.get(cid, set())
-            if not primero:                        # no avisar en el primer snapshot (baseline)
+            if not primero:                        # no avisar en el primer recorrido (punto de partida)
                 for pid in nuevos:
                     u = self._por_pid.get(pid)
                     if u and pid != self.ithos_id:
                         enviar(f"🔔 Te asignaron la tarea \"{c['nombre']}\" "
                                f"({_ETIQ[c['list']]}).", [u["telefono"]])
+            if set(c["miembros"]) != self._miembros.get(cid, set()):
+                cambio = True
             self._miembros[cid] = set(c["miembros"])
         # limpiar tarjetas borradas del estado
         for cid in list(self._estado):
             if cid not in snap:
-                self._estado.pop(cid, None); self._miembros.pop(cid, None)
+                self._estado.pop(cid, None); self._miembros.pop(cid, None); cambio = True
+        if movimientos:
+            enviar("📋 *Cambios en el tablero*\n" + "\n".join(movimientos), [])
+            log.info("Planka: avisé %d cambio(s) de estado en el tablero.", len(movimientos))
+        if cambio or primero:
+            self._guardar_tarjetas()               # el estado sobrevive a un reinicio del Gestor
         self._arrancado = True
 
         # Reenvío MANUAL del resumen (bandera que crea soporte): manda el resumen a todos UNA vez,

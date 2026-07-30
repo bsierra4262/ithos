@@ -362,7 +362,10 @@ masivas: no hay una consulta por ítem.
 
 Las **tareas del equipo** se mantienen al día sobre Planka desde WhatsApp: resumen por persona a primera
 hora, seguimiento de lo que está en curso, alta y movimiento de tarjetas por texto o audio, y **rollover**
-automático de semana, mes y año que arrastra lo no terminado y archiva lo cerrado.
+automático de semana, mes y año que arrastra lo no terminado y archiva lo cerrado. Además **avisa los
+cambios del tablero**: cuando una tarjeta cambia de estado —incluso movida a mano— lo anuncia en el grupo
+con el estado del que viene, el nuevo y quién la tiene asignada, antes de cualquier seguimiento, y ese
+estado persiste en disco para no perder los movimientos ocurridos mientras el Gestor estuvo fuera.
 
 La **facturación** es una suscripción de MercadoPago por cliente, con el precio en dólares cobrado en pesos
 al dólar oficial: incluye reclamo por impago, días de gracia y suspensión que congela la IA hasta
@@ -544,6 +547,7 @@ Baterías en [`tests/`](tests/):
 | `probar_portero_saludo.py` | Saludo coherente con la hora y una sola vez por día por persona. | No |
 | `probar_sistema.py` | Circuito completo por HTTP: alta, validaciones, edición, canales, métricas, portal. | Sí |
 | `probar_ciclo.py` · `probar_produccion.py` | Ciclo de vida real de un ticket y flujo del vigilante contra la mesa de ayuda del cliente. | Sí |
+| `probar_planka_cambios.py` | Avisos de cambio de estado del tablero: movimiento a mano, sin repetir, y estado que sobrevive a un reinicio. | No |
 | `probar_planka_rollover.py` | Rollover semanal/mensual/anual contra la API real (usa proyectos de prueba y los borra). | Sí |
 
 Regla del proyecto: **cada defecto detectado incorpora un test de regresión** (que falle con el bug y

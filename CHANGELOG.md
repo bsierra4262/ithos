@@ -55,6 +55,13 @@ y el versionado, [SemVer](https://semver.org/lang/es/).
   propio diagrama.
 - **Receta de compilación del agente versionada** (`compilador/build`): del repositorio se puede
   reconstruir y firmar el instalador. El versionado del agente y del instalador queda sincronizado.
+- **Tareas del equipo — aviso de cambio de estado en el tablero.** En cada recorrido se compara contra
+  el último estado conocido de cada tarjeta: si alguna cambió de lista —movida a mano en el tablero o por
+  ITHOS— se anuncia en el grupo con el estado anterior, el nuevo y quién la tiene asignada, **antes** del
+  seguimiento, así el "¿cómo venís?" nunca vuelve a preguntar por algo ya terminado. Si no hubo cambios,
+  no se dice nada. El estado **persiste en disco**, de modo que un reinicio del Gestor ya no hace perder
+  los movimientos ocurridos mientras estuvo fuera (antes el cambio se detectaba pero no se avisaba, y la
+  referencia vivía sólo en memoria).
 - **Portero — saludo de entrada coherente con la hora.** En los dispositivos de ENTRADA el saludo
   arranca con «Buenos días / Buenas tardes / Buenas noches» según la hora de la zona del cliente. La
   salida mantiene su despedida. El dedup «una vez por día por persona» ahora **persiste** en disco, así
