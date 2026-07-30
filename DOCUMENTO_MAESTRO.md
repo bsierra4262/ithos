@@ -13,7 +13,7 @@
 |---|---|
 | **Portero por voz** | Anuncia por los parlantes los fichajes/accesos leídos de IVMS (SQL Server), con voz natural (Charon). |
 | **Mesa de ayuda (GLPI)** | Clasifica, prioriza, asigna, responde y gestiona el ciclo de vida de los tickets con IA. |
-| **WhatsApp conversacional** | Escucha el grupo del cliente (activación por "ithos", texto o audio) y responde/actúa. |
+| **WhatsApp conversacional** | Escucha el grupo del cliente (wake-word "ithos" / "Hey ITHOS", texto o audio) y responde/actúa. |
 | **Reportes ITIL** | Resumen automático (volumen, SLA, MTTR) en la zona horaria y días hábiles del cliente. |
 | **Facturación** | Ciclo SaaS con MercadoPago: cobro, dunning, gracia y suspensión. |
 | **Tareas del equipo (Planka)** | Mantiene el tablero Kanban del equipo 100% actualizado desde WhatsApp. |
@@ -75,6 +75,15 @@ jarvis-cloud/                 (raíz)
 - **Coordinación → En espera**: si el técnico pide **coordinar/confirmar** algo con el cliente (aún redactado
   impersonal, "se deberá coordinar la reubicación"), ITHOS deja el ticket **En espera** (frena el SLA), le pide
   confirmación al cliente y avisa por WhatsApp.
+- **Espera esperando al cliente**: mientras el ticket espera esa confirmación, ITHOS manda **un recordatorio
+  por día hábil** (desde la hora de apertura, zona del cliente). Cuando el cliente responde, el ticket vuelve
+  a **En curso** solo. A los **5 días hábiles sin respuesta** avisa al **técnico asignado** (nota interna
+  privada + WhatsApp @mencionándolo) para que decida: contactarlo, posponerlo o cerrarlo. Un ticket
+  **pospuesto** (reactivación agendada) no recibe recordatorios ni escalada.
+- **@mención al asignado**: todos los avisos de WhatsApp de un ticket y la alerta de **SLA en riesgo/vencido**
+  @mencionan **sólo al técnico asignado** (config `tecnicos` por cliente: nombre, id del sistema de tickets y
+  teléfonos). La alerta de SLA va **agrupada por técnico**; los canales sin menciones reciben el mismo aviso con
+  el nombre del asignado.
 - **Comentarios internos (privados)**: ITHOS deja notas `is_private` (solo técnicos) cuando el ticket viene mal
   cargado, o pide al técnico que documente el **procedimiento paso a paso** si resolvió sin explicar cómo
   (alimenta la base de conocimiento).

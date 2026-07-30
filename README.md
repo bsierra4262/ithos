@@ -55,9 +55,9 @@ otro.
 ## Características
 
 - **Portero por voz.** Anuncia los accesos leídos del control biométrico (IVMS / HikCentral / BioStar 2 / ZKTeco / Honeywell) por los parlantes, con voz natural y verbatim (TTS dedicado de Gemini, *Charon*).
-- **Mesa de ayuda con IA.** Clasifica, prioriza, asigna, responde y gestiona el ciclo de vida de los tickets. Respeta la intervención manual del técnico, deja notas internas privadas, pide procedimientos para la base de conocimiento y gestiona el SLA por calendario y horario.
+- **Mesa de ayuda con IA.** Clasifica, prioriza, asigna, responde y gestiona el ciclo de vida de los tickets. Respeta la intervención manual del técnico, deja notas internas privadas, pide procedimientos para la base de conocimiento y gestiona el SLA por calendario y horario. Si el ticket espera una confirmación del cliente, recuerda una vez por día hábil y escala al técnico asignado a los 5 días hábiles sin respuesta.
 - **Cadena multi-IA.** Una IA por consulta; salta a la siguiente sólo al agotarse (Gemini → Cerebras → Groq, configurable). Aviso al cliente cuando una está por agotarse o cambia. Opción **100 % local** (Ollama) para datos que no salen de la red del cliente.
-- **WhatsApp conversacional.** Escucha el grupo del cliente (activación por «ithos», texto o audio) y responde o ejecuta acciones reales sobre los tickets. Multicanal: WhatsApp oficial y no oficial, Telegram, Email y Matrix.
+- **WhatsApp conversacional.** Escucha el grupo del cliente (wake-word «ithos» o «Hey ITHOS», en texto o audio) y responde o ejecuta acciones reales sobre los tickets, @mencionando al técnico asignado cuando avisa algo suyo. Multicanal: WhatsApp oficial y no oficial, Telegram, Email y Matrix.
 - **Tareas del equipo (Planka).** Mantiene el tablero Kanban al día desde WhatsApp: resumen diario, seguimiento horario, alta y movimiento de tarjetas por voz o texto, y **rollover mensual/semanal automático** con arrastre de lo pendiente.
 - **Reportes ITIL.** Resumen automático (volumen, SLA, MTTR) por período cerrado, en la zona horaria y los días hábiles del cliente. Lecturas masivas, sin consultas por ítem.
 - **Facturación SaaS (MercadoPago).** Suscripción recurrente por cliente, precio en USD cobrado en pesos al dólar oficial, *gross-up* de comisión, *dunning*, gracia y suspensión que congela la IA hasta regularizar.

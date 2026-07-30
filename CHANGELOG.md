@@ -7,6 +7,25 @@ y el versionado, [SemVer](https://semver.org/lang/es/).
 ## [Unreleased]
 
 ### Added
+- **Helpdesk — espera "esperando la confirmación del cliente para avanzar".** Cuando el ticket queda
+  En espera porque el cliente tiene que confirmar o coordinar algo, ITHOS le manda **un recordatorio
+  por día hábil** (desde la hora de apertura, zona del cliente) hasta que responda; al responder, el
+  ticket vuelve a **En curso** solo. A los **5 días hábiles sin respuesta** avisa al **técnico
+  asignado** (nota interna privada + WhatsApp) para que decida: contactarlo, posponerlo o cerrarlo.
+  El SLA queda pausado todo ese tiempo (estado En espera) y un ticket **pospuesto** no recibe nada.
+- **Helpdesk — @mención al técnico asignado.** Los avisos de WhatsApp de un ticket (triage, respuesta
+  del cliente, cierre, reapertura, escalada) y la alerta de **SLA en riesgo/vencido** @mencionan
+  **sólo al asignado**, por su teléfono (config `tecnicos` del cliente). La alerta de SLA se manda
+  **agrupada por técnico** (cada uno ve lo suyo). Los canales sin menciones (Telegram, email, Teams,
+  Element) reciben el mismo aviso con el nombre del asignado, y el WhatsApp oficial (Cloud API) se lo
+  manda directo a su número: el aviso nunca se pierde. Vale para cualquier sistema de tickets: el
+  asignado se resuelve por id de GLPI, id/login/email o nombre según el sistema.
+- **Wake-word "Hey ITHOS"** (`ITHOS/comun/wake.py`, una sola fuente de verdad para el texto del
+  Gestor y el micrófono del agente): activa con la marca sola o llamándolo ("Hey ITHOS", "oye ithos",
+  "ok ithos"), en español o inglés, en mayúsculas o minúsculas, con tildes o puntuación, tolerando
+  que Vosk **parta** la palabra ("hey it hos") o la transcriba con pronunciación inglesa
+  ("hey ethos"). Aditivo: todo lo que activaba antes sigue activando, y la charla normal del grupo
+  ("hola a todos") no activa.
 - **Portero — saludo de entrada coherente con la hora.** En los dispositivos de ENTRADA el saludo
   arranca con «Buenos días / Buenas tardes / Buenas noches» según la hora de la zona del cliente. La
   salida mantiene su despedida. El dedup «una vez por día por persona» ahora **persiste** en disco, así
@@ -35,6 +54,13 @@ y el versionado, [SemVer](https://semver.org/lang/es/).
   el SLA por calendario y horario de atención (Lun–Vie 09–18).
 
 ### Fixed
+- **El token del usuario de ITHOS en GLPI tenía el nombre viejo en la configuración**
+  (`glpi_jarvis_token`), así que el Gestor no lo encontraba y arrancaba **sin triage**, en silencio.
+  Se renombró a `glpi_ithos_token` (mismo token) en la config y el ejemplo, y el registro de
+  clientes acepta el nombre viejo como compatibilidad para no volver a dejar el triage apagado.
+- **Los recordatorios al cliente podían salir fuera de horario.** El recordatorio de la espera se
+  manda ahora sólo **dentro del horario de atención del cliente** (Lun-Vie 09:00-18:00 por defecto,
+  en su zona): nunca de noche ni un fin de semana.
 - **Helpdesk — acciones sobre "los tickets asignados a X" tocaban tickets ajenos.** «Poné en espera
   los tickets asignados a Brian Sierra» dejaba también en espera un ticket donde Brian sólo era
   observador. Ahora la acción `poner_en_espera_asignados` filtra **en código** por el campo «Asignado a»

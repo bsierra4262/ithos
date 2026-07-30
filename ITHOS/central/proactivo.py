@@ -4,6 +4,10 @@
 ITHOS PROACTIVO por cliente: vigila los tickets ABIERTOS y avisa SOLO cuando algo
 necesita atención, sin que nadie pregunte. Hoy: alerta de SLA por vencer / vencido.
 
+El aviso se manda AGRUPADO POR TÉCNICO ASIGNADO y lo @MENCIONA (WhatsApp) para que le suene a él
+y no al resto: cada uno ve sus tickets. Los tickets cuyo asignado no está en el bloque `tecnicos`
+del cliente van en un aviso normal al grupo (sin @mención).
+
 Funciona con CUALQUIER sistema de tickets (habla con el adaptador comun/tickets.py):
 GLPI ya lo calcula por su time_to_resolve; los demás se suman al completar su
 integración. TODO por cliente (config aislada) y por SUS canales configurados.
@@ -45,17 +49,38 @@ def _guardar(cliente, st):
         pass
 
 
-def _texto_alerta(en_riesgo):
+def _texto_alerta(en_riesgo, para=""):
     hoy = datetime.now().strftime("%H:%M")
     venc = [t for t in en_riesgo if t.get("vencido")]
     porv = [t for t in en_riesgo if not t.get("vencido")]
-    lineas = [f"⚠️ *SLA en riesgo* — {hoy}"]
+    lineas = [f"⚠️ *SLA en riesgo* — {hoy}" + (f" · asignados a {para}" if para else "")]
     for t in venc:
         lineas.append(f"🔴 #{t['id']} {str(t.get('asunto'))[:45]} — *SLA VENCIDO*")
     for t in porv:
         lineas.append(f"🟠 #{t['id']} {str(t.get('asunto'))[:45]} — vence en "
                       f"{t.get('faltan_horas')} h")
     return "\n".join(lineas)
+
+
+def _por_tecnico(conf, tickets):
+    """Agrupa los tickets en riesgo por TÉCNICO ASIGNADO (mapeo 'tecnicos' del cliente):
+    [(nombres, telefonos, [tickets])]. Los tickets SIN asignado configurado van al final con
+    telefonos=[] -> aviso normal al grupo, sin @mención. Así se @menciona SOLO al asignado."""
+    from comun import tickets as T
+    grupos, sueltos = {}, []
+    for t in tickets:
+        tels = T.telefonos_asignados(conf, t.get("asignados") or [])
+        if not tels:
+            sueltos.append(t)
+            continue
+        clave = ",".join(tels)
+        g = grupos.setdefault(clave, {"tels": tels, "nombres": T.nombres_asignados(
+            conf, t.get("asignados") or []), "tickets": []})
+        g["tickets"].append(t)
+    salida = [(", ".join(g["nombres"]), g["tels"], g["tickets"]) for g in grupos.values()]
+    if sueltos:
+        salida.append(("", [], sueltos))
+    return salida
 
 
 async def vigilar_sla(conf, notif, stop=None):
@@ -84,7 +109,14 @@ async def vigilar_sla(conf, notif, stop=None):
                 nuevos = [t for t in en_riesgo if t["id"] not in st["avisados"]]
                 if nuevos:
                     if notif:
-                        await asyncio.to_thread(notif.enviar, _texto_alerta(nuevos))
+                        # Un aviso POR TÉCNICO ASIGNADO, @mencionándolo (WhatsApp) para que le
+                        # SUENE a él; los tickets sin asignado configurado van en un aviso normal.
+                        for nombres, tels, ts in _por_tecnico(conf, nuevos):
+                            texto = _texto_alerta(ts, nombres)
+                            if tels and hasattr(notif, "enviar_mencion"):
+                                await asyncio.to_thread(notif.enviar_mencion, texto, tels)
+                            else:
+                                await asyncio.to_thread(notif.enviar, texto)
                     st["avisados"].extend(t["id"] for t in nuevos)
                     _guardar(cliente, st)
                     log.info("Proactivo: avisé %d tickets SLA a %s.", len(nuevos), cliente)

@@ -300,6 +300,19 @@ dólar oficial del BNA; INTELLIHELP es dueño y NO se cobra.
 - CANALES conversacionales (comun/canales.py): además de WhatsApp, ITHOS escucha y responde
   en Telegram (Bot API), Email (IMAP/SMTP) y WhatsApp oficial (webhook /webhook/whatsapp).
   Misma mención, mismo remitente, mismo gateo. Vale para los DOS modos de WhatsApp.
+- WAKE-WORD (comun/wake.py, ÚNICA fuente de verdad del texto y del micrófono): activa con la
+  marca sola ("ithos, ...") o llamándolo ("Hey ITHOS", "oye ithos", "ok ithos"), en español o
+  inglés, may/min, con tildes o puntuación, y tolera que Vosk PARTA la palabra ("hey it hos") o
+  la transcriba con pronunciación inglesa ("hey ethos"). La charla normal del grupo no activa.
+- @MENCIÓN AL TÉCNICO ASIGNADO: los avisos de un ticket y la alerta de SLA en riesgo/vencido
+  @mencionan SOLO al asignado, por su teléfono del bloque `tecnicos` del cliente (mapeo por id
+  de GLPI, id/login/email o nombre según el sistema de tickets). La alerta de SLA va agrupada
+  por técnico; los canales sin menciones reciben el mismo aviso con el nombre del asignado.
+- ESPERA "esperando la confirmación del cliente" (central/triage.py): mientras el ticket está En
+  espera de que el cliente confirme/coordine, ITHOS recuerda UNA vez por DÍA HÁBIL (desde la
+  hora de apertura, zona del cliente); si el cliente responde, vuelve a En curso solo; a los 5
+  días hábiles sin respuesta avisa al TÉCNICO ASIGNADO (nota interna privada + WhatsApp). Un
+  ticket POSPUESTO (reactivación agendada) no recibe recordatorios ni escalada.
 - CONOCIMIENTO PROPIETARIO + autorización (comun/conocimiento.py): este contexto solo se
   revela al DUEÑO, identificado por sus 2 números (o email/usuario), SOLO por identidad
   (nunca por canal ni IsFromMe; un cliente con su propia sesión nunca es dueño). Para el

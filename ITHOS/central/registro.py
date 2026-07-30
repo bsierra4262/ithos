@@ -13,6 +13,24 @@ import threading
 
 BASE = os.path.dirname(os.path.abspath(__file__))
 
+# La marca es ITHOS: el token del usuario que ESCRIBE en el sistema de tickets se llama
+# `glpi_ithos_token`. Las configuraciones viejas lo tenían con el nombre anterior y, al no
+# encontrarlo, el Gestor arrancaba SIN triage (silenciosamente). Se acepta el nombre viejo como
+# COMPATIBILIDAD al leer (no se reescribe el archivo del cliente).
+_COMPAT_TOKEN = {"glpi_ithos_token": "glpi_jarvis_token"}
+
+
+def _normalizar(cliente):
+    """Compatibilidad de nombres de config, para que un clientes.json viejo funcione igual."""
+    for bloque in ("integrador_glpi", "tickets"):
+        cfg = cliente.get(bloque)
+        if not isinstance(cfg, dict):
+            continue
+        for nuevo, viejo in _COMPAT_TOKEN.items():
+            if not cfg.get(nuevo) and cfg.get(viejo):
+                cfg[nuevo] = cfg[viejo]
+    return cliente
+
 
 class Registro:
     def __init__(self, ruta=None):
@@ -33,7 +51,7 @@ class Registro:
                     data = CIF.descifrar_datos(data)
                 except Exception:  # noqa: BLE001
                     pass
-                self._por_key = {c["api_key"]: c
+                self._por_key = {c["api_key"]: _normalizar(c)
                                  for c in data.get("clientes", [])
                                  if c.get("activo", True)}
             except Exception:  # noqa: BLE001

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Escucha por palabra clave "ITHOS" (como "OK Google") en el micrófono del cliente. Al detectar
-"ITHOS", graba el pedido, lo manda al central (evento consulta_voz) y el central responde/resuelve
+Escucha por palabra clave "ITHOS" / "Hey ITHOS" (como "OK Google") en el micrófono del cliente. Al
+detectarla, graba el pedido, lo manda al central (evento consulta_voz) y el central responde/resuelve
 (la respuesta vuelve como voz). El AUDIO también sirve para el voz-id (que ITHOS verifique que sos vos
 para los comandos de administrador; el perfil de voz ya se entrenó con tus audios de WhatsApp).
 
@@ -89,14 +89,19 @@ def _wav_b64(frames_int16, sr):
 
 
 def _menciona(texto, palabra):
-    """Detección DIFUSA de la palabra de activación (tolera 'itos/itus/ithus' de la mala
-    pronunciación), igual criterio que WhatsApp. Con fallback simple si no está el módulo."""
+    """Detección del wake-word: "ITHOS" solo o "Hey ITHOS" (español/inglés, may/min), tolerando la
+    mala transcripción de Vosk ('itos/itus/ithus/izos') y la palabra PARTIDA ('hey it hos'). Mismo
+    criterio EXACTO que WhatsApp (comun/wake.py). Fallback simple si no está el módulo."""
     try:
-        from comun.whatsapp import menciona
+        import sys
+        import os
+        sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+        from comun.wake import menciona
         return menciona(texto, palabra)
     except Exception:  # noqa: BLE001
         t = " " + (texto or "").lower() + " "
-        return any(v in t for v in (f" {palabra} ", " itos ", " itus ", " ithus ", " izos "))
+        return any(v in t for v in (f" {palabra} ", " itos ", " itus ", " ithus ", " izos ",
+                                    " it hos ", " ethos ", " aitos "))
 
 
 def _cargar_modelo_vosk(cfg):
@@ -160,7 +165,8 @@ def _vigilar_vosk(cfg, enviar_evento, stop=None):
 
     stream, dev = _abrir()
     log.info("[MIC] dispositivo de entrada: '%s'", dev)
-    log.info("Escucha por voz OPEN-SOURCE (Vosk) activa. Decí '%s' y después tu pedido.", palabra)
+    log.info("Escucha por voz OPEN-SOURCE (Vosk) activa. Decí '%s' o 'Hey %s' y después tu pedido.",
+             palabra, palabra.upper())
     _rev = time.time()
     try:
         while stop is None or not stop.is_set():

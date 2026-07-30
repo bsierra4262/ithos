@@ -24,7 +24,7 @@
         "glpi_url": "https://EL-GLPI-DEL-CLIENTE/apirest.php",
         "glpi_app_token": "APP-TOKEN-DEL-CLIENTE-API-EN-GLPI",
         "glpi_user_token": "USER-TOKEN-DE-LECTURA",
-        "glpi_jarvis_token": "USER-TOKEN-DEL-USUARIO-JARVIS",
+        "glpi_ithos_token": "USER-TOKEN-DEL-USUARIO-ITHOS",
         "entity_id": 12,
         "poll_interval": 5,
         "_nota": "ubicacion='central' si el GLPI está en la nube; 'agente' si está en la red interna del cliente (privado)."

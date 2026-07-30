@@ -268,6 +268,22 @@ class Notificadores:
                 pass
         return ok
 
+    def enviar_mencion(self, texto, telefonos):
+        """Aviso @MENCIONANDO a `telefonos` (el TÉCNICO ASIGNADO) en los canales que lo soportan
+        (WhatsApp). Los canales que NO tienen menciones (Telegram/email/Teams/Element) reciben el
+        MISMO texto sin @ — el aviso nunca se pierde y el texto ya dice a quién está asignado.
+        Sin teléfonos, es un envío normal."""
+        if not telefonos:
+            return self.enviar(texto)
+        ok = False
+        for c in self.canales:
+            fn = getattr(c, "enviar_mencion", None)
+            try:
+                ok = (fn(texto, telefonos) if fn else c.enviar(texto)) or ok
+            except Exception:  # noqa: BLE001
+                pass
+        return ok
+
     def enviar_documento(self, nombre, datos, mime="application/pdf", caption=""):
         """Manda un archivo (PDF/CSV) por los canales que lo soporten (los que no, ignoran)."""
         ok = False

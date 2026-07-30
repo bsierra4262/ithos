@@ -25,6 +25,7 @@ _ALIAS = {
     "whatsapp": "comun/whatsapp.py", "canales": "comun/canales.py",
     "vincular whatsapp": "comun/whatsapp_link.py", "qr whatsapp": "comun/whatsapp_link.py",
     "conocimiento": "comun/conocimiento.py", "voz id": "comun/vozid.py",
+    "wake word": "comun/wake.py", "palabra clave": "comun/wake.py",
     "audio": "comun/audio.py", "facturacion": "comun/facturacion.py",
 }
 

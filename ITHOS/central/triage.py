@@ -232,8 +232,17 @@ class Triage:
                       else "EN ESPERA (fuera de horario)" if fuera else "EN CURSO")
         log.info("Triage OK #%s: cat=%s prio=%s -> %s (%s)", tid, a.get("categoria"),
                  prioridad, resp_login, estado_txt)
+        # QUIÉN quedó ASIGNADO de verdad: el técnico humano que ya estaba (asignación manual, que se
+        # respeta) o el responsable que puso ITHOS. Se devuelve para @MENCIONARLO en WhatsApp (solo
+        # a él) y para que el aviso diga el nombre correcto, no siempre el del default.
+        asignados_finales = sorted((asignados & TECNICOS_HUMANOS) or {resp_id})
+        from comun import tickets as TK
+        nombres = (TK.nombres_asignados(self.cfg_glpi, asignados_finales)
+                   or _nombres_por_id(asignados_finales) or [NOMBRES.get(resp_login, resp_login)])
         return {"prioridad": prioridad, "nivel": nivel, "responsable_login": resp_login,
-                "responsable_nombre": NOMBRES.get(resp_login, resp_login),
+                "responsable_nombre": ", ".join(nombres),
+                "asignados": asignados_finales,
+                "telefonos": TK.telefonos_asignados(self.cfg_glpi, asignados_finales),
                 "categoria": a.get("categoria"), "necesita_info": necesita,
                 "fuera_horario": fuera}
 
@@ -320,6 +329,26 @@ class Triage:
             return False
         finally:
             self.cli.cerrar()
+
+    def recordar_coordinacion(self, tid):
+        """El ticket está EN ESPERA porque el CLIENTE tiene que confirmar/coordinar algo para que
+        podamos AVANZAR (no es un 'esperando datos' cualquiera): recordatorio DIARIO (días hábiles,
+        a la hora de apertura) hasta que responda. Es un recordatorio LEGÍTIMO: nosotros le pedimos
+        la confirmación y el trabajo no avanza sin ella. Mantiene el ticket EN ESPERA (SLA pausado)."""
+        try:
+            self.cli.abrir()
+            self._followup(tid, _texto_recordatorio_coordinacion())
+            return True
+        except Exception:  # noqa: BLE001
+            return False
+        finally:
+            self.cli.cerrar()
+
+    def avisar_tecnico_sin_respuesta(self, tid, dias):
+        """Pasaron `dias` HÁBILES y el cliente nunca contestó el pedido de coordinación: se le avisa
+        al TÉCNICO ASIGNADO por NOTA INTERNA (privada, el cliente NO la ve) para que decida (llamarlo,
+        posponerlo o cerrarlo). El aviso por WhatsApp @mencionándolo lo manda el ciclo."""
+        return self.nota_interna(tid, _nota_escalada_coordinacion(dias))
 
     def pedir_confirmacion(self, tid):
         """Ticket resuelto: ITHOS pide al cliente que confirme antes de cerrar."""
@@ -521,6 +550,30 @@ _MARCA_CONFIRMACION = "su solicitud fue resuelta"
 _MARCA_RECORDATORIO = "le recordamos que su ticket figura como resuelto"
 _MARCA_COORDINACION = "a la espera de su respuesta"   # marcador estable del pedido de COORDINACIÓN
 _MARCA_PROCEDIMIENTO = "documentá paso a paso"   # marcador de la nota interna que pide el procedimiento
+# Espera "esperando la CONFIRMACIÓN del cliente para AVANZAR" (distinta de posponer): recordatorio
+# diario en días hábiles + escalada al técnico asignado si el cliente nunca contesta.
+_MARCA_RECORDATORIO_COORD = "seguimos esperando su confirmación"
+_MARCA_ESCALADA_COORD = "sigue sin respuesta del cliente"
+_DIAS_HABILES_ESCALADA = 5        # días HÁBILES sin respuesta -> avisar al TÉCNICO ASIGNADO
+# El recordatorio al cliente sale UNO POR DÍA y SIEMPRE dentro del horario de atención del cliente
+# (default Lun-Vie 09:00-18:00 en SU zona, `en_horario_atencion`): nunca de noche ni un fin de semana.
+
+
+def _texto_recordatorio_coordinacion():
+    """Recordatorio PÚBLICO al cliente. Incluye a propósito el marcador de COORDINACIÓN
+    (_MARCA_COORDINACION) para que el propio ciclo lo reconozca como el último aviso de la espera,
+    y el de RECORDATORIO para poder distinguirlo del pedido original en el rastro del ticket."""
+    return ("Le recordamos que su ticket está a la espera de su confirmación para poder avanzar. "
+            "Cuando pueda, respóndanos para coordinar y continuamos con la gestión. "
+            f"{_MARCA_RECORDATORIO_COORD.capitalize()}. Quedamos a la espera de su respuesta. "
+            "Soporte ITH.")
+
+
+def _nota_escalada_coordinacion(dias):
+    return ("Nota interna (el cliente no la ve): hace " + str(dias) + " días hábiles que este ticket "
+            "está EN ESPERA y sigue sin respuesta del cliente al pedido de coordinación/confirmación. "
+            "Le mandamos un recordatorio por día hábil. Conviene contactarlo por otra vía (teléfono), "
+            "posponerlo con fecha o cerrarlo si ya no corresponde.")
 _NOTA_PEDIR_PROCEDIMIENTO = (
     "Nota interna (el cliente no la ve): para nuestra base de conocimiento, por favor documentá "
     "PASO A PASO qué hiciste para resolver este ticket (el procedimiento), no solo que quedó resuelto. "
@@ -555,6 +608,89 @@ def _coordinacion_despues_de(fu, tec_fu_id):
     se pierde), pero SÍ se puede volver a pedir si el técnico deja un comentario NUEVO más adelante.
     Lee la verdad del propio GLPI, no la memoria."""
     return any(_es_pedido_coordinacion(f) and int(f.get("id") or 0) > int(tec_fu_id or 0) for f in fu)
+
+
+def _ultimo_id_cliente(fu):
+    """Mayor id de followup de un NO técnico = la última vez que HABLÓ el cliente (0 si nunca)."""
+    return max((int(f.get("id") or 0) for f in fu
+                if int(f.get("users_id") or 0) not in TECNICOS), default=0)
+
+
+def _coordinacion_pendiente(fu):
+    """(fecha del PRIMER pedido, fecha del ÚLTIMO aviso) si el ticket está esperando que el CLIENTE
+    confirme/coordine algo para avanzar y TODAVÍA no contestó. None si no aplica.
+    Pendiente = hay un pedido de coordinación de ITHOS POSTERIOR a lo último que dijo el cliente. Se
+    lee del propio GLPI (no de la memoria) -> sobrevive reinicios y no manda recordatorios falsos:
+    si el cliente ya respondió, el ciclo lo pasa a EN CURSO y esto deja de dar True."""
+    avisos = [f for f in fu if _es_pedido_coordinacion(f)]
+    if not avisos:
+        return None
+    if max(int(f.get("id") or 0) for f in avisos) <= _ultimo_id_cliente(fu):
+        return None                          # el cliente ya contestó después del pedido
+    fechas = sorted(d for d in (_parse_fecha(f.get("date_creation") or f.get("date"))
+                                for f in avisos) if d)
+    if not fechas:
+        return None
+    return fechas[0], fechas[-1]
+
+
+def _ya_escalo_coordinacion(fu):
+    """True si ITHOS ya avisó al técnico (nota interna) que el cliente no responde. Lee GLPI, no la
+    memoria -> no se repite la escalada tras un reinicio."""
+    return any(int(f.get("users_id") or 0) in TECNICOS
+               and _MARCA_ESCALADA_COORD in str(f.get("content", "")).lower() for f in fu)
+
+
+def es_dia_habil(cfg, dt):
+    """True si `dt` cae en un día de atención del cliente (default Lun-Vie)."""
+    h = cfg.get("horario_atencion") or _HORARIO_DEFAULT
+    return dt.weekday() in h.get("dias", _HORARIO_DEFAULT["dias"])
+
+
+def dias_habiles_entre(cfg, desde, hasta):
+    """Días HÁBILES transcurridos entre dos fechas (sin contar el día de `desde`, contando el de
+    `hasta`). Sirve para 'a los 5 días hábiles sin respuesta'. 0 si `hasta` <= `desde`."""
+    if not desde or not hasta or hasta <= desde:
+        return 0
+    d, fin, n = desde.date(), hasta.date(), 0
+    while d < fin:
+        d += timedelta(days=1)
+        if es_dia_habil(cfg, d):
+            n += 1
+    return n
+
+
+def _ahora_local(cfg):
+    """AHORA en la zona del cliente, SIN tzinfo, para comparar con las fechas de GLPI (naive)."""
+    return _ahora_zona(cfg).replace(tzinfo=None)
+
+
+def _esta_pospuesto(cfg, tid):
+    """True si el ticket tiene una REACTIVACIÓN programada (lo pospusieron a un día/hora): entonces
+    NO se le recuerda nada al cliente hasta esa fecha (el técnico decidió esperar)."""
+    try:
+        from comun import agenda
+        cliente = cfg.get("nombre_cliente") or "cliente"
+        return any(str(x.get("tid")) == str(tid) for x in agenda.pendientes(cliente))
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def _asignados_humanos(cliente, tid):
+    """user-ids de los TÉCNICOS HUMANOS asignados ('Asignado a', Ticket_User type=2), sin ITHOS."""
+    try:
+        us = cliente.request(f"/Ticket/{tid}/Ticket_User")
+        return sorted({int(u.get("users_id") or 0) for u in us
+                       if isinstance(u, dict) and int(u.get("type") or 0) == 2} - {0, ITHOS_ID})
+    except Exception:  # noqa: BLE001
+        return []
+
+
+def _nombres_por_id(ids):
+    """Nombres de los técnicos por su user-id de GLPI, como respaldo si el cliente no configuró
+    el bloque 'tecnicos' (mapeo histórico de SRT/ITH)."""
+    por_id = {uid: NOMBRES.get(login, login) for login, uid in RESPONSABLES.items()}
+    return [por_id[i] for i in ids if i in por_id]
 
 
 def _ya_pidio_procedimiento(fu):
@@ -637,16 +773,41 @@ def _followups_por_ticket(cliente, tam=2000):
 def gestionar_ciclo(cliente, triage, entidad, estado):
     """Sync (se corre en thread). Gestiona el ciclo de vida de los tickets abiertos:
       - status 4 (EN ESPERA de info): el cliente responde -> EN CURSO; si no, recordatorio.
+      - status 4 esperando que el cliente CONFIRME/COORDINE para avanzar: recordatorio DIARIO en
+        días hábiles y, a los 5 días hábiles sin respuesta, aviso al TÉCNICO ASIGNADO.
       - status 5 (RESUELTO): ITHOS pide confirmación; si el cliente confirma -> CERRADO;
         si dice que sigue -> REABIERTO; si no responde -> recordatorio de confirmación.
-    NUNCA cierra sin confirmación real del cliente. Devuelve anuncios {texto, wa}.
+    NUNCA cierra sin confirmación real del cliente. Devuelve anuncios {texto, wa, tel}: `tel` son
+    los teléfonos del TÉCNICO ASIGNADO para @mencionarlo en WhatsApp (solo a él).
     Baseline = último followup de un técnico; un followup posterior de un NO técnico
     es una respuesta del cliente (robusto ante reinicios)."""
     anuncios = []
+    cfg = getattr(triage, "cfg_glpi", None) or {}
     try:
         tickets = G.de_entidad(cliente.tickets_recientes(40), entidad)
     except Exception:  # noqa: BLE001
         return anuncios
+
+    _cache_asig = {}
+
+    def asignado(tid):
+        """(telefonos, nombres) del TÉCNICO ASIGNADO al ticket, para @mencionarlo SOLO a él. Se
+        resuelve una vez por ticket y SOLO cuando hay algo que anunciar (nada de N+1 por ciclo)."""
+        tid = int(tid)
+        if tid not in _cache_asig:
+            from comun import tickets as TK
+            ids = _asignados_humanos(cliente, tid)
+            _cache_asig[tid] = (TK.telefonos_asignados(cfg, ids),
+                                TK.nombres_asignados(cfg, ids) or _nombres_por_id(ids))
+        return _cache_asig[tid]
+
+    def anunciar(tid, texto, wa):
+        """Suma un anuncio del ticket con la @mención al asignado (y su nombre en el texto, para los
+        canales sin menciones: Telegram/email/Teams)."""
+        tels, nombres = asignado(tid)
+        if nombres:
+            wa = f"{wa}\n👤 Asignado a: {', '.join(nombres)}"
+        anuncios.append({"texto": texto, "wa": wa, "tel": tels})
 
     # Con MUCHOS tickets a revisar (abiertos + resueltos), traer TODOS los followups en UNA lectura
     # masiva evita el N+1 (una request por ticket). Con pocos (caso común) el modo por-ticket ya es
@@ -689,11 +850,12 @@ def gestionar_ciclo(cliente, triage, entidad, estado):
                     # confirmación repetida). Pedimos UNA sola confirmación al cliente.
                     if triage.marcar_resuelto(t["id"]) and triage.pedir_confirmacion(t["id"]):
                         st["confirm_pedido"] = True
-                        anuncios.append({
-                            "texto": f"El técnico resolvió el ticket número {t['id']}. Lo marqué "
-                                     "resuelto y le pedí al cliente que confirme para cerrarlo.",
-                            "wa": f"✅ *Ticket #{t['id']}* — resuelto por el técnico. Pedí "
-                                  "confirmación al cliente para cerrarlo."})
+                        anunciar(
+                            t["id"],
+                            f"El técnico resolvió el ticket número {t['id']}. Lo marqué "
+                            "resuelto y le pedí al cliente que confirme para cerrarlo.",
+                            f"✅ *Ticket #{t['id']}* — resuelto por el técnico. Pedí "
+                            "confirmación al cliente para cerrarlo.")
                     continue                  # ya lo procesamos en este ciclo
                 # ¿El técnico PIDE COORDINAR/CONFIRMAR algo con el cliente (no es una solución)? -> lo
                 # dejamos EN ESPERA de la respuesta del cliente y le transmitimos el pedido para que
@@ -706,25 +868,55 @@ def gestionar_ciclo(cliente, triage, entidad, estado):
                 if (status != 4 and not _coordinacion_despues_de(fu, int(ult["id"]))
                         and triage.tecnico_pide_confirmacion(cont)):
                     if triage.poner_en_espera_pedido(t["id"], cont):
-                        anuncios.append({
-                            "texto": f"En el ticket número {t['id']} el técnico pidió coordinar con el "
-                                     "cliente. Lo dejé en espera y le pedí que confirme para avanzar.",
-                            "wa": f"⏳ *Ticket #{t['id']}* — el técnico necesita coordinar/confirmar con "
-                                  "el cliente. En ESPERA de su respuesta."})
+                        anunciar(
+                            t["id"],
+                            f"En el ticket número {t['id']} el técnico pidió coordinar con el "
+                            "cliente. Lo dejé en espera y le pedí que confirme para avanzar.",
+                            f"⏳ *Ticket #{t['id']}* — el técnico necesita coordinar/confirmar con "
+                            "el cliente. En ESPERA de su respuesta.")
                     continue                  # ya lo procesamos en este ciclo
 
-        if status == 4:                       # EN ESPERA: solo detectamos si el cliente respondió
-            if nuevos:
+        if status == 4:                       # EN ESPERA
+            if nuevos:                        # el cliente respondió -> EN CURSO
                 autor = _nombre_usuario(cliente, nuevos[-1].get("users_id"))
                 if triage.poner_en_curso(t["id"]):
-                    anuncios.append({
-                        "texto": f"El cliente {autor} respondió el ticket número "
-                                 f"{t['id']}. Vuelve a estar en curso.",
-                        "wa": f"🔔 *Ticket #{t['id']}* — {autor} respondió. En curso otra vez."})
+                    anunciar(t["id"],
+                             f"El cliente {autor} respondió el ticket número "
+                             f"{t['id']}. Vuelve a estar en curso.",
+                             f"🔔 *Ticket #{t['id']}* — {autor} respondió. En curso otra vez.")
                 estado.pop(tid, None)
-            # NO se envían recordatorios automáticos al cliente ("esperamos su respuesta"): eran
-            # ruido y muchas veces FALSOS (el ticket puede estar pospuesto o en gestión por soporte,
-            # no a la espera del cliente). Si el cliente responde, arriba lo pasamos a EN CURSO.
+            else:
+                # NO se envían recordatorios automáticos genéricos ("esperamos su respuesta"): eran
+                # ruido y muchas veces FALSOS (el ticket puede estar pospuesto o en gestión por
+                # soporte). ÚNICA excepción, porque acá SÍ le pedimos algo concreto: el ticket está
+                # esperando que el CLIENTE CONFIRME/COORDINE para poder AVANZAR (el SLA queda
+                # pausado en 'En espera'). Entonces sí:
+                #   · un recordatorio POR DÍA HÁBIL, a partir de la hora de apertura, hasta que
+                #     responda (cuando responde, el 'if nuevos' de arriba lo pasa a EN CURSO), y
+                #   · a los 5 días hábiles sin respuesta, aviso al TÉCNICO ASIGNADO (nota interna
+                #     privada + WhatsApp @mencionándolo) para que decida.
+                # Si el ticket está POSPUESTO (reactivación agendada), no se molesta a nadie.
+                coord = _coordinacion_pendiente(fu)
+                if coord and not _esta_pospuesto(cfg, t["id"]):
+                    primero, ultimo = coord
+                    ahora = _ahora_local(cfg)
+                    # El recordatorio sale DENTRO del horario de atención del cliente (default
+                    # Lun-Vie 09:00-18:00, su zona): nunca de noche ni un fin de semana. Uno por día.
+                    if en_horario_atencion(cfg) and ultimo.date() < ahora.date():
+                        if triage.recordar_coordinacion(t["id"]):
+                            log.info("Ciclo #%s: recordatorio diario de confirmación al cliente "
+                                     "(en espera desde %s).", t["id"], primero.date())
+                    habiles = dias_habiles_entre(cfg, primero, ahora)
+                    if (habiles >= _DIAS_HABILES_ESCALADA and not st.get("escalado_coord")
+                            and not _ya_escalo_coordinacion(fu)):
+                        st["escalado_coord"] = True
+                        triage.avisar_tecnico_sin_respuesta(t["id"], habiles)
+                        anunciar(t["id"],
+                                 f"El ticket número {t['id']} lleva {habiles} días hábiles en "
+                                 "espera y el cliente no respondió el pedido de confirmación.",
+                                 f"⌛ *Ticket #{t['id']}* — {habiles} días hábiles sin respuesta del "
+                                 "cliente al pedido de coordinación. Requiere una definición: "
+                                 "contactarlo, posponerlo o cerrarlo.")
 
         elif status == 5:                     # RESUELTO: confirmar antes de cerrar
             # Feedback INTERNO al equipo (para la BASE DE CONOCIMIENTO): si la resolución NO explica el
@@ -751,16 +943,16 @@ def gestionar_ciclo(cliente, triage, entidad, estado):
                     continue  # IA no disponible ahora -> reintentar próximo ciclo
                 if conf:
                     if triage.cerrar(t["id"]):
-                        anuncios.append({
-                            "texto": f"El cliente {autor} confirmó la solución del "
-                                     f"ticket número {t['id']}. Ticket cerrado.",
-                            "wa": f"✅ *Ticket #{t['id']}* — {autor} confirmó. Cerrado."})
+                        anunciar(t["id"],
+                                 f"El cliente {autor} confirmó la solución del "
+                                 f"ticket número {t['id']}. Ticket cerrado.",
+                                 f"✅ *Ticket #{t['id']}* — {autor} confirmó. Cerrado.")
                 else:
                     if triage.reabrir(t["id"]):
-                        anuncios.append({
-                            "texto": f"El cliente {autor} indica que el ticket número "
-                                     f"{t['id']} sigue sin resolverse. Reabierto.",
-                            "wa": f"🔁 *Ticket #{t['id']}* — {autor} reporta que sigue. Reabierto."})
+                        anunciar(t["id"],
+                                 f"El cliente {autor} indica que el ticket número "
+                                 f"{t['id']} sigue sin resolverse. Reabierto.",
+                                 f"🔁 *Ticket #{t['id']}* — {autor} reporta que sigue. Reabierto.")
                 estado.pop(tid, None)
             else:
                 # RESUELTO, confirmación ya pedida y SIN respuesta del cliente todavía: recordatorio

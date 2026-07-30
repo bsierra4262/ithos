@@ -255,7 +255,9 @@ class Zendesk(_BaseTickets):
             faltan = _horas_hasta(brk)
             if faltan is not None and faltan <= horas:
                 out.append({"id": t["id"], "asunto": t.get("subject", ""),
-                            "faltan_horas": round(faltan, 1), "vencido": faltan < 0})
+                            "faltan_horas": round(faltan, 1), "vencido": faltan < 0,
+                            # asignados: para @mencionar SOLO al agente del ticket (mapeo 'tecnicos')
+                            "asignados": [t["assignee_id"]] if t.get("assignee_id") else []})
         return out
 
     def _conteo(self):
@@ -385,7 +387,9 @@ class Freshservice(_BaseTickets):
             faltan = _horas_hasta(t.get("due_by"))
             if faltan is not None and faltan <= horas:
                 out.append({"id": t["id"], "asunto": t.get("subject", ""),
-                            "faltan_horas": round(faltan, 1), "vencido": faltan < 0})
+                            "faltan_horas": round(faltan, 1), "vencido": faltan < 0,
+                            # asignados: para @mencionar SOLO al agente del ticket (mapeo 'tecnicos')
+                            "asignados": [t["responder_id"]] if t.get("responder_id") else []})
         return out
 
     def _conteo(self):
@@ -547,8 +551,13 @@ class Jira(_BaseTickets):
             except Exception:  # noqa: BLE001
                 faltan = _horas_hasta(i["fields"].get("duedate"))
             if faltan is not None and faltan <= horas:
+                asg = i["fields"].get("assignee") or {}
                 out.append({"id": i["key"], "asunto": i["fields"].get("summary", ""),
-                            "faltan_horas": round(faltan, 1), "vencido": faltan < 0})
+                            "faltan_horas": round(faltan, 1), "vencido": faltan < 0,
+                            # asignados: para @mencionar SOLO al usuario del issue (mapeo 'tecnicos')
+                            "asignados": [x for x in (asg.get("accountId"),
+                                                      asg.get("emailAddress"),
+                                                      asg.get("displayName")) if x]})
         return out
 
     def _conteo(self):

@@ -465,25 +465,75 @@ class _GLPI:
 
     def en_riesgo_sla(self, horas=4):
         """Tickets ABIERTOS cuyo SLA (time_to_resolve) vence dentro de `horas` o ya
-        venció y siguen sin resolver. Devuelve [{id,asunto,faltan_horas,vencido}]."""
+        venció y siguen sin resolver. Devuelve [{id,asunto,faltan_horas,vencido,asignados}].
+        `asignados` = user-ids del campo "Asignado a" (para @mencionar SOLO al técnico del ticket)."""
         from datetime import datetime
         c = self._c()
         try:
             ts = self._ent(c.tickets_recientes(60))
+            ahora, out = datetime.now(), []
+            for t in ts:
+                if int(t.get("status", 0)) not in (1, 2, 4):
+                    continue
+                ttr = self._fecha(t.get("time_to_resolve"))
+                if not ttr:
+                    continue
+                faltan = (ttr - ahora).total_seconds() / 3600.0
+                if faltan <= horas:
+                    out.append({"id": t["id"], "asunto": t.get("name", ""),
+                                "faltan_horas": round(faltan, 1), "vencido": faltan < 0})
+            asig = self._asignados_de(c, [t["id"] for t in out])
+            for t in out:
+                t["asignados"] = asig.get(int(t["id"]), [])
         finally:
             c.cerrar()
-        ahora, out = datetime.now(), []
-        for t in ts:
-            if int(t.get("status", 0)) not in (1, 2, 4):
-                continue
-            ttr = self._fecha(t.get("time_to_resolve"))
-            if not ttr:
-                continue
-            faltan = (ttr - ahora).total_seconds() / 3600.0
-            if faltan <= horas:
-                out.append({"id": t["id"], "asunto": t.get("name", ""),
-                            "faltan_horas": round(faltan, 1), "vencido": faltan < 0})
         return out
+
+    def _asignados_de(self, c, tids):
+        """{ticket_id: [user-ids ASIGNADOS]} ("Asignado a" = Ticket_User type=2). Con POCOS tickets
+        pregunta por ticket; con MUCHOS hace UNA sola lectura masiva de Ticket_User (anti N+1).
+        Nunca es fatal: si GLPI no deja leerlo, devuelve vacío y el aviso va sin @mención."""
+        tids = [int(x) for x in (tids or [])]
+        if not tids:
+            return {}
+        if len(tids) > 8:
+            masivo = self._asignados_masivo(c)
+            if masivo is not None:
+                return {tid: masivo.get(tid, []) for tid in tids}
+        out = {}
+        for tid in tids:
+            try:
+                us = c.request(f"/Ticket/{tid}/Ticket_User")
+                out[tid] = sorted({int(u.get("users_id") or 0) for u in us
+                                   if isinstance(u, dict) and int(u.get("type") or 0) == 2}
+                                  - {0, self.ithos_id})
+            except Exception:  # noqa: BLE001
+                out[tid] = []
+        return out
+
+    def _asignados_masivo(self, c, tam=2000):
+        """{ticket_id: [user-ids asignados]} en UNA lectura paginada de /Ticket_User. None si falla
+        (el llamador cae al modo por-ticket: mismo resultado, más lento pero correcto)."""
+        mapa, inicio = {}, 0
+        while True:
+            try:
+                chunk = c.request(f"/Ticket_User?range={inicio}-{inicio + tam - 1}")
+            except Exception:  # noqa: BLE001
+                return None
+            if not isinstance(chunk, list):
+                return None
+            for u in chunk:
+                if not isinstance(u, dict) or int(u.get("type") or 0) != 2:
+                    continue
+                uid = int(u.get("users_id") or 0)
+                if uid and uid != self.ithos_id:
+                    mapa.setdefault(int(u.get("tickets_id") or 0), []).append(uid)
+            if len(chunk) < tam:
+                break
+            inicio += tam
+            if inicio > 1000000:                        # tope de seguridad
+                break
+        return {k: sorted(set(v)) for k, v in mapa.items()}
 
     def sla(self):
         rep, _ = self._reportes()
@@ -567,6 +617,69 @@ class _Nulo:
 
     def sla_texto(self):
         return self._na("reporte de SLA")
+
+
+# ===================================================================== TÉCNICOS DEL CLIENTE
+# Config por cliente: "tecnicos": [{nombre, glpi_id, glpi_login, telefonos:[...]}]. Se usa para
+#   · reconocer "mis tickets" por el número de quien escribe (comun/conversacion.py), y
+#   · @MENCIONAR al TÉCNICO ASIGNADO en los avisos de WhatsApp (tickets y SLA).
+# Vale para CUALQUIER sistema de tickets: el id del técnico se busca por 'glpi_id' (GLPI) o por
+# 'id'/'login'/'email'/'nombre' (Zendesk, Freshservice, Jira, osTicket), así el mismo bloque de
+# config sirve para todos sin tocar código.
+
+
+def tecnicos(cli_cfg):
+    """Lista de técnicos configurados del cliente (sin las entradas de solo-comentario '_nota')."""
+    out = []
+    for t in ((cli_cfg or {}).get("tecnicos") or []):
+        if isinstance(t, dict) and (t.get("nombre") or t.get("glpi_id") or t.get("id")):
+            out.append(t)
+    return out
+
+
+def _claves_tecnico(t):
+    """Todas las formas de identificar a un técnico, normalizadas a str minúscula."""
+    vals = [t.get("glpi_id"), t.get("id"), t.get("glpi_login"), t.get("login"),
+            t.get("email"), t.get("nombre")]
+    return {str(v).strip().lower() for v in vals if v not in (None, "")}
+
+
+def tecnico_por_id(cli_cfg, uid):
+    """El técnico configurado cuyo id/login/email/nombre coincide con `uid` (el asignado que
+    devuelve el sistema de tickets). None si no está configurado."""
+    clave = str(uid if uid is not None else "").strip().lower()
+    if not clave:
+        return None
+    for t in tecnicos(cli_cfg):
+        if clave in _claves_tecnico(t):
+            return t
+    return None
+
+
+def telefonos_asignados(cli_cfg, uids):
+    """Teléfonos (solo dígitos, sin repetir) de los técnicos ASIGNADOS `uids`. Vacío si ninguno
+    está configurado -> el aviso se manda sin @mención (nunca se pierde el aviso)."""
+    import re as _re
+    out = []
+    for uid in (uids or []):
+        t = tecnico_por_id(cli_cfg, uid)
+        for tel in ((t or {}).get("telefonos") or []):
+            n = _re.sub(r"\D", "", str(tel))
+            if n and n not in out:
+                out.append(n)
+    return out
+
+
+def nombres_asignados(cli_cfg, uids):
+    """Nombres de los técnicos asignados (para que el aviso diga a QUIÉN, incluso en los canales
+    que no soportan @mención: Telegram, email, Teams…)."""
+    out = []
+    for uid in (uids or []):
+        t = tecnico_por_id(cli_cfg, uid)
+        nom = (t or {}).get("nombre")
+        if nom and nom not in out:
+            out.append(nom)
+    return out
 
 
 def adaptador(cli_cfg):

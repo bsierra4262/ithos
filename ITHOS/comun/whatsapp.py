@@ -87,19 +87,12 @@ def con_prefijo(texto):
 
 
 def menciona(texto, palabra="ithos"):
-    """True si el texto nombra la palabra de activación *ITHOS*, TOLERANDO mala transcripción del
-    audio ('itos', 'itho', 'izos', 'hitos', 'istos'…). Antes se exigía la palabra EXACTA y por eso
-    a veces (3er audio, etc.) ITHOS no respondía: la transcripción salía apenas distinta. Ahora
-    acepta variantes parecidas. La marca es ITHOS: 'ithos' ya NO activa."""
-    import re
-    import difflib
-    p = (palabra or "ithos").lower()
-    variantes = ("itos", "itho", "izos", "hitos", "istos", "itzos", "ithus", "iros")
-    for w in re.findall(r"[a-záéíóúñ]+", (texto or "").lower()):
-        if p in w or w == p or w in variantes \
-                or difflib.SequenceMatcher(None, w, p).ratio() >= 0.75:
-            return True
-    return False
+    """True si el texto nombra la palabra de activación *ITHOS* o la LLAMA ("Hey ITHOS"), tolerando
+    la mala transcripción del audio ('itos', 'itho', 'izos', 'hitos', 'istos'…), la palabra PARTIDA
+    en dos ('hey it hos') y la pronunciación inglesa ('hey ethos'). La lógica vive en comun/wake.py
+    (única fuente de verdad, compartida con el MICRÓFONO del agente). La marca es ITHOS."""
+    from comun.wake import menciona as _wake_menciona
+    return _wake_menciona(texto, palabra)
 
 
 def _num_de_jid(j):
@@ -161,9 +154,19 @@ class WhatsAppOficial:
             ok = True
         return ok
 
-    def _enviar_texto(self, texto):
+    def enviar_mencion(self, texto, telefonos):
+        """La Cloud API manda a NÚMEROS (no hay grupos ni @menciones): el equivalente de mencionar al
+        TÉCNICO ASIGNADO es mandarle el aviso DIRECTO a su número. Si no se pudo (número no
+        configurado en Meta / fuera de la ventana de 24 h), cae al envío normal a los destinatarios
+        para que el aviso NO se pierda."""
+        nums = [re.sub(r"\D", "", str(t)) for t in (telefonos or []) if t]
+        if nums and self._enviar_texto(texto, destinatarios=nums):
+            return True
+        return self.enviar(texto)
+
+    def _enviar_texto(self, texto, destinatarios=None):
         ok = False
-        for num in self.destinatarios:
+        for num in (destinatarios if destinatarios is not None else self.destinatarios):
             payload = {"messaging_product": "whatsapp", "to": str(num),
                        "type": "text", "text": {"body": con_prefijo(texto)}}
             req = urllib.request.Request(

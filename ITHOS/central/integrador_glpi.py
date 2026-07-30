@@ -44,6 +44,18 @@ async def vigilar(cfg_glpi, enviar_comando, triage=None, wa=None, stop=None,
     async def decir(texto, cachear=False):
         await enviar_comando({"accion": "decir", "texto": texto, "cachear": cachear})
 
+    async def avisar_wa(mensaje, telefonos=None):
+        """Manda el aviso por WhatsApp @MENCIONANDO al TÉCNICO ASIGNADO (solo a él) cuando se sabe
+        su teléfono (config 'tecnicos'). Si el canal no soporta menciones o no hay teléfono, va el
+        aviso normal — nunca se pierde."""
+        if not wa or not mensaje:
+            return
+        fn = getattr(wa, "enviar_mencion", None)
+        if telefonos and fn:
+            await asyncio.to_thread(fn, mensaje, telefonos)
+        else:
+            await asyncio.to_thread(wa.enviar, mensaje)
+
     fallos = 0
     while stop is None or not stop.is_set():
         try:
@@ -66,14 +78,13 @@ async def vigilar(cfg_glpi, enviar_comando, triage=None, wa=None, stop=None,
                     metricas.registrar(nombre_cliente, "ticket")
                     metricas.registrar(nombre_cliente, "anuncio")
                     await decir(G.frase_ticket(t))
-                    if wa:
-                        await asyncio.to_thread(wa.enviar, G.mensaje_ticket(t))
+                    await avisar_wa(G.mensaje_ticket(t))   # recién llega: todavía sin asignado
                 if triage is not None:
                     res = await asyncio.to_thread(triage.procesar, t)
                     if res:
                         await decir(T.frase_triage(res, t))
-                        if wa:
-                            await asyncio.to_thread(wa.enviar, T.mensaje_triage(res, t))
+                        # Ya quedó asignado -> el aviso @menciona al TÉCNICO ASIGNADO (solo a él).
+                        await avisar_wa(T.mensaje_triage(res, t), res.get("telefonos"))
 
             # 3) Seguimiento (respuesta del cliente / recordatorio)
             if triage is not None:
@@ -82,8 +93,7 @@ async def vigilar(cfg_glpi, enviar_comando, triage=None, wa=None, stop=None,
                 for an in anuncios:
                     if an.get("texto"):
                         await decir(an["texto"])
-                    if wa and an.get("wa"):
-                        await asyncio.to_thread(wa.enviar, an["wa"])
+                    await avisar_wa(an.get("wa"), an.get("tel"))
         except Exception as e:  # noqa: BLE001
             fallos += 1
             # No spamear: loguea el 1º error y luego 1 de cada 12 (con el MOTIVO de GLPI en el mensaje).

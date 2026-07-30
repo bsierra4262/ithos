@@ -51,7 +51,7 @@ class WAMostrar:
 
 
 async def main():
-    cfg = next(c for c in json.load(open(os.path.join(BASE, "central", "clientes.json"),
+    cfg = next(c for c in json.load(open(os.path.join(BASE, "ITHOS", "central", "clientes.json"),
                                           encoding="utf-8"))["clientes"]
                if "INTELLIHELP" in c["nombre"])
     gl = dict(cfg["integrador_glpi"])

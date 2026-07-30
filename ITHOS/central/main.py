@@ -624,6 +624,10 @@ async def ws(websocket: WebSocket):
                 gl["nombre_cliente"] = conf.get("nombre", "cliente")
                 if conf.get("horario_atencion"):
                     gl["horario_atencion"] = conf["horario_atencion"]
+                # TÉCNICOS del cliente: para @MENCIONAR por WhatsApp al que quedó ASIGNADO (solo a
+                # él) en los avisos del ticket y en la escalada por falta de respuesta del cliente.
+                if conf.get("tecnicos"):
+                    gl["tecnicos"] = conf["tecnicos"]
                 tri = T.Triage(gl, ia, gestor=gestor)
             tarea = asyncio.create_task(
                 integrador_glpi.vigilar(gl, enviar, triage=tri, wa=wa,
