@@ -17,7 +17,7 @@ Mantiene el tablero Kanban del equipo (Planka) 100% actualizado desde WhatsApp:
     de cada board (para poder asignarlos). Todo con la fecha REAL (nada se dispara antes de tiempo). Julio
     y meses anteriores quedan como están (config 'mes_legacy'). Idempotente y sobrevive reinicios.
 
-El trigger "ithos" ya lo aplica el handler de WhatsApp (comun/whatsapp.py); acá solo llega lo que
+La LLAMADA "Hey ITHOS" ya la exige el handler de WhatsApp (comun/wake.py); acá solo llega lo que
 ya lo mencionó. Reusa el MISMO grupo/conexión de WhatsApp del cliente. La cadencia (cada 1h) fue
 decisión de Brian (ver la memoria del proyecto).
 """

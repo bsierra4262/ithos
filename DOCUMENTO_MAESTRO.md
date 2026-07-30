@@ -93,8 +93,8 @@ clave es gratuita o paga (`auto`), sin que el cliente tenga que saber de modelos
 ```mermaid
 flowchart TD
     subgraph ENT["Entrada de audio"]
-        M1["Micrófono del agente"] --> W["Wake-word<br/>'ITHOS' / 'Hey ITHOS'<br/>(Vosk local)"]
-        M2["Nota de voz de WhatsApp<br/>/ Telegram"] --> G["Gateo por wake-word<br/>(mismo criterio, comun/wake.py)"]
+        M1["Micrófono del agente"] --> W["Llamada<br/>'Hey ITHOS'<br/>(Vosk local)"]
+        M2["Nota de voz de WhatsApp<br/>/ Telegram"] --> G["Mismo gateo que el micrófono<br/>(comun/wake.py)"]
         W --> V["VAD: Silero (ONNX)<br/>→ webrtcvad → energía"]
         G --> V
         V --> S["STT: Whisper large-v3 (Groq)<br/>· Gemini · Vosk local"]
@@ -207,7 +207,7 @@ de WhatsApp, memorias, métricas, cachés de voz, tokens de alta, certificados y
 | `cuota.py` | Consumo y cuota por cliente; avisa cuándo se agota y a qué hora se reinicia cada proveedor. |
 | `conversacion.py` | El asistente: panorama real antes de responder, acciones de escritura sobre el ticket, KB y memoria. Nunca escribe sin pedido explícito. |
 | `conocimiento.py` | Contexto técnico propietario + autorización por identidad (los números del dueño) y clave de admin por micrófono. |
-| `wake.py` | Wake-word "ITHOS" / "Hey ITHOS" (texto y micrófono) — única fuente de verdad de la activación. |
+| `wake.py` | La llamada "Hey ITHOS" (texto y micrófono) — única fuente de verdad de la activación. |
 | `horario.py` | Horario de atención y días hábiles del cliente: puerta de todo lo que sale hacia afuera. |
 | `tickets.py` · `tickets_otros.py` | Adaptador genérico de mesas de ayuda: GLPI nativo; Zendesk, Freshservice, Jira y osTicket por sus APIs reales. |
 | `glpi.py` | Cliente REST de GLPI (sesiones reutilizadas por token/rol, lecturas masivas, saludo al solicitante). |
@@ -367,11 +367,12 @@ escribe). No hay alta de usuarios, a propósito. ITHOS **no escribe nada sin un 
 - **Canales**: WhatsApp **oficial** (Cloud API, webhook) y **no oficial** (grupo del equipo, vinculado por
   QR desde el panel), **Telegram**, **Email** (IMAP/SMTP), **Element/Matrix** y **Teams/Slack** (avisos).
   Todos usan el mismo asistente, el mismo gateo y el formato correcto de cada plataforma.
-- **Activación (wake-word)**: hay que nombrarlo — "ithos, ..." o **"Hey ITHOS, ..."** (español o inglés,
-  mayúsculas o minúsculas, con o sin tildes). Sin eso ITHOS ignora el mensaje: así no malinterpreta la
-  charla normal del grupo. Vale igual para texto y audio, y el **micrófono** usa exactamente el mismo
-  criterio (`comun/wake.py`), tolerando que el reconocedor parta la palabra ("hey it hos") o la transcriba
-  con pronunciación inglesa.
+- **Activación (la llamada)**: hay que **llamarlo**, no sólo nombrarlo: **"Hey ITHOS, ..."** (también
+  "oye/ok/hola/che ithos", en español o inglés, mayúsculas o minúsculas, con o sin tildes). Decir "ITHOS"
+  suelto **no activa**: en un grupo de trabajo se lo menciona todo el tiempo ("preguntale a ITHOS", "lo
+  cargó ITHOS") y no corresponde que intervenga. Vale igual para texto y audio, y el **micrófono** usa
+  exactamente el mismo criterio (`comun/wake.py`), tolerando que el reconocedor parta la palabra ("hey it
+  hos"), la pegue ("heyithos") o la transcriba con pronunciación inglesa ("hey ethos").
 - **Audio**: una nota de voz se transcribe (con filtro de ruido y detección de voz) y se procesa igual que
   el texto. Responde por texto y/o nota de voz según lo que el cliente configuró.
 - **Contexto real**: antes de responder carga el panorama del cliente (tickets, SLA, estado) y usa su KB y
@@ -455,7 +456,7 @@ Integración `ITHOS/central/planka_integrador.py` (cliente `ITHOS/comun/planka.p
 - **Mover / crear por WhatsApp**: "ithos, terminé X" → a Hecho; "ithos, cargá tal tarea para Carlos en
   haciendo" → crea la tarjeta asignada. Intérprete **conservador**: si es ambiguo, no adivina.
 - **Escucha proactiva**: si alguien avisa que terminó algo sin que se le pregunte, igual se procesa.
-  El trigger **"ithos"** es obligatorio en todo mensaje (texto o audio).
+  La **llamada "Hey ITHOS"** es obligatoria en todo mensaje (texto o audio).
 - **Rollover automático** (`planka_rollover.py`): un **proyecto por mes** con un **board por semana** en
   bloques del mes (1–7, 8–14, 15–21, 22–28, 29–fin) más un board **MENSUAL** de archivo. Al cambiar de
   semana/mes crea lo que falte y **arrastra lo no terminado** en su misma lista; al cerrar el mes lo

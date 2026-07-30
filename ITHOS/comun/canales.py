@@ -34,9 +34,12 @@ log = logging.getLogger("canales")
 
 
 def _mencionado(texto, palabra, responder_siempre):
+    """¿Este mensaje es para ITHOS? Hay que LLAMARLO ("Hey ITHOS, ..."): nombrarlo suelto no alcanza.
+    Mismo criterio en todos los canales y en el micrófono (comun/wake.py). `responder_siempre` es para
+    un canal dedicado (p. ej. un chat privado con ITHOS), donde no hace falta la llamada."""
     if responder_siempre:
         return True
-    from comun.whatsapp import menciona           # detección DIFUSA (tolera mala transcripción)
+    from comun.wake import menciona               # la LLAMADA (tolera mala transcripción del audio)
     return menciona(texto, palabra)
 
 

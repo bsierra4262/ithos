@@ -5,13 +5,21 @@ Alcance actual, ya funcionando y probado. ITHOS es un producto multiempresa en l
 agente liviano por cliente, con aislamiento total entre empresas. Se instala en Windows, Linux o Mac.
 
 - **Portero por voz.** Cuando alguien ficha en el control de acceso —IVMS, HikCentral, BioStar 2, ZKTeco u
-  Honeywell—, ITHOS lo saluda por los parlantes con voz propia, Charon, a una velocidad cómoda y pareja.
+  Honeywell—, ITHOS lo saluda por los parlantes con voz propia, Charon, a una velocidad cómoda y pareja. El saludo
+  de entrada es coherente con la hora —buenos días, buenas tardes o buenas noches—, cambia de fórmula día a día
+  para que no suene repetitivo y no vuelve a saludar a la misma persona en la jornada. Cada terminal se reconoce
+  sola y se configura como entrada, salida o sala, con su propio saludo y su frecuencia.
 - **Mesa de ayuda con IA.** Detecta los tickets nuevos del sistema del cliente —GLPI, Zendesk, Freshservice, Jira,
   osTicket, o ninguno si aún no tiene— y los clasifica, prioriza, asigna, responde y cierra, pidiendo confirmación.
   Pide datos solo si faltan de verdad; si un técnico resuelve por un comentario, lo marca resuelto y le pide al
-  cliente que confirme, con recordatorio diario hasta la respuesta. Arma una base de conocimiento automática por
-  empresa a partir de los tickets resueltos —que se **regenera sola cada semana**, sin que nadie apriete un botón—
-  y admite sumar instructivos en PDF, Word o texto, o importar una wiki de Outline, todo desde el alta o el portal.
+  cliente que confirme, con recordatorio diario hasta la respuesta. **Ninguna espera queda olvidada:** mientras el
+  ticket depende del cliente —porque falta un dato o porque tiene que confirmar un trabajo— el SLA queda detenido y
+  ITHOS le recuerda una vez por día hábil, dentro del horario de atención; cuando responde, el ticket vuelve a estar
+  en curso solo, y si pasan cinco días hábiles sin respuesta el técnico asignado recibe el aviso para definir qué
+  hacer. Cada aviso por WhatsApp **menciona al técnico asignado**, así cada uno ve lo suyo, incluida la alerta de
+  SLA por vencer. Arma una base de conocimiento automática por empresa a partir de los tickets resueltos —que se
+  **regenera sola cada semana**, sin que nadie apriete un botón— y admite sumar instructivos en PDF, Word o texto,
+  o importar una wiki de Outline, todo desde el alta o el portal.
 - **Reportes ITIL 4 automáticos.** KPIs de creados, resueltos y backlog, cumplimiento de SLA, MTTR, y desglose por
   técnico y categoría. Se envían solos el día y la hora elegidos —por ejemplo, todos los viernes a las 18:00— en
   PDF o CSV, o se generan a demanda por período diario, semanal, mensual, histórico o un rango personalizado.
@@ -21,7 +29,9 @@ agente liviano por cliente, con aislamiento total entre empresas. Se instala en 
   vencer y reportes— salen por todos los canales que el cliente tenga configurados, además de los parlantes, en
   texto y/o nota de voz según el formato que elija el cliente en WhatsApp y Telegram.
 - **Asistente conversacional.** Se le habla por micrófono o se le envía un audio por WhatsApp, y responde por voz
-  y por texto. Incluye identificación por voz del dueño, con un perfil que se afina solo.
+  y por texto. Hay que llamarlo —«Hey ITHOS…», en español o en inglés—: si sólo se lo menciona no interviene,
+  así no se mete en la conversación del grupo. Incluye identificación por voz del dueño, con un perfil que se
+  afina solo.
 - **Multi‑IA con respaldo automático, hasta tres en cadena.** Gemini, Cerebras, Groq, Claude, ChatGPT, Grok,
   DeepSeek en nube o local sin Ollama, Mistral, OpenRouter y Ollama. Usa una sola IA por consulta y, solo cuando
   se queda sin cuota, salta sola a la segunda o a la tercera, sin cortes y sin gastar las otras de más. Avisa al

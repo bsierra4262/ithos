@@ -2529,13 +2529,30 @@ try:
     empaque = ("vosk" in reqs and '"vosk"' in spec
                and 'collect_dynamic_libs("vosk")' in spec)          # lib nativa embebida
     ia_local = '"local"' in ia and "ollama" in ia.lower()          # IA open-source ya disponible
-    if vosk_motor and empaque and ia_local:
-        ok("wake-word OPEN-SOURCE: el micrófono activa por 'ITHOS' con Vosk (STT local, sin registro, "
-           "sin entrenar) + voz-id de WhatsApp para el dueño; Picovoice queda legacy; IA local (Ollama) "
-           "ya disponible como proveedor")
+    # REGLA VIGENTE (Brian, 30-jul-2026): hay que LLAMARLO. Sólo activa "Hey ITHOS" (y equivalentes:
+    # oye/ok/hola/che + la marca, en español o inglés); NOMBRARLO SUELTO ("ITHOS, ...") NO activa, para
+    # que no intervenga cuando el grupo simplemente lo menciona. Vale IGUAL en texto y en micrófono.
+    sys.path.insert(0, APP)
+    from comun import wake as _WK
+    import importlib as _il
+    _il.reload(_WK)
+    llama = all(_WK.menciona(t) for t in ("Hey ITHOS, cerrá el 651", "oye ithos dame el sla",
+                                          "ok ithos terminé X", "hey it hos", "heyithos que hay",
+                                          "Hey, Ithos: ¿cómo venimos?", "hey itos ayuda"))
+    suelto = any(_WK.menciona(t) for t in ("ITHOS que podes hacer ?", "ithos, dame el estado",
+                                           "preguntale a ITHOS", "lo cargó ithos ayer"))
+    charla = any(_WK.menciona(t) for t in ("hola a todos", "hey todos, buen día",
+                                           "los hitos del proyecto", "jarvis, hola"))
+    unico = ("from comun.wake import menciona" in esc            # el micrófono usa la MISMA fuente
+             and "from comun.wake import menciona" in leer(os.path.join(APP, "comun", "whatsapp.py")))
+    if vosk_motor and empaque and ia_local and llama and not suelto and not charla and unico:
+        ok("wake-word: sólo activa la LLAMADA 'Hey ITHOS' (nombrarlo suelto no activa, la charla del "
+           "grupo tampoco), con el MISMO criterio en texto y micrófono (comun/wake.py) y con Vosk "
+           "open-source empaquetado; IA local (Ollama) disponible")
     else:
-        fail("el wake-word no es open-source / falta empaquetar Vosk",
-             f"vosk_motor={vosk_motor} empaque={empaque} ia_local={ia_local}")
+        fail("el wake-word no cumple la regla de la llamada / no es open-source",
+             f"vosk={vosk_motor} empaque={empaque} ia_local={ia_local} llama={llama} "
+             f"suelto={suelto} charla={charla} fuente_unica={unico}")
 except Exception as e:  # noqa: BLE001
     fail("no se pudo verificar el wake-word open-source", repr(e))
 

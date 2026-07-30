@@ -300,10 +300,12 @@ dólar oficial del BNA; INTELLIHELP es dueño y NO se cobra.
 - CANALES conversacionales (comun/canales.py): además de WhatsApp, ITHOS escucha y responde
   en Telegram (Bot API), Email (IMAP/SMTP) y WhatsApp oficial (webhook /webhook/whatsapp).
   Misma mención, mismo remitente, mismo gateo. Vale para los DOS modos de WhatsApp.
-- WAKE-WORD (comun/wake.py, ÚNICA fuente de verdad del texto y del micrófono): activa con la
-  marca sola ("ithos, ...") o llamándolo ("Hey ITHOS", "oye ithos", "ok ithos"), en español o
-  inglés, may/min, con tildes o puntuación, y tolera que Vosk PARTA la palabra ("hey it hos") o
-  la transcriba con pronunciación inglesa ("hey ethos"). La charla normal del grupo no activa.
+- ACTIVACIÓN / WAKE-WORD (comun/wake.py, ÚNICA fuente de verdad del texto y del micrófono): hay
+  que LLAMARLO — "Hey ITHOS, ..." (también "oye/ok/hola/che ithos"), en español o inglés, may/min,
+  con tildes o puntuación. NOMBRARLO SUELTO NO ACTIVA: "ITHOS, ..." o "preguntale a ITHOS" se
+  ignoran, para no intervenir cuando el grupo simplemente lo menciona. Tolera que Vosk PARTA la
+  palabra ("hey it hos"), la pegue ("heyithos") o la transcriba con pronunciación inglesa
+  ("hey ethos"). Vale igual en WhatsApp, Telegram, Email, Matrix, Planka y micrófono.
 - @MENCIÓN AL TÉCNICO ASIGNADO: los avisos de un ticket y la alerta de SLA en riesgo/vencido
   @mencionan SOLO al asignado, por su teléfono del bloque `tecnicos` del cliente (mapeo por id
   de GLPI, id/login/email o nombre según el sistema de tickets). La alerta de SLA va agrupada

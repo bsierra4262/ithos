@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Escucha por palabra clave "ITHOS" / "Hey ITHOS" (como "OK Google") en el micrófono del cliente. Al
-detectarla, graba el pedido, lo manda al central (evento consulta_voz) y el central responde/resuelve
+Escucha la LLAMADA "Hey ITHOS" (como "OK Google") en el micrófono del cliente. Al detectarla, graba el
+pedido, lo manda al central (evento consulta_voz) y el central responde/resuelve
 (la respuesta vuelve como voz). El AUDIO también sirve para el voz-id (que ITHOS verifique que sos vos
 para los comandos de administrador; el perfil de voz ya se entrenó con tus audios de WhatsApp).
 
 DOS motores (config microfono -> "motor"):
   · "vosk"  (POR DEFECTO, OPEN-SOURCE, sin registro ni límites): reconoce la palabra "ITHOS" con un
-     modelo de voz LOCAL (Vosk/Kaldi). No hay que entrenar nada: reconoce "ithos" de fábrica y tolera
+     modelo de voz LOCAL (Vosk/Kaldi). No hay que entrenar nada: reconoce la llamada de fábrica y tolera
      la mala pronunciación (mismo criterio difuso que WhatsApp). El modelo se toma de `vosk_model`
      (carpeta) o se baja el pequeño en español la 1ª vez (una sola vez, sin registro).
   · "picovoice" (LEGACY): Porcupine con access key + modelo ithos.ppn de console.picovoice.ai (registro).
@@ -16,6 +16,7 @@ DOS motores (config microfono -> "motor"):
 Config (agente/config.json -> microfono):
   {"enabled": true, "motor": "vosk", "vosk_model": "C:/ruta/modelo (opcional)",
    "activacion_palabra": "ithos", "max_seg_pedido": 15, "silencio_seg": 1.3}
+  (`activacion_palabra` es la MARCA; la activación siempre es la llamada: "Hey <marca>")
 """
 
 import io
@@ -89,9 +90,10 @@ def _wav_b64(frames_int16, sr):
 
 
 def _menciona(texto, palabra):
-    """Detección del wake-word: "ITHOS" solo o "Hey ITHOS" (español/inglés, may/min), tolerando la
-    mala transcripción de Vosk ('itos/itus/ithus/izos') y la palabra PARTIDA ('hey it hos'). Mismo
-    criterio EXACTO que WhatsApp (comun/wake.py). Fallback simple si no está el módulo."""
+    """Detección del wake-word: hay que LLAMARLO — "Hey ITHOS…" (también "oye/ok/hola ithos"), en
+    español o inglés, tolerando la mala transcripción de Vosk ('itos/itus/ithus/izos') y la palabra
+    partida ('hey it hos'). Nombrarlo suelto ("ithos") NO activa. Mismo criterio EXACTO que los
+    canales de texto (comun/wake.py). Fallback equivalente si no estuviera el módulo."""
     try:
         import sys
         import os
@@ -100,8 +102,10 @@ def _menciona(texto, palabra):
         return menciona(texto, palabra)
     except Exception:  # noqa: BLE001
         t = " " + (texto or "").lower() + " "
-        return any(v in t for v in (f" {palabra} ", " itos ", " itus ", " ithus ", " izos ",
-                                    " it hos ", " ethos ", " aitos "))
+        marcas = (palabra, "itos", "itus", "ithus", "izos", "it hos", "ethos", "aitos")
+        return any(f" {p} {m} " in t or f" {p}{m} " in t
+                   for p in ("hey", "hei", "ey", "eh", "oye", "ok", "okey", "hola", "che")
+                   for m in marcas)
 
 
 def _cargar_modelo_vosk(cfg):
@@ -165,8 +169,8 @@ def _vigilar_vosk(cfg, enviar_evento, stop=None):
 
     stream, dev = _abrir()
     log.info("[MIC] dispositivo de entrada: '%s'", dev)
-    log.info("Escucha por voz OPEN-SOURCE (Vosk) activa. Decí '%s' o 'Hey %s' y después tu pedido.",
-             palabra, palabra.upper())
+    log.info("Escucha por voz OPEN-SOURCE (Vosk) activa. Decí 'Hey %s' y después tu pedido "
+             "(nombrarlo suelto no activa).", palabra.upper())
     _rev = time.time()
     try:
         while stop is None or not stop.is_set():
@@ -205,7 +209,7 @@ def _vigilar_vosk(cfg, enviar_evento, stop=None):
             else:
                 txt = json.loads(rec.PartialResult()).get("partial", "")
             if txt and _menciona(txt, palabra):
-                log.info("Activación por voz detectada ('%s'). Grabando el pedido...", palabra)
+                log.info("Llamada por voz detectada ('Hey %s'). Grabando el pedido...", palabra)
                 rec.Reset()
                 frames = _grabar_dinamico(stream, sr, fl, max_seg, silencio_seg, umbral_min)
                 frames = _solo_voz(frames, sr)       # filtro anti-ruido (Silero VAD)

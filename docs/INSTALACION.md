@@ -22,84 +22,28 @@ ITHOS tiene **dos piezas** (se venden/entienden como **Gestor + Agente**; la car
 
 | | Windows | Linux | macOS |
 |---|---|---|---|
-| **Central** | `central_windows.ps1` (nativo, sin Docker) | `central_unix.sh` (Docker) | `central_unix.sh` (Docker Desktop) |
-| **Agente** | `agente_windows.ps1` | `agente_linux.sh` | `agente_mac.sh` |
-| **Prueba local** | `iniciar_demo.py` | `iniciar_demo.py` | `iniciar_demo.py` |
+| **Gestor** | `compilador/instaladores/central_windows.ps1` (nativo, sin Docker) | `compilador/instaladores/central_unix.sh` (Docker) | `central_unix.sh` (Docker Desktop) |
+| **Agente** | `compilador/dist/ITHOS-Agente-Setup.exe` (instalador firmado) | `compilador/instaladores/agente_linux.sh` | `compilador/instaladores/agente_mac.sh` |
+| **Verificar antes** | `python tests/probar_requerimientos.py` | ídem | ídem |
 
 ---
 
-## 🚀 Probar TODO en una sola PC (sin KVM) — demo para mostrar
+## 🚀 Cómo se pone en marcha (mapa)
 
-¿Querés ver el sistema completo funcionando en tu PC, sin servidor ni dominio? Hay
-**un solo comando**. Ideal para una demostración (a Nicolás, por ejemplo).
+El stack de demo se retiró: el software es uno solo y se prueba con las **baterías** del repositorio
+(no necesitan servidor ni dominio) y después se despliega.
 
-**Requisito único:** tener Python 3.10+ instalado. La primera vez, instalá **todas** las
-dependencias con el requirements RAÍZ (una sola vez):
-
-```powershell
-cd C:\ruta\a\jarvis-cloud
-python -m pip install -r requirements.txt
-winget install -e --id Gyan.FFmpeg    # ffmpeg: para las notas de voz (WhatsApp/Telegram)
+```mermaid
+flowchart TD
+    T["1· Verificar en local<br/>python tests/probar_requerimientos.py<br/>python tests/probar_helpdesk_mejoras.py"] --> G["2· GESTOR en el servidor<br/>Docker + Caddy (TLS/WSS)<br/>.env: ADMIN · MASTER_KEY · DOMINIO"]
+    G --> AL["3· Alta de la empresa<br/>enlace de un solo uso →<br/>tickets · acceso · canales · IA · zona · horario"]
+    AL --> CR["4· El panel entrega<br/>api_key + contraseña de agente"]
+    CR --> AGT["5· AGENTE en el equipo del cliente<br/>Windows: instalador firmado<br/>Linux/Mac: script del SO"]
+    AGT --> V["6· Verificar: el panel marca Conectadas ≥ 1,<br/>el portero saluda una fichada nueva y<br/>un ticket nuevo entra al triage"]
 ```
 
-> El `requirements.txt` de la raíz trae TODO (demo + central + agente). Si preferís por
-> partes, están `central\requirements.txt` y `agente\requirements.txt`.
-
-### 📦 Qué se instala y para qué
-| Paquete | Para qué |
-|---|---|
-| `fastapi`, `uvicorn`, `websockets` | Central (API + WebSocket) y panel web |
-| `google-genai` | IA Gemini (texto + voz Charon) |
-| `neonize`, `segno` | WhatsApp no-oficial (grupo) + QR de vinculación |
-| `edge-tts` | Voz ITHOS GRATIS (Jorge MX) y notas de voz |
-| `pygame`, `pydub`, `audiotsm` | Reproducir audio / ajustar velocidad (x1.25) |
-| `sounddevice`, `numpy` | Capturar el micrófono |
-| `onnxruntime` | Filtro de voz humana (Silero VAD) e identificación por voz |
-| `webrtcvad-wheels` | VAD liviano de respaldo |
-| `pvporcupine` | Palabra clave “ITHOS” (wake word) en el agente |
-| `pyodbc` | IVMS: leer la tabla de fichajes (SQL Server) |
-| `PyMySQL` | osTicket: leer/cerrar por su base MySQL |
-
-**Dependencias de SISTEMA (no son de pip):**
-- **ffmpeg** — necesario para las **notas de voz** por WhatsApp/Telegram (convierte a OGG/opus).
-  Windows: `winget install -e --id Gyan.FFmpeg` · Linux: `apt install ffmpeg` · Mac: `brew install ffmpeg`.
-  Sin ffmpeg, ITHOS responde por **texto** igual (degrada solo).
-- **ODBC Driver 18 for SQL Server** (Microsoft) — solo si el cliente usa **IVMS** (lo lee `pyodbc`).
-- **portaudio** (Linux/Mac) — para el micrófono: `apt install libportaudio2` / `brew install portaudio`.
-
-Los instaladores (`instaladores/*.ps1` y `*.sh`, y el `Dockerfile` del central) ya
-instalan ffmpeg y lo necesario automáticamente.
-
-**Ejecutar la demo:**
-
-```powershell
-python iniciar_demo.py
-```
-
-Eso solo, hace TODO automáticamente:
-1. Copia el proyecto a un disco local y **arranca el Central (8080) + el Panel (8090)**.
-2. **Abre las 3 páginas** del servidor en el navegador:
-   - **Panel superadmin** → `http://127.0.0.1:8090/` (gestionás todas las empresas)
-   - **Portal del cliente** → `http://127.0.0.1:8090/panel/<api_key>` (lo que ve el cliente: su SLA y métricas)
-   - **Alta de empresa** → `http://127.0.0.1:8090/alta` (el formulario completo)
-3. **Arranca SOLO todo lo de producción** con **INTELLIHELP S.A.** (nada falso): el agente real
-   (**GLPI/triage con IA**), el **PORTERO** (saluda por voz Charon las **fichadas nuevas** y la sala
-   técnica; el baseline ignora las viejas), los **canales EN VIVO** (WhatsApp/Telegram/… + avisos de
-   cuota + reactivador de pospuestos). La PC **no se suspende** mientras corre (sigue aunque se
-   bloquee la pantalla). **Métricas y SLA** se ven en el panel/portal. Los logs van a `_demo.log`
-   (la consola queda limpia para el menú).
-4. Deja un **menú** solo con lo que **necesitás hacer vos**:
-   - 🎫 **[1] Ticket de prueba** en GLPI con IA: crear → triage → responder → resolver → confirmar → cerrar (vos confirmás el borrado).
-   - 🗣️ **[2] Hablarle a ITHOS por el micrófono** (conversación continua; silencio para salir).
-   - **[S] Cerrar TODO** (no deja procesos abiertos).
-
-> Es 100% descartable: todo son procesos hijos del script. Si cerrás la consola o
-> **reiniciás la PC, muere solo**. No instala servicios ni deja nada corriendo.
-
-> **Nota de voz:** la voz ITHOS usa la API de Gemini. Con el plan **gratuito** se
-> limita a ~20 usos por día; si se agota, la demo sigue mostrando todo lo demás y
-> avisa “cuota agotada”. Para una demo sin cortes, cargá una API key de Gemini con
-> facturación en el panel (campo *API key de Gemini* de la empresa).
+**Requisito único para trabajar en local:** Python 3.11+ y las dependencias del repositorio
+(`python -m pip install -r requirements.txt`, más `ffmpeg` si se van a generar notas de voz).
 
 ---
 
@@ -174,15 +118,15 @@ En la PC que tiene los parlantes/micrófono y ve el control de acceso.
 
 ### Windows (lo habitual en la oficina)
 
-```powershell
-# PowerShell como Administrador, dentro de jarvis-cloud\instaladores
-Set-ExecutionPolicy -Scope Process Bypass -Force
-.\agente_windows.ps1
-```
+Se instala con el **instalador firmado** `compilador\dist\ITHOS-Agente-Setup.exe` (se construye con
+`compilador\build\construir_agente.bat`). No hace falta instalar Python ni editar archivos: es una app con
+interfaz que pide la **URL del Gestor** (`wss://ithos.tuempresa.com/ws`), la **api_key** de la empresa y su
+**contraseña de agente**, prueba la conexión y queda arrancando al iniciar sesión. Desde la misma app se
+**detiene, arranca, se ve el estado y la versión, se mueve el agente a otra PC o se desinstala**.
 
-El script instala Python + dependencias, te pide **URL del Central** (`wss://ithos.tuempresa.com/ws`) y la **API key** del cliente, hace una prueba de conexión y crea la tarea programada **“ITHOS Agente”** que arranca solo al prender la PC y se reconecta si se cae.
-
-Antes de instalar, editá `agente\config.json` con los datos del **control de acceso local** (ej. IVMS: servidor/base/usuario/clave de la DB). Ese bloque `integrador` es lo único técnico y ya viene de ejemplo.
+El **control de acceso local ya no se configura a mano en el equipo**: al autenticarse, el Gestor le manda al
+agente su configuración (integrador, voz, idioma, micrófono). Detalle y casos particulares:
+[INSTALACION_AGENTE.md](INSTALACION_AGENTE.md).
 
 ### Linux
 
@@ -200,20 +144,17 @@ bash agente_mac.sh               # crea un LaunchAgent que arranca solo
 
 ---
 
-## 4️⃣ Probarlo localmente (ver diseño, voz y panel en tu PC)
+## 4️⃣ Verificarlo (sin desplegar nada)
 
-Todo con **un comando** (ver la sección **🚀 Probar TODO en una sola PC** arriba):
-
-```powershell
-python iniciar_demo.py
+```bash
+python tests/probar_requerimientos.py     # 115 requerimientos transversales (sin red)
+python tests/probar_helpdesk_mejoras.py   # esperas, escaladas y @menciones (sin red)
+python tests/probar_portero_saludo.py     # saludo por hora y una vez por día por persona
+python tests/probar_sistema.py            # circuito completo por HTTP (alta, panel, portal)
 ```
 
-Arranca el Central + Panel, **abre las 3 páginas**, corre el ciclo completo (portero por
-voz, tickets, métricas/SLA, “ITHOS ¿…?” y WhatsApp) y **queda vivo hasta que ponés `S`**
-para cerrar todo. Sirve en Windows, Linux y macOS.
-
-Para escuchar solo la voz sin lo demás, el agente trae `--demo`:
-`python agente.py --demo` manda un fichaje de prueba y ITHOS saluda por los parlantes.
+Para escuchar **solo la voz** en el equipo, el agente trae una pasada de prueba:
+`python ITHOS/agente/agente.py --demo` manda un fichaje de prueba y ITHOS saluda por los parlantes.
 
 ---
 
@@ -280,6 +221,6 @@ Todo se configura en el **panel**, por empresa (multi-tenant, aislado):
 
 ## 📦 Portabilidad (rutas relativas)
 Todo el proyecto usa **rutas relativas** (resueltas respecto a cada archivo): podés
-**mover la carpeta a donde quieras** y funciona. Si está en disco **local**, `iniciar_demo.py`
-corre ahí mismo; si está en un recurso de **red** (`\\...`), se copia solo a una carpeta
-local para poder levantar el servidor.
+**mover la carpeta a donde quieras** y funciona, en Windows, Linux y macOS. Conviene trabajar sobre un
+disco **local**: desde un recurso de **red** algunas herramientas (Docker, el compilador del agente) no
+pueden usar la ruta.

@@ -71,9 +71,7 @@ CFG_CERRADO = {**CFG, "horario_atencion": {"dias": [], "desde": "09:00", "hasta"
 def nivel1_wake():
     print("\nNIVEL 1 · wake-word 'Hey ITHOS' (texto del Gestor + micrófono del agente)")
     activan = [
-        "ithos, dame el estado del 651",                 # la marca sola (como siempre)
-        "ITHOS ayuda",                                    # mayúsculas
-        "Hey ITHOS, cerrá el ticket 651",                 # wake-word pedido por Brian
+        "Hey ITHOS, cerrá el ticket 651",                 # la LLAMADA: lo único que activa
         "hey ithos",
         "HEY ITHOS!",
         "Hey, Ithos: ¿cómo venimos?",                     # con puntuación
@@ -86,11 +84,16 @@ def nivel1_wake():
         "hey ethos que onda",                             # pronunciación inglesa mal transcripta
         "hey aitos",
         "Ey, íthos",                                      # con tilde
-        "itos dame el sla",                               # variantes viejas: NO se rompen
-        "izos que paso",
-        "ithus ayuda",
+        "hey itos dame el sla",                           # mal transcripto, pero con la llamada
+        "ey izos que paso",
+        "ok ithus ayuda",
+        "heyithos que hay",                               # llamada y marca pegadas
     ]
     no_activan = [
+        "ITHOS que podes hacer ?",                        # nombrarlo suelto NO activa (lo pidió Brian)
+        "ithos, dame el estado del 651",
+        "preguntale a ITHOS por el ticket",
+        "lo cargó ithos ayer",
         "hola a todos",
         "hey todos, buen día",
         "buenas, listos para el lunes?",
@@ -104,12 +107,12 @@ def nivel1_wake():
     for t in no_activan:
         ok(not W.menciona(t), f"NO activa: {t!r}")
     ok(W.es_wake("hey ithos") and not W.es_wake("ithos solo"),
-       "es_wake distingue la FRASE de llamada de la marca sola")
+       "sólo la FRASE de llamada activa; la marca sola no")
     # El micrófono (Vosk, en el agente) tiene que decidir EXACTAMENTE igual que WhatsApp.
     iguales = all(MIC._menciona(t, "ithos") == W.menciona(t) for t in activan + no_activan)
     ok(iguales, "el micrófono del agente decide igual que WhatsApp (misma fuente: comun/wake.py)")
-    ok(WA.menciona("Hey ITHOS, hola") and not WA.menciona("hola a todos"),
-       "comun/whatsapp.menciona (todos los canales) usa el mismo wake-word")
+    ok(WA.menciona("Hey ITHOS, hola") and not WA.menciona("ITHOS, hola"),
+       "en TODOS los canales (comun/whatsapp.menciona) rige la misma llamada")
 
 
 # ============================================================== GLPI FALSO (para el ciclo, sin red)

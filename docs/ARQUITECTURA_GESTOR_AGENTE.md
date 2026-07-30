@@ -31,12 +31,39 @@ Lo que pediste **es exactamente el patrón que usan los sistemas de agentes prof
 **control‑plane** (decide, gobierna, observa) del **data‑plane** (ejecuta). El agente es un **cliente delgado** que
 descubre e invoca capacidades; toda la lógica y política vive en el centro (IBM, AWS, HashiCorp Consul).
 
+### 1.0 Conexión, handshake y qué viaja en cada dirección
+
+```mermaid
+sequenceDiagram
+    participant A as AGENTE (PC del cliente)
+    participant C as GESTOR (VPS)
+    A->>C: conecta wss://DOMINIO/ws
+    A->>C: auth {api_key, agente_token, version, protocol_version}
+    Note over C: valida la empresa (hmac, tiempo constante)<br/>y la compatibilidad de protocolo
+    C-->>A: auth_ok {config: voz · idioma · velocidad · integrador · micrófono}
+    Note over C: arranca por cliente: tickets+triage, canales,<br/>Planka, reportes, proactivo, KB
+    loop mientras esté conectado
+        A->>C: evento acceso {nombre, device, es_fallo}
+        C-->>A: comando decir {texto, cachear}
+        A->>C: evento consulta_voz {audio}
+        C-->>A: comando decir {respuesta}
+        A->>C: evento estado_agente {micrófono, integrador, versión}
+        A->>C: evento terminales_descubiertos {lista}
+        C-->>A: ping / pong (cada 20 s)
+    end
+    Note over A,C: si se corta: el agente reconecta con backoff + jitter (tope 30 s).<br/>No hace falta replay: el Gestor se pone al día por ESTADO (baseline de tickets y fichadas).
+```
+
+**Regla de oro:** el agente **manda eventos** y **ejecuta comandos**; nunca decide. Toda la política (qué decir,
+cómo clasificar, a quién avisar) vive en el Gestor, así una mejora se despliega en **un solo lugar** y los agentes
+instalados no se tocan.
+
 **Cómo mapea a ITHOS (y qué ya tenemos):**
 
 | Concepto de la industria | En ITHOS | Estado |
 |---|---|---|
-| **Control‑plane / cerebro** | **Gestor** (hoy `central/`): IA, tickets, triage, KB, reportes, facturación, decide y manda órdenes | ✅ ya concentra la lógica |
-| **Data‑plane / executor delgado** | **Agente** (`agente/`): conecta por WebSocket, EJECUTA (voz por parlantes, lee el control de acceso local, mic) | ✅ ya es delgado (voz + eventos, sin lógica pesada) |
+| **Control‑plane / cerebro** | **Gestor** (`ITHOS/central/`): IA, tickets, triage, KB, reportes, facturación, decide y manda órdenes | ✅ ya concentra la lógica |
+| **Data‑plane / executor delgado** | **Agente** (`ITHOS/agente/`): conecta por WebSocket, EJECUTA (voz por parlantes, lee el control de acceso local, mic) | ✅ ya es delgado (voz + eventos, sin lógica pesada) |
 | **Hub‑and‑spoke** | 1 Gestor ↔ N agentes por API key | ✅ |
 | **El agente manda EVENTOS, el Gestor manda COMANDOS** | `{"tipo":"evento",...}` ↔ `{"accion":"decir",...}` | ✅ ya es así |
 | **Chokepoint central de logs/auditoría** | el Gestor centraliza | ✅ (mejorable) |
@@ -60,13 +87,13 @@ ejecuta. Es la separación correcta. **Recomendación:** mantenerla y NO meter l
   **solo si manda las dos y coinciden** (comparación en tiempo constante); un agente con solo la api_key **NO
   entra**. Es *thin agent*: guarda solo esas credenciales y **el gestor le manda el resto** (voz Charon con la
   clave del cliente, integrador de acceso, micrófono) en el `auth_ok`. Mismo `.exe` para todos; se mueve a otra PC
-  con la misma api_key + contraseña (menú del agente). Regresión: **audit5 H40**.
+  con la misma api_key + contraseña (menú del agente). Regresión: `tests/probar_requerimientos.py` (auth por empresa).
 
 > ✅ **Seguridad del gestor — CERRADO (implementado).** El panel superadmin `/`, las APIs de gestión y `/alta`
 > están **detrás de autenticación** (solo INTELLIHELP: **usuario + contraseña**, cookie de sesión httponly/secure,
 > `X-Admin-Token` para llamadas internas, rate-limit anti fuerza-bruta, logout). El **alta** usa tokens de un solo
 > uso con vencimiento, consumidos atómicamente al enviarse. Detrás de **HTTPS/WSS** (Caddy + HSTS). El **agente** se
-> autentica por empresa (api_key + contraseña). Regresiones: **audit5 H28, H39, H40**.
+> autentica por empresa (api_key + contraseña). Regresiones: `tests/probar_requerimientos.py` (login, altas de un solo uso, auth por empresa).
 
 ---
 
@@ -77,8 +104,7 @@ ejecuta. Es la separación correcta. **Recomendación:** mantenerla y NO meter l
 
 1. **Reconexión con backoff exponencial + JITTER + tope.** Sin tope, un cliente caído 1 h esperaría 30 min; sin
    jitter, todos los agentes reconectan a la vez tras una caída (thundering herd). Tope ~30 s.
-   - **Hoy:** el agente ya reconecta con backoff `2→4→…→30 s` (`agente.py::correr`). **Falta el jitter** (sumar un
-     azar de ±20%). Cambio chico.
+   - **Hoy:** el agente ya reconecta con backoff `2→4→…→30 s` (`ITHOS/agente/agente.py::correr`) **con jitter** (±20%), ya implementado.
 2. **Heartbeat a nivel aplicación.** El TCP keepalive no alcanza; mandar `ping` cada 25–45 s y si faltan 2, cerrar
    y reconectar.
    - **Hoy:** ya usamos `ping_interval=20, ping_timeout=20` del protocolo WebSocket. ✅ (suficiente; opcional subir
@@ -128,6 +154,21 @@ alto % de equipos al día y seguros.)
    sha256** (que sea legítimo, no un archivo trucho), **reemplaza** el viejo y **reinicia**. Todo por red, **sin
    mandar archivos** ni depender de nada externo.
 5. Si dice "más tarde", sigue con su versión y vuelve a avisar después (o al próximo reinicio, como Chrome).
+
+```mermaid
+flowchart LR
+    G["GESTOR: publica versión<br/>+ manifiesto firmado<br/>{version, url, sha256, notas}"] -->|"HTTPS"| P{"¿hay una versión<br/>más nueva que la mía?"}
+    A["AGENTE: pregunta al conectar<br/>y cada tanto"] --> P
+    P -->|"no"| SIG["Sigue trabajando"]
+    P -->|"sí"| AV["AVISA al usuario:<br/>novedades + 'Actualizar ahora' / 'Más tarde'"]
+    AV -->|"más tarde"| SIG
+    AV -->|"ahora"| DES["Descarga en segundo plano<br/>desde el Gestor"] --> VER{"¿firma y sha256<br/>válidos?"}
+    VER -->|"no"| ABO["Aborta y avisa<br/>(no se instala nada)"]
+    VER -->|"sí"| REE["Reemplaza el ejecutable<br/>y reinicia el agente"] --> SIG
+```
+
+> Estado: **pendiente** (Fase 2). Hoy la actualización del agente es con el instalador firmado; el auto‑update por
+> red requiere primero la firma de código de CA pública (ver [FALTANTES.md](FALTANTES.md)).
 
 **Con qué implementarlo (agente Python empaquetado):**
 | Opción | Qué es | Encaje |

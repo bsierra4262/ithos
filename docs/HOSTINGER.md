@@ -31,9 +31,23 @@ ufw allow OpenSSH && ufw allow 80 && ufw allow 443 && ufw --force enable   # fir
 Registro **A**: `ithos.tudominio.com → IP del VPS`. Verificá: `nslookup ithos.tudominio.com`.
 
 ## 3) Desplegar el Gestor (Docker + Caddy, TLS automático)
+
+```mermaid
+flowchart TD
+    P["Paquete del código<br/>(sin .env ni clientes.json)"] --> V["VPS: descomprimir sobre /root/jarvis-cloud"]
+    V --> S["compilador/instaladores/actualizar.sh"]
+    S --> B["1· BACKUP<br/>clientes.json + .env + volumen<br/>→ /root/ithos-backups/&lt;fecha&gt;"]
+    B --> M["2· Aviso de mantenimiento<br/>por los canales del cliente<br/>(ITHOS_SIN_AVISO=1 lo saltea)"]
+    M --> BV["3· Sube la versión del Gestor (SemVer)"]
+    BV --> R["4· docker compose -p jarvis-cloud up -d --build<br/>(comun/ va montado · central/ se reconstruye)"]
+    R --> H{"5· ¿los contenedores<br/>quedaron arriba?"}
+    H -->|"sí"| OK["Caddy toma el dominio de ITHOS_DOMINIO<br/>y renueva el certificado solo.<br/>Al reconectar el agente, arranca<br/>todo lo del cliente"]
+    H -->|"no"| RB["ROLLBACK: volver al commit anterior<br/>y correr el script, o restaurar el backup"]
+```
+
 Copiá `jarvis-cloud/` a un disco local del VPS (no red) y corré el instalador:
 ```bash
-cd jarvis-cloud/instaladores && sudo bash central_unix.sh
+cd jarvis-cloud/compilador/instaladores && sudo bash central_unix.sh
 ```
 El instalador: instala Docker, **te pide el dominio** (arma el Caddyfile), **te pide/genera las credenciales del
 Gestor** (crea `.env` con permisos 600), y levanta todo con `docker compose up -d --build`. Caddy saca el
@@ -56,17 +70,19 @@ mantiene. Con `ITHOS_SIN_AVISO=1` se saltea el aviso de mantenimiento a los cana
 - `https://ithos.tudominio.com/` → **pide login** (usuario/clave; **solo INTELLIHELP**). Candado verde (TLS OK).
 - Logs: `docker compose logs -f central panel`.
 - **Agente desde otra red** (otra IP pública): conecta a `wss://ithos.tudominio.com/ws` sin abrir puertos (solo
-  sale hacia afuera). En laboratorio esto ya lo valida el test H27.
+  sale hacia afuera). En laboratorio lo valida la batería de requerimientos (comunicación entre dos redes).
 
 ## 5) Instalar el Agente en el equipo del cliente (Windows / Linux / Mac)
-Desde `jarvis-cloud/instaladores`, corré el de su SO. Pide `central_url` (`wss://ithos.tudominio.com/ws`) +
-`api_key` (te la da el panel al dar de alta), instala deps, deja el agente arrancando solo y **pregunta si hace de
-portero** (habla por parlantes):
-- **Windows:** `agente_windows.ps1` (PowerShell como Admin). Portero → tarea *Al iniciar sesión* (con audio) +
-  **autologin** (`netplwiz`). Sin voz → tarea SYSTEM al iniciar.
-- **Linux:** `sudo bash agente_linux.sh`. Portero → servicio de **usuario** (`systemd --user`, con audio) + linger
-  + autologin gráfico. Sin voz → servicio de sistema.
-- **Mac:** `bash agente_mac.sh` → LaunchAgent (corre en la sesión del usuario, con audio).
+- **Windows (lo normal):** el **instalador firmado** `compilador/dist/ITHOS-Agente-Setup.exe` (se construye con
+  `compilador\build\construir_agente.bat`). Es una app con interfaz: pide la `api_key` y la **contraseña de
+  agente** de la empresa, queda arrancando al iniciar sesión y tiene su propio menú para **mover a otra PC** o
+  desinstalar. Detalle: [INSTALACION_AGENTE.md](INSTALACION_AGENTE.md).
+- **Linux / Mac:** desde `jarvis-cloud/compilador/instaladores`. Piden `central_url`
+  (`wss://ithos.tudominio.com/ws`) + `api_key`, instalan las dependencias, dejan el agente arrancando solo y
+  **preguntan si hace de portero** (habla por parlantes):
+  - `sudo bash agente_linux.sh` → portero: servicio de **usuario** (`systemd --user`, con audio) + linger +
+    autologin gráfico. Sin voz: servicio de sistema.
+  - `bash agente_mac.sh` → LaunchAgent (corre en la sesión del usuario, con audio).
 
 > **Por qué el "modo portero":** un servicio de sistema (Windows sesión 0 / systemd de sistema) **no tiene audio**;
 > el portero **debe** correr en una **sesión interactiva con audio**. Detalle: [INSTALACION_AGENTE.md](INSTALACION_AGENTE.md) §3.
@@ -76,7 +92,7 @@ portero** (habla por parlantes):
 Desde el panel superadmin, **generá el enlace de alta temporal de un solo uso** y usalo para cargar la empresa (IA,
 tickets, canales, control de acceso y —si cobrás— Facturación con el token `APP_USR-…` real). El cliente **nunca**
 entra al Gestor: solo a su **dashboard** `/panel/<api_key>`.
-> Sacá el token de PRUEBA de MercadoPago que quede en `central/clientes.json` y poné el **real** cuando cobres.
+> Sacá el token de PRUEBA de MercadoPago que quede en `ITHOS/central/clientes.json` y poné el **real** cuando cobres.
 > INTELLIHELP queda como *propietario* (no se cobra).
 
 ## Modelo de acceso (seguridad)
@@ -100,28 +116,28 @@ cd /root/jarvis-cloud
 grep -q ITHOS_MASTER_KEY .env || echo "ITHOS_MASTER_KEY=$(openssl rand -base64 32)" >> .env
 docker compose up -d                              # recarga el .env
 # 2) cifrar el clientes.json que hoy está en claro (idempotente; hace backup antes)
-cp central/clientes.json central/clientes.json.bak-$(date +%F)
+cp ITHOS/central/clientes.json ITHOS/central/clientes.json.bak-$(date +%F)
 docker compose exec -T central python -m comun.cifrado /app/clientes.json
 docker compose restart central panel              # recarga y descifra en memoria
 ```
 > ⚠️ **No pierdas ni cambies `ITHOS_MASTER_KEY`**: si la cambiás, los datos ya cifrados dejan de poder
 > descifrarse. Guardala como el secreto más importante del server.
 
-## 🧪 Ambiente de DEMO (siloado y efímero, no toca producción)
-Para mostrar/probar sin riesgo cuando ya haya clientes reales, la demo corre como un **stack aparte** con la
-**misma imagen** que producción (⇒ hace lo mismo), pero **volumen, clientes y claves propios** (⇒ no toca
-producción) y **efímero** (al bajarlo se borra todo). Es el modelo **Silo/full-stack isolation** (AWS SaaS) +
-**Sandbox** (Stripe).
+## 🧪 Probar sin tocar producción
+
+El stack de demo **se retiró**: mantener dos ambientes que hacían lo mismo duplicaba el trabajo y era una fuente
+de errores. Para verificar antes de desplegar se usan las **baterías** del repositorio, que no necesitan la VPS:
+
 ```bash
-cd /root/jarvis-cloud
-cp .env.demo.example .env.demo                                  # poné claves de DEMO (openssl rand ...)
-cp central/clientes.demo.json.example central/clientes.demo.json  # empresas SANDBOX (grupo WhatsApp de demo, etc.)
-bash instaladores/demo.sh up                                    # levanta la demo aislada
-ssh -L 8091:localhost:8091 root@TU-VPS                          # túnel → http://localhost:8091 (panel de demo)
-bash instaladores/demo.sh down                                  # baja y BORRA TODO (down -v: no deja nada)
+python tests/probar_requerimientos.py     # 115 requerimientos transversales (sin red)
+python tests/probar_helpdesk_mejoras.py   # esperas, escaladas y @menciones (sin red)
+python tests/probar_sistema.py            # circuito completo por HTTP
 ```
-> La demo usa el volumen `ithos_demo_data` (aparte de `ithos_data`), `central/clientes.demo.json` (aparte de
-> `clientes.json`) y `.env.demo` (claves propias). **Nunca** pongas credenciales de un cliente real en la demo.
+
+Si hace falta un ambiente aislado sobre la VPS (para una demostración con datos ficticios), se levanta un stack
+con **otro nombre de proyecto y otro volumen** —`docker compose -p ithos-demo`, con su propio `clientes.json`
+(hay una plantilla en `ITHOS/central/clientes.demo.json.example`) y su propio `.env`— y se baja con `down -v`
+para que no quede nada. **Nunca** poner credenciales de un cliente real en un ambiente de demostración.
 
 ## ✅ Checklist de GO‑LIVE
 - [ ] VPS **Ubuntu** + **UFW** (solo 22/80/443); 8080/8090 NO públicos.
@@ -146,7 +162,7 @@ El flujo es **local → VPS**, siempre en este orden:
      `.env` y `central/clientes.json` **no** vienen en el paquete (están en `.gitignore`), así **no se pisan**.
 3. **En el VPS** corrés el actualizador seguro:
    ```bash
-   cd /root/jarvis-cloud/instaladores && bash actualizar.sh
+   cd /root/jarvis-cloud && bash compilador/instaladores/actualizar.sh
    ```
    Hace: **backup** (clientes.json + cuota + `.env` + volumen `ithos_data`) → trae el código → `docker compose up
    -d --build` → **verifica** que los contenedores queden arriba (y te dice cómo revertir si algo falla).

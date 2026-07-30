@@ -32,9 +32,9 @@
 - [x] Vocabulario **Gestor + Agente** (app, logs, demo, docs).
 - [x] **Agente = APP con interfaz gráfica ITHOS** (pywebview, multiplataforma, no consola) + **un solo instalador**
       Inno personalizado (`dist\ITHOS-Agente-Setup.exe`), con arranque al iniciar sesión, datos en `%LOCALAPPDATA%\ITHOS`
-      y desinstalado **sin rastro** (solo lo del agente). Build: `build/construir_agente.bat`. (H47)
-- [x] **Firma de código GRATIS (self-signed INTELLIHELP + timestamp)** para la flota controlada: `build/firmar.ps1`
-      + `build/confiar_en_cliente.ps1` (Trusted Root/Publishers, admin o GPO). (H47)
+      y desinstalado **sin rastro** (solo lo del agente). Build: `compilador/build/construir_agente.bat`. (H47)
+- [x] **Firma de código GRATIS (self-signed INTELLIHELP + timestamp)** para la flota controlada: `compilador/build/firmar.ps1`
+      + `compilador/build/confiar_en_cliente.ps1` (Trusted Root/Publishers, admin o GPO). (H47)
 - [x] Test de **comunicación entre redes** Gestor(VPS) ↔ Agente(cliente, otra IP) — agente sale hacia afuera, NAT ok. (H27)
 - [x] **Seguridad de acceso** (Fase 1.5): login del Gestor (solo INTELLIHELP) + enlace de alta temporal de un solo
       uso, con la demo adaptada. (ver más abajo / H28)

@@ -13,15 +13,31 @@
 
 ---
 
+## Ciclo de vida del agente (construir → instalar → operar → mover)
+
+```mermaid
+flowchart LR
+    B["CONSTRUIR (una vez, en tu máquina)<br/>compilador\build\construir_agente.bat<br/>sube versión → icono → PyInstaller →<br/>firma → Inno → firma"] --> I["INSTALAR en la PC del cliente<br/>ITHOS-Agente-Setup.exe<br/>(instala el certificado como confiable)"]
+    I --> C["CONFIGURAR en la app<br/>URL del Gestor + api_key +<br/>contraseña de agente"]
+    C --> O["OPERAR 24/7<br/>arranca al iniciar sesión · singleton por mutex<br/>reconecta con backoff + jitter<br/>habla aunque la sesión esté bloqueada o tras RDP"]
+    O --> A{"¿versión nueva?"}
+    A -->|"hoy"| N["Se ejecuta el instalador nuevo:<br/>detecta la versión vieja, cierra el agente<br/>y actualiza conservando config y caché"]
+    A -->|"Fase 2"| AU["Auto-update por red<br/>(avisa y el usuario decide)"]
+    O --> M["MOVER a otra PC<br/>desinstalar acá (borra sus datos, no toca<br/>los del cliente) e instalar allá con la<br/>misma api_key y contraseña"]
+```
+
+> **Un solo agente por empresa.** Si querés pasarlo a otra PC, desinstalá el anterior: dos agentes con la misma
+> `api_key` compiten por la misma conexión en el Gestor y los anuncios se vuelven impredecibles.
+
 ## 1. Construir el INSTALADOR (una vez, en tu máquina)
 Un solo comando arma **todo** (icono → app `.exe` → firma → instalador → firma), y deja **SOLO el instalador** en
-`dist\` (limpia lo viejo):
+`compilador\dist\` (limpia lo viejo):
 ```bat
 pip install pyinstaller pywebview pillow
 pip install -r requirements.txt
-build\construir_agente.bat
+compilador\build\construir_agente.bat
 ```
-Queda **`dist\ITHOS-Agente-Setup.exe`** (el `.exe` va adentro; no hay un ejecutable suelto). El agente es una
+Queda **`compilador\dist\ITHOS-Agente-Setup.exe`** (el `.exe` va adentro; no hay un ejecutable suelto). El agente es una
 **APLICACIÓN con interfaz gráfica ITHOS** (no una consola): al abrirla ves el panel con el reactor, el estado y los
 botones para **configurar** (api_key + contraseña), **arrancar/detener** y **desinstalar/mover**. Multiplataforma
 (webview nativo de cada SO; en un server Linux sin pantalla cae a un menú de consola). El servicio 24/7 corre
@@ -37,7 +53,7 @@ dejar rastro — y **NO toca** el sistema de tickets del cliente, la base de fic
 No hay cert gratis de CA pública para software propietario. Para tu **flota** (instalás en PCs conocidas) la vía
 oficial de Microsoft, gratis, es un **certificado self-signed de INTELLIHELP** + confiarlo en la PC del cliente:
 ```bat
-:: firmar (lo hace solo build\construir_agente.bat; o a mano):
+:: firmar (lo hace solo compilador\build\construir_agente.bat; o a mano):
 powershell -ExecutionPolicy Bypass -File build\firmar.ps1
 :: -> crea el cert (1 vez), firma el .exe y el instalador con timestamp, y deja build\ithos-publisher.cer
 ```
@@ -139,5 +155,5 @@ manda un archivo a mano.** Detalle en ARQUITECTURA_GESTOR_AGENTE.md §3.1.
   panel (`/api/alta_link`) y se consume al usarse.
 
 > **Nota honesta:** el `.exe` hay que **construirlo y probarlo en una PC Windows del cliente** (trae libs nativas:
-> neonize/onnx/portaudio). El spec (`build/agente.spec`) es un punto de partida sólido; si al correr el `.exe`
+> neonize/onnx/portaudio). El spec (`compilador/build/agente.spec`) es un punto de partida sólido; si al correr el `.exe`
 > falta alguna lib nativa, se agrega en `datas/binaries` del spec.
