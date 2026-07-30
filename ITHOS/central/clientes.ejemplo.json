@@ -30,6 +30,11 @@
         "_nota": "ubicacion='central' si el GLPI está en la nube; 'agente' si está en la red interna del cliente (privado)."
       },
 
+      "tecnicos": [
+        {"nombre": "Nombre Apellido", "glpi_id": 0, "glpi_login": "usuario", "telefonos": ["5491111111111"]},
+        {"_nota": "Técnicos asignables. glpi_id = users_id del usuario en GLPI (campo 'Asignado a' = Ticket_User type=2). telefonos = números de WhatsApp para reconocer 'mis tickets' y @mencionar al asignado. Solo los técnicos reales del cliente."}
+      ],
+
       "whatsapp": {
         "enabled": true,
         "tipo": "oficial",

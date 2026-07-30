@@ -35,6 +35,11 @@ y el versionado, [SemVer](https://semver.org/lang/es/).
   el SLA por calendario y horario de atención (Lun–Vie 09–18).
 
 ### Fixed
+- **Helpdesk — acciones sobre "los tickets asignados a X" tocaban tickets ajenos.** «Poné en espera
+  los tickets asignados a Brian Sierra» dejaba también en espera un ticket donde Brian sólo era
+  observador. Ahora la acción `poner_en_espera_asignados` filtra **en código** por el campo «Asignado a»
+  (Ticket_User type=2), nunca por observador/solicitante, y reconoce a quien escribe por su número →
+  usuario GLPI (config `tecnicos`). «mis tickets» / «los míos» resuelven por el número del remitente.
 - **Planka no ejecutaba las órdenes por WhatsApp** («ithos, terminé…» / «ithos, agregá…»): al
   integrador se le pasaba el diccionario de configuración de IA en lugar del objeto ProveedorIA, así
   que la interpretación con IA fallaba siempre y el mensaje caía al asistente. Ahora recibe el

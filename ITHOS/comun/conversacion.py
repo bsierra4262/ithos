@@ -504,6 +504,12 @@ class Asistente:
             "el número. El sistema convierte '2 de la tarde' -> 14:00. Queda EN ESPERA y vuelve a "
             "EN CURSO SOLO cuando llega ese momento. Si no dijeron la HORA, la acción te la pide: "
             "transmití esa pregunta al usuario (no inventes la hora).\n"
+            "👤 TICKETS POR TÉCNICO (asignado): si piden actuar sobre 'los tickets asignados a X', 'los "
+            "de X', 'mis tickets' o 'los míos' (poner en espera / posponer en lote), usá SIEMPRE "
+            "'poner_en_espera_asignados' con args:{persona:'<nombre del técnico>'|'yo', cuando?:'<día y "
+            "hora EXACTOS si los dijeron>'}. NO busques ni pospongas uno por uno: esa acción filtra SOLA "
+            "por el campo 'Asignado a' (jamás toca un ticket donde la persona es observador o "
+            "solicitante). Si dicen 'mis tickets' o 'los míos', poné persona:'yo' (te identifica por el número).\n"
             "Respondé SOLO este JSON: {\"acciones\": [{\"accion\":\"<nombre>\",\"args\":{...}}, ...], "
             "\"recordar\": {\"clave\":\"...\",\"valor\":\"...\"}|null, \"respuesta\": \"<texto para el usuario>\"}. "
             "Podés poner 0, 1 o varias acciones. (También se acepta el formato viejo con "
@@ -553,6 +559,7 @@ class Asistente:
                 continue
             args = paso.get("args") or {}
             if isinstance(args, dict):
+                args.setdefault("_remitente", remitente)   # quién escribe (para 'mis tickets' por número)
                 if not args.get("id") and ticket_ctx:  # 'ponelo en espera' sin repetir el número
                     args["id"] = ticket_ctx
                 if args.get("id") is not None:
@@ -966,6 +973,29 @@ def herramientas_tickets(cli_cfg):
     }
 
 
+def _resolver_tecnico(persona, remitente, tecnicos):
+    """Resuelve a QUÉ técnico se refiere: por NOMBRE ('Brian Sierra', 'ale') o, si dice 'yo/mis/mío'
+    o no aclara, por el NÚMERO de quien escribe (remitente, robusto a +54/549 y LID). None si no matchea.
+    Los técnicos salen de cli_cfg['tecnicos'] = [{nombre, glpi_id, glpi_login, telefonos:[...]}]."""
+    import re as _re
+    tecnicos = tecnicos or []
+    p = _re.sub(r"\s+", " ", (persona or "").strip().lower())
+    if (not p or p in ("yo", "mi", "mí", "mis", "mios", "míos", "los mios", "los míos",
+                       "para mi", "para mí", "a mi", "a mí", "mio", "mío")) and remitente:
+        tel = _re.sub(r"\D", "", str(remitente))
+        for t in tecnicos:
+            for n in (t.get("telefonos") or []):
+                n = _re.sub(r"\D", "", str(n))
+                if n and (tel == n or (len(tel) >= 10 and tel[-10:] == n[-10:])):
+                    return t
+    if p:
+        for t in tecnicos:
+            nom = _re.sub(r"\s+", " ", (t.get("nombre") or "").strip().lower())
+            if nom and (p == nom or p in nom or nom.split()[0] == p.split()[0] or (len(p) >= 3 and p in nom)):
+                return t
+    return None
+
+
 def acciones_tickets(cli_cfg, avisar=None):
     """Acciones de ESCRITURA que el agente puede EJECUTAR sobre el sistema de tickets
     del CLIENTE (el que sea). Por cliente. SIN alta de usuarios (a propósito).
@@ -1063,6 +1093,50 @@ def acciones_tickets(cli_cfg, avisar=None):
         return (f"⏸️ Ticket #{tid} EN ESPERA hasta {desc}. Lo paso a EN CURSO automáticamente "
                 "en ese momento.")
 
+    def en_espera_asignados(args):
+        """Pone EN ESPERA (o pospone si dan 'cuando') TODOS los tickets ABIERTOS ASIGNADOS a un
+        técnico — SOLO los de 'Asignado a', nunca donde es observador/solicitante. Filtra en CÓDIGO
+        (no depende de la IA). 'persona' = nombre del técnico o 'yo' (por el número de quien escribe)."""
+        tecnicos = cli_cfg.get("tecnicos") or []
+        t = _resolver_tecnico(args.get("persona") or args.get("tecnico"), args.get("_remitente"), tecnicos)
+        if not t:
+            return ("No me quedó claro de qué técnico son los tickets. Decime el nombre "
+                    "(por ej. Brian Sierra / Alejandro Ayala) y lo hago.")
+        fn = getattr(adap, "asignados_a", None)
+        if not fn:
+            return "(este sistema de tickets no soporta filtrar por asignado todavía)."
+        try:
+            tickets = fn(t.get("glpi_id"))
+        except Exception as e:  # noqa: BLE001
+            return f"No pude leer los tickets asignados a {t['nombre']}: {e}"
+        nom = t["nombre"].split()[0]
+        if not tickets:
+            return f"{nom} no tiene tickets abiertos asignados. No toqué nada."
+        cuando = args.get("cuando") or args.get("hasta") or args.get("fecha") or ""
+        dt = None
+        desc = ""
+        if cuando:
+            from comun import agenda
+            dt, desc = agenda.interpretar_cuando(cuando, _zona)
+            if not dt:
+                return (f"¿Hasta qué día y HORA dejo pendientes los {len(tickets)} ticket(s) de {nom}? "
+                        "Decime el día y la hora (por ej. 'mañana 10:00').")
+        hechos = []
+        for tk in tickets:
+            tid = tk["id"]
+            try:
+                adap.cambiar_estado(tid, "en_espera")
+                if dt:
+                    from comun import agenda
+                    agenda.programar(_nombre, tid, dt.timestamp(), desc)
+                hechos.append(f"#{tid}")
+            except Exception:  # noqa: BLE001
+                pass
+        cola = f" hasta {desc} (se reactivan solos)" if dt else ""
+        lista = ", ".join(hechos)
+        _avisar(f"⏸️ *{len(hechos)} ticket(s)* de {t['nombre']} — EN ESPERA{cola}: {lista}.")
+        return f"⏸️ Puse EN ESPERA {len(hechos)} ticket(s) asignados a {t['nombre']}{cola}: {lista}."
+
     return {
         "cerrar_ticket": {"desc": "Cerrar un ticket. args:{id}", "fn": cerrar},
         "reabrir_ticket": {"desc": "Reabrir un ticket. args:{id}", "fn": reabrir},
@@ -1076,4 +1150,5 @@ def acciones_tickets(cli_cfg, avisar=None):
         "cambiar_prioridad": {"desc": "Cambiar prioridad. args:{id,prioridad:baja|media|alta|urgente}", "fn": prioridad},
         "escalar_ticket": {"desc": "Escalar (urgente + asignar). args:{id,responsable?}", "fn": escalar},
         "posponer_ticket": {"desc": "Dejar EN ESPERA hasta un día/hora y REACTIVAR solo al llegar. Si falta la hora, la pide. args:{id,cuando:'lunes a la tarde'|'martes 15:30',texto?}", "fn": posponer},
+        "poner_en_espera_asignados": {"desc": "Pone EN ESPERA (o pospone hasta un día/hora si dan 'cuando') TODOS los tickets ASIGNADOS a un técnico — SOLO los del campo 'Asignado a', nunca donde la persona es observador o solicitante. Usala SIEMPRE para 'los tickets asignados a X', 'los de X', 'mis tickets' o 'los míos'. args:{persona:'Brian Sierra'|'Alejandro Ayala'|'yo', cuando?:'mañana 10:00'}", "fn": en_espera_asignados},
     }

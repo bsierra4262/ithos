@@ -136,6 +136,33 @@ class _GLPI:
             c.cerrar()
         return f"#{tid}: {t.get('name')} — {_ESTADO_TXT.get(int(t.get('status', 0)), '?')}"
 
+    def asignados_a(self, glpi_id):
+        """Tickets ABIERTOS (nuevo/en curso/en espera) donde el usuario es el TÉCNICO ASIGNADO
+        ('Asignado a' = Ticket_User type=2, campo de búsqueda 5 en GLPI). NO incluye los tickets
+        donde la persona es solicitante u observador. Devuelve [{id, asunto, estado}]."""
+        try:
+            gid = int(glpi_id)
+        except (TypeError, ValueError):
+            return []
+        c = self._c()
+        try:
+            q = ("/search/Ticket?criteria[0][field]=5&criteria[0][searchtype]=equals"
+                 f"&criteria[0][value]={gid}"
+                 "&forcedisplay[0]=2&forcedisplay[1]=1&forcedisplay[2]=12&range=0-300")
+            r = c.request(q)
+        finally:
+            c.cerrar()
+        out = []
+        for d in (r.get("data") or []):
+            try:
+                est = int(d.get("12") or 0)
+            except (TypeError, ValueError):
+                est = 0
+            if est in (1, 2, 4):                       # abierto: nuevo / en curso / en espera
+                out.append({"id": int(d.get("2")), "asunto": str(d.get("1") or ""),
+                            "estado": _ESTADO_TXT.get(est, "?")})
+        return out
+
     def responder(self, tid, texto):
         tid = _norm_id(tid)
         c = self._c()
