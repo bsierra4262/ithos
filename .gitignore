@@ -37,14 +37,18 @@ ITHOS/agente/voz_cache/
 ITHOS/comun/voz_cache/
 
 # --- ARTEFACTOS de compilacion (se regeneran con compilador/build) ---
+# OJO: se ignoran SOLO los artefactos. La receta de compilacion (agente.spec, el .iss del
+# instalador, los scripts de firma y de version) SI se versiona: sin ella el agente no se puede
+# reconstruir desde el repositorio. No usar un patron suelto tipo "build/": tapa esa receta.
 compilador/dist/
 compilador/build/exe/
 compilador/build/work/
 compilador/build/agente/
-build/
-dist/
+/build/
+/dist/
 compilador/build/ithos.ico
 compilador/build/ithos.png
+compilador/build/ithos.icns
 compilador/build/ithos_wizard*.bmp
 compilador/build/ithos-publisher.cer
 
