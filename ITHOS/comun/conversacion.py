@@ -89,6 +89,21 @@ def _pide_detalle(texto):
         r"en profundidad|ampli[aá]|explay", texto or "", re.I))
 
 
+def _pide_antecedentes(texto):
+    """True si preguntan por casos YA trabajados para usarlos de referencia: "¿qué tickets
+    resolvimos con este problema?", "casos parecidos", "antecedentes", "así lo tomo de modelo".
+    No alcanza con nombrar un ticket: tiene que haber un verbo de haberlo trabajado o un pedido
+    explícito de antecedentes, para no salir a revisar el histórico entero en cada mensaje."""
+    import re
+    t = texto or ""
+    if not re.search(r"ticket|caso|incidente|reclamo|problema|inconveniente", t, re.I):
+        return False
+    return bool(re.search(
+        r"resolv|solucionamo|solucionaron|arreglamo|cerramo|hicimo|tuvimo|"
+        r"antecedent|parecid|similar|hist[oó]ric|anterior|otra[s]? vez|ya pas[oó]|"
+        r"de modelo|como modelo|de referencia|de ejemplo", t, re.I))
+
+
 ZONA_DEFAULT = "America/Argentina/Buenos_Aires"
 
 
@@ -422,6 +437,25 @@ class Asistente:
                 datos += "\n\nTICKET (contenido real — LEELO ENTERO antes de responder):\n" + str(leer["fn"]({"id": tid}))
             except Exception:  # noqa: BLE001
                 pass
+        # ANTECEDENTES: si preguntan por casos YA trabajados ("qué tickets resolvimos con…",
+        # "casos parecidos", "para tomar de modelo"), el panorama NO alcanza: solo trae los
+        # ABIERTOS, así que el modelo terminaba contestando de memoria e inventando números de
+        # ticket. Acá se revisa el histórico COMPLETO y se le entregan los casos REALES.
+        if _pide_antecedentes(texto):
+            hc = self.herramientas.get("casos_parecidos")
+            if hc:
+                try:
+                    datos += "\n\n" + str(hc["fn"]({"problema": texto}))
+                    datos += ("\n⛔ Sobre estos ANTECEDENTES: nombrá ÚNICAMENTE los números de "
+                              "ticket que figuran arriba —no existe ningún otro— y quedate solo "
+                              "con los que de verdad son el MISMO problema que se preguntó "
+                              "(están ordenados por parecido, pero varios pueden no "
+                              "corresponder: descartalos). De cada uno contá qué se hizo. Un "
+                              "ticket cerrado por un tema ADMINISTRATIVO no se resolvió: no lo "
+                              "ofrezcas como modelo; mencionalo solo si aporta y aclarando que "
+                              "quedó sin resolución. Si ninguno corresponde, decilo.")
+                except Exception:  # noqa: BLE001
+                    pass
         # Ticket "EN FOCO": si quedó UN solo objetivo (por número, por ser el único abierto, o
         # porque el asunto matcheó claro), guardamos su id para completar una acción si el modelo
         # omite el número ('ponelo en espera'). Si hay varios y es ambiguo, NO se asume: el
@@ -967,6 +1001,39 @@ def herramientas_tickets(cli_cfg):
         return "Encontré: " + "; ".join(
             f"#{t['id']} {str(t.get('asunto'))[:40]}" for t in res)
 
+    def casos_parecidos(args):
+        """ANTECEDENTES: revisa TODO el histórico ya trabajado (cerrados y en espera) y trae los
+        tickets del MISMO problema con lo que REALMENTE se hizo en cada uno. Es la evidencia con
+        la que se responde "¿qué casos como este tuvimos y cómo los resolvimos?": sin esto la
+        respuesta sale de la memoria del modelo y ahí es donde aparecen números inventados."""
+        descripcion = (args.get("problema") or args.get("texto") or args.get("q") or "").strip()
+        fn = getattr(adap, "casos_similares", None)
+        if not fn:
+            return "(este sistema de tickets todavía no permite revisar el histórico completo)."
+        if not descripcion:
+            return "(no me quedó claro qué problema buscar en el histórico)."
+        try:
+            casos = fn(descripcion)
+        except Exception as e:  # noqa: BLE001
+            return f"(no pude revisar el histórico de tickets: {e})"
+        if not casos:
+            return ("ANTECEDENTES: revisé el histórico COMPLETO de tickets cerrados y en espera y "
+                    "NO hay ninguno con este problema. Decilo así, sin nombrar ningún número.")
+        lineas = [f"ANTECEDENTES — {len(casos)} ticket(s) del histórico COMPLETO que podrían ser "
+                  "el mismo problema (ordenados por parecido). Estos son los ÚNICOS números que "
+                  "existen para esta consulta:"]
+        for c in casos:
+            if c["resuelto_de_verdad"]:
+                res = "lo que hizo soporte: " + _una_linea(c["resolucion"], 320)
+            elif c["cierre_administrativo"]:
+                res = ("SIN resolución técnica: se cerró por un tema administrativo (la categoría "
+                       "estaba mal cargada). NO sirve como modelo de cómo se resolvió.")
+            else:
+                res = "SIN resolución documentada: no quedó registrado qué se hizo."
+            lineas.append(f"#{c['id']} [{c['estado']}] {str(c['asunto'])[:60]}\n"
+                          f"   problema: {_una_linea(c['problema'], 320)}\n   {res}")
+        return "\n".join(lineas)
+
     def tickets_asignados(args):
         """Los tickets ABIERTOS de un técnico con su ESTADO — SOLO los del campo "Asignado a", nunca
         donde la persona es observador o solicitante. 'persona' puede ser el nombre del técnico o
@@ -1003,10 +1070,18 @@ def herramientas_tickets(cli_cfg):
         "reporte_sla": {"desc": "Cumplimiento de SLA y estadísticas.", "fn": reporte_sla},
         "reporte_itil": {"desc": "Reporte ITIL con KPIs (volumen, SLA, MTTR, por prioridad/categoría/técnico, backlog). args:{periodo:diario|semanal|mensual}.", "fn": reporte_itil},
         "buscar_tickets": {"desc": "Busca tickets por texto o persona. args:{texto}.", "fn": buscar_tickets},
+        "casos_parecidos": {"desc": "ANTECEDENTES: revisa TODO el histórico (cerrados y en espera) y trae los tickets del MISMO problema con lo que realmente hizo soporte en cada uno. Usala SIEMPRE que pregunten '¿qué tickets tuvimos/resolvimos con X problema?', 'casos parecidos', 'antecedentes' o pidan tomar casos de modelo. args:{problema:'<el problema tal como lo describieron>'}", "fn": casos_parecidos},
         "mis_permisos": {"desc": "Qué puede/NO puede hacer ITHOS en este sistema (permisos por API).", "fn": mis_permisos},
         "tickets_sin_procesar": {"desc": "Detecta tickets SUELTOS (cualquier estado) sin categoría o SLA, que necesitan el ciclo.", "fn": tickets_sin_procesar},
         "reactivaciones_programadas": {"desc": "Lista los tickets con una REACTIVACIÓN programada (pospuestos a un día/hora). USALA para responder 'qué hay programado/agendado' o si un ticket tiene reactivación.", "fn": reactivaciones_programadas},
     }
+
+
+def _una_linea(texto, tope):
+    """Deja el texto en una sola línea y acotado, para que entre prolijo en el contexto."""
+    import re as _re
+    t = _re.sub(r"\s+", " ", str(texto or "")).strip()
+    return (t[:tope] + "…") if len(t) > tope else t
 
 
 def _resolver_tecnico(persona, remitente, tecnicos):

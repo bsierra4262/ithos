@@ -30,6 +30,17 @@ y el versionado, [SemVer](https://semver.org/lang/es/).
   transcriba con pronunciación inglesa ("hey ethos"). **Nombrar la marca suelta ya no activa**: en un
   grupo de trabajo se la menciona todo el tiempo ("preguntale a ITHOS") y no corresponde intervenir.
   Los textos que explican cómo usarlo —aviso de inicio, mensajes de las tareas del equipo— lo dicen así.
+- **Antecedentes: "¿qué casos como este ya resolvimos?".** Preguntar por casos ya trabajados ahora
+  revisa el **histórico completo** del cliente —todos los tickets cerrados y en espera, no los últimos
+  60— y trae cada caso con la **resolución que escribió soporte**. Encuentra el ticket aunque esté
+  redactado con otras palabras (busca por **raíz**, así "fichadas" encuentra "la fichada", y sin
+  espacios, así "HikCentral" encuentra "hik central"), pesa cada término según lo distintivo que sea y
+  descarta las palabras con que se *pregunta*. Un **cierre administrativo** —categoría mal cargada,
+  duplicado, sin respuesta del cliente— se marca como **sin resolución técnica** y no se ofrece como
+  modelo, igual que no lo haría un experto de mesa de ayuda. Los casos reales entran al contexto antes
+  de redactar la respuesta: **los números que dice son los que existen**. Antes, la consulta se
+  respondía con los tickets abiertos y la memoria del modelo, que llegó a citar un ticket inexistente,
+  se salteaba el que sí correspondía y ofrecía cierres administrativos como resoluciones.
 - **Consultar los tickets por técnico asignado.** Además de poner en espera o posponer en lote, ahora se
   puede **preguntar** por los tickets de una persona ("¿cómo están los asignados a mí?", "los de
   Alejandro") y ITHOS devuelve los abiertos con su estado. Identifica a quien escribe por su **número**

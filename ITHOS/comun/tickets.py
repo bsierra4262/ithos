@@ -50,6 +50,79 @@ def _norm_id(tid):
     return m.group(0) if m else str(tid or "")
 
 
+# Palabras que no describen el CASO. Van dos grupos: las de relleno del idioma y —igual de
+# importante— el vocabulario con que se PREGUNTA por un ticket ("los que ya resolvimos…").
+# Si no se descartan, "resolvimos" o "cerramos" terminan pesando más que el problema en sí y la
+# búsqueda trae los tickets donde alguien escribió esa palabra en un comentario cualquiera.
+_STOP = {"que", "los", "las", "del", "para", "por", "con", "una", "unos", "unas", "pero", "como",
+         "este", "esta", "esto", "esos", "esas", "eso", "sus", "les", "the", "and", "sin", "más",
+         "mas", "muy", "son", "fue", "hay", "todo", "todos", "toda", "todas", "ese", "esa",
+         "decime", "deci", "dame", "quiero", "necesito", "tickets", "ticket", "ithos", "hey",
+         "resolvimos", "resolver", "resolvieron", "resuelto", "resueltos", "resuelta", "resueltas",
+         "solucionamos", "solucionaron", "cerramos", "cerraron", "cerrado", "cerrados",
+         "tuvimos", "hicimos", "pasaron", "buscame", "busca", "buscar", "mostrame", "traeme",
+         "similar", "similares", "parecido", "parecidos", "mismo", "misma", "caso", "casos",
+         "modelo", "ejemplo", "ejemplos", "anteriores", "anterior", "antes", "cuales", "cual",
+         "donde", "cuando", "sobre", "acerca", "tema", "temas", "algun", "alguno", "alguna"}
+
+
+def _normalizar(s):
+    """minúsculas y sin tildes, para comparar texto escrito de cualquier manera."""
+    import re as _re
+    import unicodedata as _ud
+    t = _ud.normalize("NFD", str(s or "").lower())
+    t = "".join(ch for ch in t if _ud.category(ch) != "Mn")
+    return _re.sub(r"\s+", " ", _re.sub(r"[^a-z0-9ñ]+", " ", t))
+
+
+def _palabras(s):
+    """Los términos con contenido de una consulta (sin muletillas ni palabras de relleno)."""
+    vistas, out = set(), []
+    for w in _normalizar(s).split():
+        if len(w) >= 4 and w not in _STOP and w not in vistas:
+            vistas.add(w)
+            out.append(w)
+    return out
+
+
+def _raiz(palabra):
+    """Raíz aproximada, para que 'fichadas', 'fichada' y 'fichaje' se reconozcan como lo mismo.
+    Sin diccionario ni dependencias: recorta la palabra a su comienzo (mínimo 4 letras)."""
+    return palabra[:max(4, min(6, len(palabra) - 3))]
+
+
+def _contiene(palabra, heno, heno_junto):
+    """¿El texto habla de esta palabra? Tolera el plural/la conjugación (por la raíz) y que el
+    producto esté escrito separado o junto ('hik central' ↔ 'hikcentral')."""
+    if palabra in heno or palabra in heno_junto:
+        return True
+    r = _raiz(palabra)
+    return r in heno or r in heno_junto
+
+
+# Cierres que NO son una solución técnica: el ticket se cerró por un tema administrativo (la
+# categoría estaba mal, era duplicado, el cliente no contestó). Como modelo de resolución no
+# sirven —un experto de mesa de ayuda no los ofrece como "así lo resolvimos"—, así que no se
+# presentan como solución; el caso sí puede mostrarse, aclarando que quedó sin resolución real.
+_ADMINISTRATIVO = (
+    "colocar como corresponde las categor", "cambio de la categoria correspondiente",
+    "la categoria no corresponde", "categoria no era correcta", "categoria incorrecta",
+    "se cerrara inmediatamente", "cambiar la categoria", "mal cargad", "mal ingresad",
+    "ticket duplicad", "es duplicado", "cerrado por falta de respuesta",
+    "sin respuesta del cliente", "reingresar el ticket", "vuelva a generar el ticket",
+)
+
+
+def _cierre_administrativo(texto):
+    t = _normalizar(texto)
+    return any(_normalizar(m) in t for m in _ADMINISTRATIVO)
+
+
+# Histórico ya leído, por cliente: {(url, entidad, estados): (cuándo, documentos)}.
+_CORPUS = {}
+_CORPUS_TTL = 600            # 10 minutos
+
+
 def _sin_html(s):
     """Texto plano legible desde el HTML que guarda GLPI en descripciones/seguimientos.
     GLPI suele DOBLE-escapar (guarda '&#60;p&#62;' por '<p>'), así que desescapamos dos
@@ -220,15 +293,182 @@ class _GLPI:
         return f"👤 Ticket #{tid} asignado a {tecnico} (+ ITHOS)."
 
     def buscar(self, texto):
+        """Búsqueda simple por texto sobre TODO el histórico (no sólo los últimos): acepta que
+        coincida la frase completa o la mayoría de sus palabras, para que 'no puede fichar Juan'
+        encuentre el ticket aunque esté redactado distinto."""
         c = self._c()
         try:
-            ts = self._ent(c.tickets_recientes(60))
+            ts = self._ent(c.todos_tickets())
         finally:
             c.cerrar()
-        q = (texto or "").lower()
-        return [{"id": t["id"], "asunto": t.get("name", "")}
-                for t in ts if q in str(t.get("name", "")).lower()
-                or q in str(t.get("content", "")).lower()][:8]
+        pal = _palabras(texto)
+        if not pal:
+            return []
+        out = []
+        for t in ts:
+            heno = _normalizar(f"{t.get('name', '')} {_sin_html(t.get('content', ''))}")
+            junto = heno.replace(" ", "")
+            aciertos = sum(1 for w in pal if _contiene(w, heno, junto))
+            if aciertos >= max(1, int(len(pal) * 0.6)):
+                out.append((aciertos, t))
+        out.sort(key=lambda x: (-x[0], -int(x[1].get("id", 0))))
+        return [{"id": t["id"], "asunto": t.get("name", "")} for _, t in out[:8]]
+
+    def casos_similares(self, descripcion, tope=25, estados=(4, 5, 6)):
+        """CASOS PARECIDOS sobre TODO el histórico del cliente, con su RESOLUCIÓN REAL: la
+        materia prima para responder "¿qué tickets tuvimos como este y cómo los resolvimos?".
+
+        Recorre TODOS los tickets del cliente en los estados pedidos (por defecto En espera,
+        Resuelto y Cerrado —lo ya trabajado—), no los últimos N, y lee de UNA sola vez las
+        soluciones y los seguimientos de todos ellos (sin una consulta por ticket).
+
+        Para puntuar no alcanza con buscar la frase tal cual: nadie redacta el ticket con las
+        mismas palabras con que después se pregunta. Cada término de la consulta se busca por su
+        raíz —así "fichadas" encuentra "la fichada"— y también contra el texto sin espacios —así
+        "HikCentral" encuentra "hik central"—; cada término pesa según lo distintivo que sea
+        (uno que aparece en casi todos los tickets casi no suma), y una coincidencia en el
+        PROBLEMA vale más que una en un comentario posterior.
+
+        De cada candidato devuelve el problema y la `resolucion` REAL, que es la que escribió
+        SOPORTE: la solución documentada o, si no la hay, la última respuesta del técnico. Un
+        comentario del propio solicitante no es una resolución, y un cierre ADMINISTRATIVO
+        —«se cierra porque la categoría está mal», duplicado, sin respuesta— tampoco: en esos
+        casos `resuelto_de_verdad=False` (y `cierre_administrativo=True` si se cerró así). El
+        caso sigue sirviendo como antecedente, pero jamás se presenta como "así lo resolvimos"."""
+        import math
+        pal = _palabras(descripcion)
+        if not pal:
+            return []
+        docs = self._corpus(estados)
+        if not docs:
+            return []
+
+        # 2) Cuánto distingue cada término: el que está en todos los tickets casi no aporta. Y el
+        # que no aparece en NINGUNO se descarta: es una palabra de la pregunta, no del caso, y si
+        # se dejara —siendo la más "rara", la de mayor peso— subiría tanto el puntaje ideal que
+        # ningún ticket real llegaría al umbral.
+        peso = {}
+        for w in pal:
+            n = sum(1 for d in docs
+                    if _contiene(w, d["h_prob"], d["j_prob"])
+                    or _contiene(w, d["h_resto"], d["j_resto"]))
+            if n:
+                peso[w] = math.log((len(docs) + 1) / (n + 1)) + 1.0
+        if not peso:
+            return []
+        pal = list(peso)
+        maximo = sum(peso.values())
+
+        # 3) Puntaje. Lo que define el caso es el PROBLEMA: que la palabra aparezca en un
+        # comentario posterior apenas desempata (en un comentario se habla de cualquier cosa).
+        candidatos = []
+        for d in docs:
+            puntos = 0.0
+            for w in pal:
+                if _contiene(w, d["h_prob"], d["j_prob"]):
+                    puntos += peso[w]
+                elif _contiene(w, d["h_resto"], d["j_resto"]):
+                    puntos += peso[w] * 0.15
+            if puntos < maximo * 0.30:
+                continue
+            # La resolución la escribe SOPORTE: la solución documentada o, si no hay, la última
+            # respuesta del técnico. Lo que comenta el solicitante es parte del problema, no de
+            # la solución, y un cierre administrativo no resuelve nada.
+            resolucion = " ".join(s for s in d["sols"] if not _cierre_administrativo(s)).strip()
+            if not resolucion:
+                utiles = [f for f in d["fus_soporte"] if not _cierre_administrativo(f)]
+                resolucion = utiles[-1].strip() if utiles else ""
+            administrativo = not resolucion and any(
+                _cierre_administrativo(x) for x in d["fus"] + d["sols"])
+            t = d["t"]
+            candidatos.append({
+                "id": d["id"], "asunto": t.get("name", ""),
+                "estado": _ESTADO_TXT.get(int(t.get("status", 0)), "?"),
+                "problema": d["problema"][:800],
+                "resolucion": resolucion[:800],
+                "resuelto_de_verdad": bool(resolucion),
+                "cierre_administrativo": administrativo,
+                "relevancia": round(puntos / maximo, 3)})
+        candidatos.sort(key=lambda x: (-x["relevancia"], -x["id"]))
+        return candidatos[:tope]
+
+    def _corpus(self, estados):
+        """El histórico del cliente ya leído y normalizado, listo para buscar. Leerlo entero
+        (tickets + seguimientos + soluciones) son varias vueltas a la mesa de ayuda, así que se
+        reutiliza unos minutos: quien pregunta dos cosas seguidas no espera dos veces. El
+        histórico cerrado no cambia de un minuto al otro; lo vigente se consulta por otras vías."""
+        import time
+        clave = (self.gl.get("glpi_url"), self.ent, tuple(sorted(estados)))
+        guardado = _CORPUS.get(clave)
+        if guardado and time.time() - guardado[0] < _CORPUS_TTL:
+            return guardado[1]
+
+        c = self._c()
+        try:
+            ts = [t for t in self._ent(c.todos_tickets())
+                  if int(t.get("status", 0)) in estados]
+            sol_map = self._soluciones_masivo(c)
+            fu_map = self._followups_masivo(c)
+        finally:
+            c.cerrar()
+
+        docs = []
+        for t in ts:
+            tid = int(t.get("id", 0))
+            problema = _sin_html(t.get("content", ""))
+            solicitante = int(t.get("users_id_recipient") or 0)
+            crudos = [f for f in fu_map.get(tid, []) if str(f.get("texto", "")).strip()]
+            fus = [_sin_html(f["texto"]) for f in crudos]
+            # Lo que escribió SOPORTE: todo lo que NO viene de quien abrió el ticket. Los
+            # tickets viejos entraron por correo y GLPI los guardó sin autor (0): ahí no se
+            # puede descartar por id, así que se dejan —el intercambio con el técnico está en
+            # ese hilo— y lo que no aporta lo saca el filtro de cierres administrativos.
+            fus_soporte = [_sin_html(f["texto"]) for f in crudos
+                           if f["autor"] != solicitante]
+            sols = [_sin_html(s["texto"]) for s in sol_map.get(tid, [])
+                    if str(s.get("texto", "")).strip()]
+            h_prob = _normalizar(f"{t.get('name', '')} {problema}")
+            h_resto = _normalizar(" ".join(fus + sols))
+            docs.append({"t": t, "id": tid, "problema": problema, "fus": fus,
+                         "fus_soporte": fus_soporte, "sols": sols,
+                         "h_prob": h_prob, "j_prob": h_prob.replace(" ", ""),
+                         "h_resto": h_resto, "j_resto": h_resto.replace(" ", "")})
+        _CORPUS[clave] = (time.time(), docs)
+        return docs
+
+    def _soluciones_masivo(self, c, tam=1000):
+        """{ticket_id: [{texto, autor}]} leyendo TODAS las soluciones de una (sin N+1)."""
+        return self._paginado(c, "/ITILSolution", tam)
+
+    def _followups_masivo(self, c, tam=1000):
+        """{ticket_id: [{texto, autor}]} con TODOS los seguimientos PÚBLICOS de una (sin N+1).
+        Los privados son notas internas entre técnicos: no son la respuesta al cliente."""
+        return self._paginado(c, "/ITILFollowup", tam, publicos=True)
+
+    def _paginado(self, c, recurso, tam, publicos=False):
+        """Lee un recurso entero paginando, quedándose con el texto y QUIÉN lo escribió. Avanza
+        por lo que DEVUELVE la página, no por lo que se pidió: GLPI puede acotar el rango por
+        configuración y, si diéramos el salto por sentado, el histórico quedaría cortado a la
+        mitad sin que se note."""
+        mapa, inicio = {}, 0
+        while True:
+            try:
+                chunk = c.request(f"{recurso}?range={inicio}-{inicio + tam - 1}")
+            except Exception:  # noqa: BLE001
+                break
+            if not isinstance(chunk, list) or not chunk:
+                break
+            for it in chunk:
+                if not isinstance(it, dict) or str(it.get("itemtype")) != "Ticket":
+                    continue
+                if publicos and int(it.get("is_private") or 0):
+                    continue
+                mapa.setdefault(int(it.get("items_id") or 0), []).append(
+                    {"texto": str(it.get("content", "")), "autor": int(it.get("users_id") or 0)})
+            inicio += len(chunk)
+            if inicio > 200000:                 # tope de seguridad (evita un bucle infinito)
+                break
+        return mapa
 
     def sin_procesar(self, n=60):
         """Revisa TODOS los tickets vigentes (Nuevo/En curso/En espera) y detecta los SUELTOS:
@@ -607,6 +847,9 @@ class _Nulo:
         return self._na("asignar")
 
     def buscar(self, texto):
+        return []
+
+    def casos_similares(self, descripcion, tope=20, estados=(4, 5, 6)):
         return []
 
     def en_riesgo_sla(self, horas=4):

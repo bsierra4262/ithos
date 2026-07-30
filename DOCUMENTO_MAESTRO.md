@@ -371,6 +371,45 @@ número no está mapeado, pregunta de quién se trata y ofrece los técnicos car
 
 No hay alta de usuarios, a propósito. ITHOS **no escribe nada sin un pedido explícito**.
 
+### 5.4 Antecedentes: "¿qué casos como este ya tuvimos y cómo los resolvimos?"
+
+```mermaid
+flowchart TD
+    P["Pregunta por casos ya trabajados<br/>«los tickets que resolvimos con…», «¿algo parecido?»"] --> H["Histórico COMPLETO del cliente<br/>todos los cerrados y en espera<br/>(no los últimos N)"]
+    H --> L["Lectura masiva: tickets + soluciones + seguimientos<br/>en una sola pasada (sin una consulta por ticket)"]
+    L --> M["Coincidencia por RAÍZ y sin espacios<br/>«fichadas»→«la fichada» · «HikCentral»→«hik central»<br/>cada término pesa según lo distintivo que sea"]
+    M --> R{"¿Qué se documentó<br/>como resolución?"}
+    R -->|"solución o respuesta del TÉCNICO"| OK["Caso con su resolución real"]
+    R -->|"comentario del solicitante"| SR["Sin resolución documentada"]
+    R -->|"cerrado por categoría mal cargada,<br/>duplicado o falta de respuesta"| AD["Cierre ADMINISTRATIVO<br/>no se ofrece como modelo"]
+    OK --> CTX["Los casos REALES entran al contexto<br/>antes de redactar"]
+    SR --> CTX
+    AD --> CTX
+    CTX --> RESP["Respuesta: sólo estos números existen;<br/>se descartan los que no son el mismo problema"]
+```
+
+Preguntar por casos ya trabajados —"los tickets que resolvimos donde la fichada figuraba en HikCentral
+pero no en los reportes", "¿hubo algo parecido antes?", "traeme uno de modelo"— dispara una revisión del
+**histórico completo** del cliente: **todos** los tickets cerrados y en espera, no los últimos N.
+
+- **Encuentra el caso aunque esté escrito con otras palabras.** Nadie redacta el ticket con los mismos
+  términos con que después pregunta. Cada término se busca por su **raíz** ("fichadas" encuentra "la
+  fichada") y también contra el texto sin espacios ("HikCentral" encuentra "hik central"). Cada término
+  pesa según **lo distintivo que sea** —uno que está en casi todos los tickets casi no suma— y una
+  coincidencia en el **problema** vale más que una en un comentario posterior. Las palabras con que se
+  *pregunta* ("resolvimos", "casos", "de modelo") no cuentan como parte del caso.
+- **Trae la resolución REAL, la que escribió soporte**: la solución documentada o, si no la hay, la última
+  respuesta del técnico. Un comentario del propio solicitante **no** es una solución.
+- **Un cierre administrativo no es una resolución.** El ticket que se cerró porque la categoría estaba mal
+  cargada, porque era duplicado o porque el cliente nunca contestó se marca como **sin resolución técnica**
+  y jamás se ofrece como "así lo resolvimos" —eso no lo hace un experto de mesa de ayuda—. El caso puede
+  mencionarse igual como antecedente, aclarando que quedó sin resolver.
+- **Los números que dice son los que existen.** Los casos reales entran al contexto **antes** de que el
+  modelo redacte, con la instrucción de no nombrar ningún otro número y de descartar los que no sean el
+  mismo problema. Sin esto la respuesta salía de la memoria del modelo, que llegó a citar un ticket
+  inexistente.
+- El histórico leído se **reutiliza unos minutos**, así dos preguntas seguidas no esperan dos veces.
+
 ---
 
 ## 6. Asistente conversacional y canales
@@ -559,6 +598,8 @@ manejan el certificado. Del repositorio se puede reconstruir el agente completo.
   - `probar_portero_saludo.py` — saludo coherente con la hora y una vez por día por persona.
   - `probar_ciclo.py` · `probar_produccion.py` · `probar_sistema.py` — ciclo de vida real del ticket, flujo
     del vigilante y circuito completo por HTTP.
+  - `probar_busqueda_casos.py` — antecedentes: el caso escrito con otras palabras se encuentra, el
+    cierre administrativo no se ofrece como resolución y no se pueden inventar números (sin red).
   - `probar_planka_cambios.py` — avisos de cambio de estado del tablero (sin red).
   - `probar_planka_rollover.py` — rollover semanal/mensual/anual contra la API real (con proyectos de
     prueba que se borran al terminar).

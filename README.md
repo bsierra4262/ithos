@@ -334,6 +334,44 @@ identifica por el **número de quien escribe**, así que no hace falta dar nombr
 está mapeado, ITHOS pregunta de quién se trata en vez de adivinar. No hay alta de usuarios, a propósito, y
 ITHOS no escribe nada sin un pedido explícito.
 
+## Antecedentes: qué casos como este ya resolvimos
+
+```mermaid
+flowchart TD
+    P["Pregunta por casos ya trabajados<br/>«los tickets que resolvimos con…», «¿algo parecido?»"] --> H["Histórico COMPLETO del cliente<br/>todos los cerrados y en espera<br/>(no los últimos N)"]
+    H --> L["Lectura masiva: tickets + soluciones + seguimientos<br/>en una sola pasada (sin una consulta por ticket)"]
+    L --> M["Coincidencia por RAÍZ y sin espacios<br/>«fichadas»→«la fichada» · «HikCentral»→«hik central»<br/>cada término pesa según lo distintivo que sea"]
+    M --> R{"¿Qué se documentó<br/>como resolución?"}
+    R -->|"solución o respuesta del TÉCNICO"| OK["Caso con su resolución real"]
+    R -->|"comentario del solicitante"| SR["Sin resolución documentada"]
+    R -->|"cerrado por categoría mal cargada,<br/>duplicado o falta de respuesta"| AD["Cierre ADMINISTRATIVO<br/>no se ofrece como modelo"]
+    OK --> CTX["Los casos REALES entran al contexto<br/>antes de redactar"]
+    SR --> CTX
+    AD --> CTX
+    CTX --> RESP["Respuesta: sólo estos números existen;<br/>se descartan los que no son el mismo problema"]
+```
+
+Preguntar por casos ya trabajados —«los tickets que resolvimos donde la fichada figuraba en HikCentral
+pero no en los reportes», «¿hubo algo parecido antes?», «traeme uno de modelo»— dispara una revisión del
+**histórico completo** del cliente: **todos** los tickets cerrados y en espera, no los últimos N.
+
+Encuentra el caso **aunque esté escrito con otras palabras**, porque nadie redacta el ticket con los
+mismos términos con que después pregunta: cada término se busca por su **raíz** («fichadas» encuentra «la
+fichada») y también contra el texto sin espacios («HikCentral» encuentra «hik central»), cada uno pesa
+según **lo distintivo que sea** —uno que está en casi todos los tickets casi no suma— y una coincidencia
+en el **problema** vale más que una en un comentario posterior. Las palabras con que se *pregunta*
+(«resolvimos», «casos», «de modelo») no cuentan como parte del caso.
+
+De cada uno trae la **resolución real, la que escribió soporte**: la solución documentada o, si no la hay,
+la última respuesta del técnico —un comentario del propio solicitante no es una solución—. Y **un cierre
+administrativo no es una resolución**: el ticket que se cerró porque la categoría estaba mal cargada,
+porque era duplicado o porque el cliente nunca contestó se marca como **sin resolución técnica** y jamás se
+ofrece como «así lo resolvimos»; puede mencionarse como antecedente, aclarando que quedó sin resolver.
+
+Los casos reales entran al contexto **antes** de que el modelo redacte, con la instrucción de no nombrar
+ningún otro número y de descartar los que no sean el mismo problema: los números que dice son los que
+existen. El histórico leído se reutiliza unos minutos, así dos preguntas seguidas no esperan dos veces.
+
 ## Asistente y canales
 
 Recibe y responde en **WhatsApp** (Cloud API oficial y no oficial, vinculado por QR), **Telegram**,
@@ -547,6 +585,7 @@ Baterías en [`tests/`](tests/):
 | `probar_portero_saludo.py` | Saludo coherente con la hora y una sola vez por día por persona. | No |
 | `probar_sistema.py` | Circuito completo por HTTP: alta, validaciones, edición, canales, métricas, portal. | Sí |
 | `probar_ciclo.py` · `probar_produccion.py` | Ciclo de vida real de un ticket y flujo del vigilante contra la mesa de ayuda del cliente. | Sí |
+| `probar_busqueda_casos.py` | Antecedentes: encuentra el caso redactado con otras palabras, distingue la resolución real del cierre administrativo y no deja inventar números. | No |
 | `probar_planka_cambios.py` | Avisos de cambio de estado del tablero: movimiento a mano, sin repetir, y estado que sobrevive a un reinicio. | No |
 | `probar_planka_rollover.py` | Rollover semanal/mensual/anual contra la API real (usa proyectos de prueba y los borra). | Sí |
 
