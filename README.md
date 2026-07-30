@@ -95,6 +95,32 @@ motor gratuito sólo como respaldo temporal. El Gestor concentra la lógica y el
 permanece liviano, de modo que un cliente que exige privacidad total puede correr la IA en su
 propia red sin cambiar la orquestación.
 
+### Ciclo de vida de un ticket
+
+Ningún ticket se cierra sin la confirmación real de quien lo abrió, y ninguna espera queda
+olvidada: mientras el ticket depende del cliente, ITHOS le recuerda una vez por día hábil —dentro
+del horario de atención— y, si el silencio se extiende, escala al técnico asignado.
+
+```mermaid
+flowchart TD
+    N["Ticket nuevo"] --> T["Triage con IA<br/>categoría · prioridad · SLA/OLA · asignación · 1ª respuesta"]
+    T -->|"falta un dato"| E["En espera — SLA pausado"]
+    T -->|"fuera de horario"| R["En espera + reapertura automática<br/>(el cliente no se entera)"]
+    T -->|"todo claro"| C["En curso"]
+    C -->|"el técnico pide coordinar/confirmar"| E
+    E -->|"1 recordatorio por día hábil, 09-18"| E
+    E -->|"5 días hábiles sin respuesta"| ES["Aviso al técnico asignado<br/>nota interna privada + WhatsApp @mención"]
+    E -->|"el cliente responde"| C
+    R -->|"abre la jornada"| C
+    C -->|"el técnico resuelve"| RS["Resuelto — ITHOS pide confirmación"]
+    RS -->|"1 recordatorio por día hábil"| RS
+    RS -->|"confirma"| CE["Cerrado"]
+    RS -->|"sigue el problema"| C
+```
+
+Cada cambio de estado se avisa por los canales del cliente **@mencionando sólo al técnico
+asignado**, igual que la alerta de SLA en riesgo o vencido.
+
 ## Stack técnico
 
 | Capa | Tecnología |

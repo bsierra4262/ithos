@@ -75,11 +75,14 @@ jarvis-cloud/                 (raíz)
 - **Coordinación → En espera**: si el técnico pide **coordinar/confirmar** algo con el cliente (aún redactado
   impersonal, "se deberá coordinar la reubicación"), ITHOS deja el ticket **En espera** (frena el SLA), le pide
   confirmación al cliente y avisa por WhatsApp.
-- **Espera esperando al cliente**: mientras el ticket espera esa confirmación, ITHOS manda **un recordatorio
-  por día hábil** (desde la hora de apertura, zona del cliente). Cuando el cliente responde, el ticket vuelve
-  a **En curso** solo. A los **5 días hábiles sin respuesta** avisa al **técnico asignado** (nota interna
-  privada + WhatsApp @mencionándolo) para que decida: contactarlo, posponerlo o cerrarlo. Un ticket
-  **pospuesto** (reactivación agendada) no recibe recordatorios ni escalada.
+- **Espera esperando al cliente** (los dos casos: falta un **dato** que le pedimos en la primera respuesta,
+  o tiene que **confirmar/coordinar** algo): ITHOS manda **un recordatorio por día hábil**, siempre **dentro
+  del horario de atención** (Lun-Vie 09:00-18:00 en la zona del cliente) y a la misma hora — nunca de noche
+  ni un fin de semana. Cuando el cliente responde, el ticket vuelve a **En curso** solo. A los **5 días
+  hábiles sin respuesta** avisa al **técnico asignado** (nota interna privada + WhatsApp @mencionándolo)
+  para que decida: contactarlo, posponerlo o cerrarlo. Un ticket **pospuesto** (reactivación agendada) no
+  recibe recordatorios ni escalada. El mismo criterio de cadencia rige el recordatorio de confirmación de
+  un ticket **Resuelto**.
 - **@mención al asignado**: todos los avisos de WhatsApp de un ticket y la alerta de **SLA en riesgo/vencido**
   @mencionan **sólo al técnico asignado** (config `tecnicos` por cliente: nombre, id del sistema de tickets y
   teléfonos). La alerta de SLA va **agrupada por técnico**; los canales sin menciones reciben el mismo aviso con

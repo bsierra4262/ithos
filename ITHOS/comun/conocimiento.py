@@ -308,11 +308,13 @@ dólar oficial del BNA; INTELLIHELP es dueño y NO se cobra.
   @mencionan SOLO al asignado, por su teléfono del bloque `tecnicos` del cliente (mapeo por id
   de GLPI, id/login/email o nombre según el sistema de tickets). La alerta de SLA va agrupada
   por técnico; los canales sin menciones reciben el mismo aviso con el nombre del asignado.
-- ESPERA "esperando la confirmación del cliente" (central/triage.py): mientras el ticket está En
-  espera de que el cliente confirme/coordine, ITHOS recuerda UNA vez por DÍA HÁBIL (desde la
-  hora de apertura, zona del cliente); si el cliente responde, vuelve a En curso solo; a los 5
-  días hábiles sin respuesta avisa al TÉCNICO ASIGNADO (nota interna privada + WhatsApp). Un
-  ticket POSPUESTO (reactivación agendada) no recibe recordatorios ni escalada.
+- ESPERA POR EL CLIENTE (central/triage.py) en sus DOS casos: falta un DATO que le pedimos en la 1ª
+  respuesta, o tiene que CONFIRMAR/coordinar algo. Mientras el ticket está En espera por eso, ITHOS
+  recuerda UNA vez por DÍA HÁBIL, siempre DENTRO del horario de atención (Lun-Vie 09-18, zona del
+  cliente) y a la misma hora; si el cliente responde, vuelve a En curso solo; a los 5 días hábiles
+  sin respuesta avisa al TÉCNICO ASIGNADO (nota interna privada + WhatsApp @mención). Un ticket
+  POSPUESTO (reactivación agendada) no recibe recordatorios ni escalada. Misma cadencia para el
+  recordatorio de confirmación de un ticket RESUELTO.
 - CONOCIMIENTO PROPIETARIO + autorización (comun/conocimiento.py): este contexto solo se
   revela al DUEÑO, identificado por sus 2 números (o email/usuario), SOLO por identidad
   (nunca por canal ni IsFromMe; un cliente con su propia sesión nunca es dueño). Para el

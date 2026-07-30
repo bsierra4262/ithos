@@ -150,11 +150,11 @@ class TriageFalso:
         return True
 
     # --- lo que puede pasar en el ciclo ---
-    def recordar_coordinacion(self, tid):
-        return self._reg("recordatorio", tid)
+    def recordar_espera(self, tid, motivo="confirmacion"):
+        return self._reg("recordatorio", tid, motivo)
 
-    def avisar_tecnico_sin_respuesta(self, tid, dias):
-        return self._reg("escalada", tid, dias)
+    def avisar_tecnico_sin_respuesta(self, tid, dias, motivo="confirmacion"):
+        return self._reg("escalada", tid, dias, motivo)
 
     def poner_en_curso(self, tid):
         return self._reg("en_curso", tid)
@@ -197,6 +197,10 @@ class TriageFalso:
 ITHOS_ID = T.ITHOS_ID
 PEDIDO_COORD = ("Necesitamos coordinar un día para la visita. Quedamos a la espera de su "
                 "respuesta. Soporte ITH.")
+# 1ª respuesta del triage cuando FALTA un dato: el triage le agrega el cierre con el marcador de
+# espera, así el ciclo sabe que el ticket quedó esperando al cliente (mismo recordatorio diario).
+PRIMERA_RESPUESTA_CON_DATO = ("Estimado, para avanzar necesitamos el número de legajo del "
+                              "colaborador. Quedamos a la espera de su respuesta. Soporte ITH.")
 
 
 def _fu(fid, uid, texto, fecha):
@@ -238,12 +242,34 @@ def nivel2_espera_confirmacion():
     fu_pendiente = [_fu(1, 7, "Hay que coordinar la reubicación", ayer),
                     _fu(2, ITHOS_ID, PEDIDO_COORD, ayer)]
     fu_respondido = fu_pendiente + [_fu(3, 99, "Dale, el jueves a la mañana", datetime.now())]
-    ok(T._coordinacion_pendiente(fu_pendiente) is not None,
+    ok(T._espera_pendiente(fu_pendiente) is not None,
        "pendiente: ITHOS pidió confirmar y el cliente no contestó")
-    ok(T._coordinacion_pendiente(fu_respondido) is None,
+    ok(T._espera_pendiente(fu_respondido) is None,
        "NO pendiente: el cliente ya contestó después del pedido")
-    ok(T._coordinacion_pendiente([_fu(1, 7, "Avance interno", ayer)]) is None,
+    ok(T._espera_pendiente([_fu(1, 7, "Avance interno", ayer)]) is None,
        "NO pendiente: no hubo pedido de confirmación")
+    # Los DOS motivos por los que un ticket espera al cliente (Brian: "lo mismo haga pero cuando el
+    # cliente deba confirmar algún DATO FALTANTE o en este caso confirmación"):
+    fu_datos = [_fu(1, ITHOS_ID, PRIMERA_RESPUESTA_CON_DATO, ayer)]      # 1ª respuesta: falta el legajo
+    esp = T._espera_pendiente(fu_datos)
+    ok(esp is not None and esp[2] == "datos",
+       "pendiente por DATO FALTANTE (la 1ª respuesta pidió el legajo)", str(esp[2] if esp else None))
+    esp2 = T._espera_pendiente(fu_datos + [_fu(5, 8, "Coordinar la visita", ayer),
+                                           _fu(6, ITHOS_ID, PEDIDO_COORD, ayer)])
+    ok(esp2 is not None and esp2[2] == "confirmacion",
+       "un pedido POSTERIOR del técnico se detecta como CONFIRMACIÓN, no como datos",
+       str(esp2[2] if esp2 else None))
+    ok("información que le solicitamos" in T._texto_recordatorio_espera("datos")
+       and "confirmación" in T._texto_recordatorio_espera("confirmacion"),
+       "el recordatorio dice QUÉ se espera (el dato o la confirmación)")
+    ok(T._MARCA_ESPERA_CLIENTE in T._con_cierre_espera("Necesito el legajo.").lower(),
+       "la 1ª respuesta que pide un dato queda marcada como ESPERA (para el recordatorio diario)")
+    ok(T._con_cierre_espera(PEDIDO_COORD) == PEDIDO_COORD,
+       "no se duplica el cierre si el texto ya lo trae")
+    # Las notas INTERNAS (privadas) no cuentan como pedido al cliente: el cliente no las ve.
+    ok(T._espera_pendiente([{"id": 1, "users_id": ITHOS_ID, "content": PEDIDO_COORD,
+                             "is_private": 1, "date_creation": ayer.strftime("%Y-%m-%d %H:%M:%S")}])
+       is None, "una nota INTERNA no cuenta como pedido al cliente")
 
     ticket = {"id": 900, "status": 4, "entities_id": 12, "name": "Molinete fuera de servicio"}
 
@@ -294,7 +320,7 @@ def nivel2_espera_confirmacion():
     ok(len(tri_e.hizo("escalada")) == 1, "la escalada NO se repite en el ciclo siguiente")
 
     # -- 4) tras un REINICIO (estado en memoria vacío) tampoco se repite: el marcador está en GLPI --
-    cli_e.followups[900] = fu_viejo + [_fu(5, ITHOS_ID, T._nota_escalada_coordinacion(5),
+    cli_e.followups[900] = fu_viejo + [_fu(5, ITHOS_ID, T._nota_escalada_espera(5, "confirmacion"),
                                            datetime.now())]
     tri_r2 = TriageFalso(CFG_ABIERTO)
     T.gestionar_ciclo(cli_e, tri_r2, 12, {})
@@ -310,7 +336,27 @@ def nivel2_espera_confirmacion():
        "ticket POSPUESTO: ni recordatorio ni escalada (el técnico decidió esperar)")
     agenda.cancelar(CFG["nombre_cliente"], 900)
 
-    # -- 6) el recordatorio NO cambia el estado del ticket (sigue EN ESPERA, SLA pausado) --
+    # -- 6) ticket RESUELTO sin respuesta del cliente: recordatorio 1 vez por DÍA LABORAL, en horario
+    #       (antes salía cada 24 h a cualquier hora, incluso de madrugada o un domingo) --
+    resuelto = {"id": 901, "status": 5, "entities_id": 12, "name": "No podía fichar"}
+    pedido_conf = ("Le informamos que su solicitud fue resuelta. Por favor, confírmenos si ya puede "
+                   "fichar con normalidad para cerrar el ticket. Soporte ITH.")
+    fu_conf = [_fu(1, ITHOS_ID, pedido_conf, datetime.now() - timedelta(days=2))]
+    tri_c1 = TriageFalso(CFG_ABIERTO)
+    T.gestionar_ciclo(GLPIFalso([resuelto], {901: fu_conf}), tri_c1, 12, {})
+    ok(len(tri_c1.hizo("recordar_confirmacion")) == 1,
+       "RESUELTO sin respuesta: recuerda la confirmación (1 vez, en horario)")
+    tri_c2 = TriageFalso(CFG_CERRADO)
+    T.gestionar_ciclo(GLPIFalso([resuelto], {901: fu_conf}), tri_c2, 12, {})
+    ok(not tri_c2.hizo("recordar_confirmacion"),
+       "RESUELTO fuera de horario: NO se le escribe al cliente")
+    tri_c3 = TriageFalso(CFG_ABIERTO)
+    T.gestionar_ciclo(GLPIFalso([resuelto], {901: [_fu(1, ITHOS_ID, pedido_conf, datetime.now())]}),
+                      tri_c3, 12, {})
+    ok(not tri_c3.hizo("recordar_confirmacion"),
+       "RESUELTO: no se repite el recordatorio el mismo día")
+
+    # -- 7) el recordatorio NO cambia el estado del ticket (sigue EN ESPERA, SLA pausado) --
     ok(all(not str(p).startswith("/Ticket/900") or "Ticket_User" in str(p) or
            "ITILFollowup" in str(p) for p in cli.pedidos),
        "el ciclo no escribe el estado del ticket al recordar (queda EN ESPERA, SLA pausado)")

@@ -7,12 +7,15 @@ y el versionado, [SemVer](https://semver.org/lang/es/).
 ## [Unreleased]
 
 ### Added
-- **Helpdesk — espera "esperando la confirmación del cliente para avanzar".** Cuando el ticket queda
-  En espera porque el cliente tiene que confirmar o coordinar algo, ITHOS le manda **un recordatorio
-  por día hábil** (desde la hora de apertura, zona del cliente) hasta que responda; al responder, el
-  ticket vuelve a **En curso** solo. A los **5 días hábiles sin respuesta** avisa al **técnico
-  asignado** (nota interna privada + WhatsApp) para que decida: contactarlo, posponerlo o cerrarlo.
-  El SLA queda pausado todo ese tiempo (estado En espera) y un ticket **pospuesto** no recibe nada.
+- **Helpdesk — espera por el cliente con recordatorio y escalada.** Cuando el ticket queda En espera
+  porque depende del cliente —falta un **dato** que le pedimos en la primera respuesta, o tiene que
+  **confirmar/coordinar** algo—, ITHOS le manda **un recordatorio por día hábil**, siempre **dentro
+  del horario de atención** (Lun-Vie 09:00-18:00 en su zona) y a la misma hora, hasta que responda;
+  al responder, el ticket vuelve a **En curso** solo. A los **5 días hábiles sin respuesta** avisa al
+  **técnico asignado** (nota interna privada + WhatsApp) para que decida: contactarlo, posponerlo o
+  cerrarlo. El SLA queda pausado todo ese tiempo (estado En espera) y un ticket **pospuesto** no
+  recibe nada. El recordatorio de confirmación de un ticket **Resuelto** sigue la misma cadencia
+  (antes salía cada 24 h a cualquier hora, incluso de madrugada o un fin de semana).
 - **Helpdesk — @mención al técnico asignado.** Los avisos de WhatsApp de un ticket (triage, respuesta
   del cliente, cierre, reapertura, escalada) y la alerta de **SLA en riesgo/vencido** @mencionan
   **sólo al asignado**, por su teléfono (config `tecnicos` del cliente). La alerta de SLA se manda
