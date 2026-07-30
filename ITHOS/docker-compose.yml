@@ -51,6 +51,8 @@ services:
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile
       - caddy_data:/data
+    env_file:
+      - .env                      # ITHOS_DOMINIO: el dominio real vive acá (no en el paquete)
     depends_on:
       - central
       - panel

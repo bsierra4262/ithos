@@ -43,8 +43,14 @@ Levanta 3 contenedores: **central** (8080, WebSocket del agente + webhooks), **p
 dashboard, con login) y **caddy** (80/443, único público). El ruteo: `/ws` y `/webhook/*` → central; **todo lo
 demás → panel** (así el superadmin queda **detrás de HTTPS y login**, nunca en HTTP plano).
 
-> Config manual (si no usás el script): `cp .env.example .env` y poné `ITHOS_ADMIN_TOKEN`; editá el `Caddyfile`
-> con tu dominio; `docker compose up -d --build`.
+> Config manual (si no usás el script): `cp .env.example .env`, poné `ITHOS_ADMIN_TOKEN`, `ITHOS_MASTER_KEY` y
+> **`ITHOS_DOMINIO`** (el dominio real: el `Caddyfile` lo lee de ahí, así una actualización del código nunca lo
+> pisa); después `docker compose up -d --build`.
+
+**Actualizar el Gestor** (ya desplegado): subí el paquete y corré `bash compilador/instaladores/actualizar.sh`.
+Hace backup de `ITHOS/central/clientes.json`, `ITHOS/.env` y el volumen de datos en `/root/ithos-backups/`,
+reconstruye y verifica. `ITHOS/.env` y `clientes.json` **no viajan** en el paquete: la config del despliegue se
+mantiene. Con `ITHOS_SIN_AVISO=1` se saltea el aviso de mantenimiento a los canales del cliente.
 
 ## 4) Verificar
 - `https://ithos.tudominio.com/` → **pide login** (usuario/clave; **solo INTELLIHELP**). Candado verde (TLS OK).
