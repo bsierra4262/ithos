@@ -557,6 +557,12 @@ manejan el certificado. Del repositorio se puede reconstruir el agente completo.
     prueba que se borran al terminar).
 - **Cada requerimiento nuevo se agrega como chequeo** en `probar_requerimientos.py`; cuando un
   requerimiento cambia, se actualiza ahí mismo para que la batería no quede marcando la regla vieja.
+- **La documentación se verifica sola.** La batería incluye una **tabla de capacidades**: cada
+  funcionalidad tiene un marcador en el código que prueba que está implementada y los marcadores que
+  deben existir en este documento, en el README, en el changelog y —si es parte de un flujo— en el
+  diagrama correspondiente. Si el código está y la documentación no, la batería **falla indicando el
+  hueco exacto**. Nace de un problema real: se desplegó código sin actualizar la documentación. Al
+  sumar una funcionalidad hay que agregarla a esa tabla junto con su documentación.
 - **Cada bug reportado se arregla y se suma como test de regresión** (falla con el bug, pasa con el fix).
 - **Errores adversariales**: se prueba con entradas humanas, malformadas y maliciosas, no sólo el camino
   feliz.

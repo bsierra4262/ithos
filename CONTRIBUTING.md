@@ -31,6 +31,10 @@ test(rollover): regresión del arrastre de tarjetas al cambiar de mes
 
 - **Cada defecto detectado incorpora un test de regresión** (en `tests/`) que falle con el bug
   y pase con el arreglo, para impedir su reaparición.
+- **Toda funcionalidad se documenta en el mismo cambio**: documento maestro, README y changelog, y el
+  diagrama de flujo si forma parte de uno. La batería de requerimientos lo verifica con una tabla de
+  capacidades y **falla** si el código está y la documentación no; al agregar una funcionalidad hay
+  que sumarla a esa tabla.
 - **Sin secretos ni datos reales en el repositorio.** Las credenciales se piden al instalar y
   se cargan en `clientes.json`/`.env` (ver [`.gitignore`](.gitignore) y [SECURITY.md](SECURITY.md)).
 - **Cada cambio se aplica en todo por igual**: todos los proveedores de IA, todos los canales

@@ -3290,6 +3290,112 @@ except Exception as e:  # noqa: BLE001
     fail("no se pudo verificar la documentación 1 a 1", repr(e))
 
 
+# H85) DOCUMENTACIÓN AL DÍA, EN TIEMPO REAL (requerimiento permanente de Brian: "no sirve subir por
+#   subir si no está todo actualizado"). Cada CAPACIDAD tiene un marcador en el CÓDIGO que prueba que
+#   está implementada y los marcadores que TIENEN que existir en la documentación: el documento maestro,
+#   el README (que va 1 a 1 con el maestro), el changelog y —cuando la capacidad es parte de un flujo—
+#   el diagrama correspondiente. Si el código está y la documentación no, esto FALLA con el hueco exacto.
+#   Al agregar una funcionalidad nueva: sumala a esta tabla junto con su documentación.
+print("\n  H85) DOCUMENTACIÓN al día: cada capacidad implementada, documentada y en su diagrama")
+CAPACIDADES = [
+    {"que": "espera por el cliente (dato o confirmación) con recordatorio por día hábil",
+     "codigo": [("ITHOS/central/triage.py", "_espera_pendiente"),
+                ("ITHOS/central/triage.py", "recordar_espera")],
+     "docs": {"DOCUMENTO_MAESTRO.md": ["una vez por día hábil"],
+              "README.md": ["una vez por día hábil"],
+              "CHANGELOG.md": ["recordatorio por día hábil"]},
+     "diagrama": ["recordatorio por día hábil"]},
+    {"que": "escalada al técnico asignado a los 5 días hábiles",
+     "codigo": [("ITHOS/central/triage.py", "_DIAS_HABILES_ESCALADA")],
+     "docs": {"DOCUMENTO_MAESTRO.md": ["5 días hábiles"], "README.md": ["cinco días hábiles"],
+              "CHANGELOG.md": ["5 días hábiles"]},
+     "diagrama": ["5 días hábiles"]},
+    {"que": "@mención sólo al técnico asignado (tickets y SLA)",
+     "codigo": [("ITHOS/comun/notificadores.py", "def enviar_mencion"),
+                ("ITHOS/comun/tickets.py", "def telefonos_asignados")],
+     "docs": {"DOCUMENTO_MAESTRO.md": ["@mencionan"], "README.md": ["mencionando"],
+              "CHANGELOG.md": ["@mención al técnico asignado"]},
+     "diagrama": ["@mención"]},
+    {"que": "activación por llamada: sólo 'Hey ITHOS'",
+     "codigo": [("ITHOS/comun/wake.py", "def menciona"), ("ITHOS/comun/wake.py", "PREFIJOS")],
+     "docs": {"DOCUMENTO_MAESTRO.md": ["Hey ITHOS"], "README.md": ["Hey ITHOS"],
+              "CHANGELOG.md": ["suelta ya no activa"]},
+     "diagrama": ["Hey ITHOS"]},
+    {"que": "consultar los tickets asignados a una persona (por su número)",
+     "codigo": [("ITHOS/comun/conversacion.py", "tickets_asignados")],
+     "docs": {"DOCUMENTO_MAESTRO.md": ["Consultar"], "README.md": ["consultar"],
+              "CHANGELOG.md": ["tickets por técnico asignado"]}},
+    {"que": "ITHOS se explica desde el documento maestro; el detalle es sólo del dueño",
+     "codigo": [("ITHOS/comun/conocimiento.py", "def documento_maestro"),
+                ("ITHOS/comun/conocimiento.py", "ALCANCE_PUBLICO")],
+     "docs": {"DOCUMENTO_MAESTRO.md": ["desde este documento"], "README.md": ["documentación completa"],
+              "CHANGELOG.md": ["se explica desde su propia documentación"]}},
+    {"que": "horario de atención compartido y alerta de SLA sólo en horario",
+     "codigo": [("ITHOS/comun/horario.py", "def en_horario_atencion"),
+                ("ITHOS/central/proactivo.py", "en_horario_atencion")],
+     "docs": {"DOCUMENTO_MAESTRO.md": ["horario.py"], "README.md": ["horario.py"],
+              "CHANGELOG.md": ["Horario de atención compartido"]}},
+    {"que": "portero: saludo por hora, dedup y terminales configurables",
+     "codigo": [("ITHOS/central/procesador.py", "_SALUDOS_HORA"),
+                ("ITHOS/central/procesador.py", "def _ya_saludado")],
+     "docs": {"DOCUMENTO_MAESTRO.md": ["coherente con la hora"], "README.md": ["coherente con la hora"],
+              "CHANGELOG.md": ["saludo de entrada coherente con la hora"]},
+     "diagrama": ["saludo según la HORA"]},
+    {"que": "tareas del equipo con rollover automático",
+     "codigo": [("ITHOS/central/planka_rollover.py", "def semana_key")],
+     "docs": {"DOCUMENTO_MAESTRO.md": ["rollover"], "README.md": ["rollover"],
+              "CHANGELOG.md": ["rollover"]}},
+    {"que": "dominio del despliegue por variable de entorno",
+     "codigo": [("ITHOS/Caddyfile", "ITHOS_DOMINIO")],
+     "docs": {"DOCUMENTO_MAESTRO.md": ["ITHOS_DOMINIO"], "README.md": ["ITHOS_DOMINIO"],
+              "CHANGELOG.md": ["ITHOS_DOMINIO"]}},
+    {"que": "receta de compilación del agente versionada",
+     "codigo": [("compilador/build/agente.spec", "SPECPATH"),
+                ("compilador/build/construir_agente.bat", "bump_version.py")],
+     "docs": {"DOCUMENTO_MAESTRO.md": ["construir_agente"],
+              "README.md": ["compilador/build", "reconstruir"],
+              "CHANGELOG.md": ["Receta de compilación"]}},
+    {"que": "cifrado en reposo de los secretos por cliente",
+     "codigo": [("ITHOS/comun/cifrado.py", "AES")],
+     "docs": {"DOCUMENTO_MAESTRO.md": ["AES-256-GCM"], "README.md": ["AES-256-GCM"],
+              "SECURITY.md": ["AES-256-GCM"]}},
+]
+try:
+    _txt85 = {}
+
+    def _leer85(rel):
+        if rel not in _txt85:
+            _txt85[rel] = leer(os.path.join(RAIZ, rel.replace("/", os.sep)))
+        return _txt85[rel]
+
+    _diagramas85 = "\n".join(re.findall(r"```mermaid\n(.*?)```", _leer85("DOCUMENTO_MAESTRO.md"),
+                                        re.S)) if "re" in dir() else ""
+    import re as _re85
+    _diagramas85 = "\n".join(_re85.findall(r"```mermaid\n(.*?)```",
+                                           _leer85("DOCUMENTO_MAESTRO.md"), _re85.S))
+    huecos = []
+    for cap in CAPACIDADES:
+        implementada = all(marca in _leer85(arch) for arch, marca in cap["codigo"])
+        if not implementada:
+            huecos.append(f"[código ausente] {cap['que']}")
+            continue
+        for doc, marcas in cap["docs"].items():
+            if not all(m.lower() in _leer85(doc).lower() for m in marcas):
+                huecos.append(f"[falta en {doc}] {cap['que']}")
+        for m in cap.get("diagrama", []):
+            if m.lower() not in _diagramas85.lower():
+                huecos.append(f"[falta en los diagramas] {cap['que']} ({m})")
+    if not huecos:
+        ok(f"documentación al día: las {len(CAPACIDADES)} capacidades implementadas están en el "
+           "documento maestro, en el README, en el changelog y —las que son parte de un flujo— en su "
+           "diagrama. Al agregar una funcionalidad, sumala a esta tabla con su documentación")
+    else:
+        fail("hay funcionalidad implementada SIN documentar (documentación desactualizada)",
+             " · ".join(huecos))
+except Exception as e:  # noqa: BLE001
+    fail("no se pudo verificar que la documentación esté al día", repr(e))
+
+
 print("\n  I) LATENCIA: procesos instantáneos (sin N+1 de red en el camino caliente)")
 # I) El reporte ITIL NO puede hacer una request por ticket (N+1) -> trae los técnicos asignados en
 #    UNA lectura masiva. Con 200 tickets: 0 requests '/Ticket/<id>/Ticket_User' y bulk presente.
