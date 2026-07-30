@@ -504,12 +504,15 @@ class Asistente:
             "el número. El sistema convierte '2 de la tarde' -> 14:00. Queda EN ESPERA y vuelve a "
             "EN CURSO SOLO cuando llega ese momento. Si no dijeron la HORA, la acción te la pide: "
             "transmití esa pregunta al usuario (no inventes la hora).\n"
-            "👤 TICKETS POR TÉCNICO (asignado): si piden actuar sobre 'los tickets asignados a X', 'los "
-            "de X', 'mis tickets' o 'los míos' (poner en espera / posponer en lote), usá SIEMPRE "
-            "'poner_en_espera_asignados' con args:{persona:'<nombre del técnico>'|'yo', cuando?:'<día y "
-            "hora EXACTOS si los dijeron>'}. NO busques ni pospongas uno por uno: esa acción filtra SOLA "
-            "por el campo 'Asignado a' (jamás toca un ticket donde la persona es observador o "
-            "solicitante). Si dicen 'mis tickets' o 'los míos', poné persona:'yo' (te identifica por el número).\n"
+            "👤 TICKETS POR TÉCNICO (asignado): 'los tickets asignados a X', 'los de X', 'mis tickets' o "
+            "'los míos' SIEMPRE se resuelven con estas dos acciones, que filtran SOLAS por el campo "
+            "'Asignado a' (jamás un ticket donde la persona es observador o solicitante):\n"
+            "   · PREGUNTAR (estado, cuántos, cuáles) -> 'tickets_asignados' args:{persona:'yo'|'<nombre>'}\n"
+            "   · ACTUAR (poner en espera / posponer en lote) -> 'poner_en_espera_asignados' "
+            "args:{persona:'yo'|'<nombre>', cuando?:'<día y hora EXACTOS si los dijeron>'}\n"
+            "   Si dicen 'mis tickets', 'los míos' o 'asignados a mí', poné persona:'yo': el sistema "
+            "IDENTIFICA a la persona por el NÚMERO de quien escribe. **NUNCA le pidas su nombre, su "
+            "legajo ni su usuario para esto** (ya está mapeado); tampoco busques uno por uno.\n"
             "Respondé SOLO este JSON: {\"acciones\": [{\"accion\":\"<nombre>\",\"args\":{...}}, ...], "
             "\"recordar\": {\"clave\":\"...\",\"valor\":\"...\"}|null, \"respuesta\": \"<texto para el usuario>\"}. "
             "Podés poner 0, 1 o varias acciones. (También se acepta el formato viejo con "
@@ -964,7 +967,36 @@ def herramientas_tickets(cli_cfg):
         return "Encontré: " + "; ".join(
             f"#{t['id']} {str(t.get('asunto'))[:40]}" for t in res)
 
+    def tickets_asignados(args):
+        """Los tickets ABIERTOS de un técnico con su ESTADO — SOLO los del campo "Asignado a", nunca
+        donde la persona es observador o solicitante. 'persona' puede ser el nombre del técnico o
+        'yo'/'mis': en ese caso se resuelve por el NÚMERO de quien escribe (config `tecnicos`), así
+        NUNCA hay que pedirle el nombre ni el legajo a alguien que ya está mapeado."""
+        tecnicos = cli_cfg.get("tecnicos") or []
+        t = _resolver_tecnico(args.get("persona") or args.get("tecnico"), args.get("_remitente"),
+                              tecnicos)
+        if not t:
+            if not tecnicos:
+                return ("(este cliente todavía no tiene técnicos configurados: no puedo filtrar por "
+                        "asignado hasta que se carguen en la configuración).")
+            nombres = ", ".join(x["nombre"] for x in tecnicos if x.get("nombre"))
+            return f"¿De qué técnico? Los que tengo cargados son: {nombres}."
+        fn = getattr(adap, "asignados_a", None)
+        if not fn:
+            return "(este sistema de tickets no soporta filtrar por asignado todavía)."
+        try:
+            tickets = fn(t.get("glpi_id") or t.get("id"))
+        except Exception as e:  # noqa: BLE001
+            return f"No pude leer los tickets asignados a {t['nombre']}: {e}"
+        nom = t["nombre"].split()[0]
+        if not tickets:
+            return f"{nom} no tiene tickets abiertos asignados."
+        detalle = "; ".join(f"#{k['id']} {str(k.get('asunto'))[:40]} — {k.get('estado')}"
+                            for k in tickets)
+        return f"{nom} tiene {len(tickets)} ticket(s) abiertos asignados: {detalle}."
+
     return {
+        "tickets_asignados": {"desc": "Tickets ABIERTOS con su ESTADO de un técnico — SOLO del campo 'Asignado a' (no observador ni solicitante). Usala SIEMPRE para 'mis tickets', 'los míos', 'los tickets asignados a mí' o 'los de X'. Con persona:'yo' identifica por el NÚMERO de quien escribe: NO le pidas el nombre ni el legajo. args:{persona:'yo'|'Brian Sierra'|'Alejandro Ayala'}", "fn": tickets_asignados},
         "tickets_abiertos": {"desc": "Lista los tickets abiertos.", "fn": tickets_abiertos},
         "estado_ticket": {"desc": "Estado corto (asunto+estado) de un ticket. args:{id}.", "fn": estado_ticket},
         "leer_ticket": {"desc": "LEE el ticket completo (descripción + seguimientos) para analizarlo. args:{id}.", "fn": leer_ticket},

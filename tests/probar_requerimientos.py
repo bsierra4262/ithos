@@ -3257,6 +3257,39 @@ except Exception as e:  # noqa: BLE001
     fail("no se pudo verificar el conocimiento propio", repr(e))
 
 
+# H84) DOCUMENTACIÓN 1 A 1: el README del repositorio tiene los MISMOS diagramas de flujo y el mismo
+#   contenido que el DOCUMENTO_MAESTRO (pedido de Brian: "mismos diagramas, todo 1 a 1"; el maestro es
+#   además la fuente de lo que ITHOS explica de sí mismo). Los bloques mermaid se comparan VERBATIM.
+print("\n  H84) DOCUMENTACIÓN: el README y el DOCUMENTO_MAESTRO, 1 a 1")
+try:
+    import re as _re84
+    _rd = leer(os.path.join(RAIZ, "README.md"))
+    _mx = leer(os.path.join(RAIZ, "DOCUMENTO_MAESTRO.md"))
+    _dm = _re84.findall(r"```mermaid\n(.*?)```", _mx, _re84.S)
+    _dr = _re84.findall(r"```mermaid\n(.*?)```", _rd, _re84.S)
+    faltan = [d.strip().splitlines()[0][:40] for d in _dm if d not in _rd]
+    # los temas del maestro que el README también tiene que cubrir
+    temas = ("Cadena multi-IA", "Voz y audio", "Portero por voz", "ciclo de vida del ticket",
+             "Alta de cliente", "hace cada archivo", "Límites y pendientes")
+    sin_tema = [t for t in temas if t.lower() not in _rd.lower()]
+    balance = all(d.count("[") == d.count("]") and d.count("(") == d.count(")")
+                  and d.count("{") == d.count("}") for d in _dr)
+    docs_con_diagrama = [f for f in ("docs/ARQUITECTURA_GESTOR_AGENTE.md", "docs/HOSTINGER.md",
+                                     "docs/INSTALACION.md", "docs/INSTALACION_AGENTE.md",
+                                     "SECURITY.md")
+                         if "```mermaid" in leer(os.path.join(RAIZ, f))]
+    if not faltan and not sin_tema and balance and len(_dm) >= 5 and len(docs_con_diagrama) == 5:
+        ok(f"documentación 1 a 1: los {len(_dm)} diagramas del maestro están VERBATIM en el README "
+           f"(que tiene {len(_dr)}), cubre todos sus temas, y las otras 5 guías tienen su propio "
+           "diagrama de flujo")
+    else:
+        fail("el README no está 1 a 1 con el DOCUMENTO_MAESTRO",
+             f"diagramas_faltantes={faltan} temas_faltantes={sin_tema} balance={balance} "
+             f"guias_con_diagrama={len(docs_con_diagrama)}/5")
+except Exception as e:  # noqa: BLE001
+    fail("no se pudo verificar la documentación 1 a 1", repr(e))
+
+
 print("\n  I) LATENCIA: procesos instantáneos (sin N+1 de red en el camino caliente)")
 # I) El reporte ITIL NO puede hacer una request por ticket (N+1) -> trae los técnicos asignados en
 #    UNA lectura masiva. Con 200 tickets: 0 requests '/Ticket/<id>/Ticket_User' y bulk presente.

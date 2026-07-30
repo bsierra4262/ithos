@@ -444,6 +444,63 @@ def nivel3_mencion():
        "el texto de la alerta nombra al asignado y detalla vencidos/por vencer")
 
 
+# ============================== NIVEL 4 · "MIS TICKETS" SIN PEDIR DATOS (identifica por el número)
+class AdaptadorFalso:
+    """Adaptador de tickets simulado: responde `asignados_a` como el de GLPI."""
+
+    def __init__(self, por_tecnico):
+        self.por_tecnico = por_tecnico
+        self.consultas = []
+
+    def asignados_a(self, glpi_id):
+        self.consultas.append(glpi_id)
+        return self.por_tecnico.get(int(glpi_id), [])
+
+
+def nivel4_mis_tickets():
+    print("\nNIVEL 4 · 'los tickets asignados a mí' (identifica por el número, no pide legajo)")
+    import comun.conversacion as CV
+
+    adap = AdaptadorFalso({7: [{"id": 659, "asunto": "No puede fichar", "estado": "En espera"},
+                               {"id": 660, "asunto": "Molinete trabado", "estado": "En curso"}],
+                           8: []})
+    from comun import tickets as _TK
+    original = _TK.adaptador
+    _TK.adaptador = lambda cfg: adap                      # sin red: adaptador simulado
+    try:
+        herr = CV.herramientas_tickets({**CFG, "nombre": "TEST S.A."})
+        ok("tickets_asignados" in herr, "existe la acción de LECTURA 'tickets_asignados'")
+        fn = herr["tickets_asignados"]["fn"]
+
+        # 1) "mis tickets" desde el número de Brian: lo resuelve solo y NO pide nada
+        r = fn({"persona": "yo", "_remitente": "5491156660181"})
+        ok("659" in r and "660" in r and "En espera" in r,
+           "responde los tickets del que escribe con su estado", r[:80])
+        ok(not any(p in r.lower() for p in ("legajo", "nombre completo", "indicame tu")),
+           "NO pide legajo ni nombre (ya está mapeado por el número)")
+        ok(adap.consultas == [7], "consulta por el glpi_id del técnico correcto (Brian = 7)",
+           str(adap.consultas))
+
+        # 2) por nombre, y con el número en otro formato (+54 9 11 …)
+        r2 = fn({"persona": "Alejandro Ayala", "_remitente": "5491151629038"})
+        ok("no tiene tickets abiertos" in r2.lower(), "por NOMBRE también resuelve (Alejandro, sin tickets)")
+        r3 = fn({"persona": "mis", "_remitente": "+54 9 11 5162-9038"})
+        ok("659" in r3, "el número con prefijo/guiones también identifica a la persona")
+
+        # 3) un número desconocido no inventa: ofrece los técnicos cargados
+        r4 = fn({"persona": "yo", "_remitente": "5491100000000"})
+        ok("Brian Sierra" in r4 and "Alejandro Ayala" in r4,
+           "número no mapeado -> pregunta de quién, ofreciendo los técnicos cargados")
+
+        # 4) el prompt le dice al modelo que use esta acción y que NO pida el legajo
+        src = open(os.path.join(APP, "comun", "conversacion.py"), encoding="utf-8").read()
+        ok("'tickets_asignados' args:{persona:'yo'" in src
+           and "NUNCA le pidas su nombre" in src and "legajo ni su usuario" in src,
+           "el prompt manda usar tickets_asignados y prohíbe pedir nombre/legajo")
+    finally:
+        _TK.adaptador = original
+
+
 if __name__ == "__main__":
     print("=" * 78)
     print("MEJORAS DEL HELPDESK — wake-word 'Hey ITHOS' · espera con confirmación · @mención")
@@ -451,6 +508,7 @@ if __name__ == "__main__":
     nivel1_wake()
     nivel2_espera_confirmacion()
     nivel3_mencion()
+    nivel4_mis_tickets()
     print("\n" + "=" * 78)
     if FALLAS:
         print(f"FALLARON {len(FALLAS)} chequeo(s):")
