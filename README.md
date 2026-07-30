@@ -326,9 +326,13 @@ los canales del cliente **mencionando sólo al asignado**, así cada uno ve lo s
 
 Por chat o por voz se puede pedir: cerrar, reabrir, poner en espera, posponer con fecha y hora, responder
 al cliente, categorizar, fijar SLA, cambiar prioridad, escalar, asignar, crear, buscar, leer un ticket
-completo, ver reportes y —en lote— poner en espera o posponer **todos los tickets asignados a una
-persona**, filtrando por el campo «Asignado a» y nunca por observador o solicitante. No hay alta de
-usuarios, a propósito, y ITHOS no escribe nada sin un pedido explícito.
+completo y ver reportes. Dos acciones trabajan **por técnico asignado**, filtrando por el campo «Asignado
+a» y nunca por observador o solicitante: **consultar** («¿cómo están los tickets asignados a mí?», «los de
+Alejandro») devuelve los abiertos con su estado, y **actuar en lote** («poné en espera los míos hasta
+mañana 10:00») los pone en espera o los pospone juntos. Decir «mis tickets» alcanza: la persona se
+identifica por el **número de quien escribe**, así que no hace falta dar nombre ni legajo; si ese número no
+está mapeado, ITHOS pregunta de quién se trata en vez de adivinar. No hay alta de usuarios, a propósito, y
+ITHOS no escribe nada sin un pedido explícito.
 
 ## Asistente y canales
 
@@ -511,6 +515,10 @@ datos, avisa por los canales del cliente que entra en mantenimiento —se puede 
 `ITHOS_SIN_AVISO=1`—, sube la versión, reconstruye con `docker compose -p jarvis-cloud` y verifica que los
 contenedores queden arriba. Si algo falla, el rollback es volver al commit anterior y correr el mismo
 script, o restaurar el respaldo de esa fecha.
+
+La **receta para construir el agente** está versionada en `compilador/build`: un solo comando sube la
+versión, empaqueta con PyInstaller, firma el ejecutable, arma el instalador y lo vuelve a firmar, de
+modo que el agente se puede reconstruir por completo desde el repositorio.
 
 El **dominio** del despliegue vive en `ITHOS_DOMINIO` (en `ITHOS/.env`) y el `Caddyfile` lo lee de ahí, de
 modo que una actualización del código nunca lo pisa. El código compartido va **montado** —un reinicio lo

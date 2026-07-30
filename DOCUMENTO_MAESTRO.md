@@ -355,10 +355,21 @@ Lee el ticket **completo** (asunto + descripción + seguimientos) y aplica:
 ### 5.3 Acciones que se pueden pedir por chat o por voz
 
 Cerrar, reabrir, poner en espera, posponer con fecha/hora, responder al cliente, categorizar, fijar SLA,
-cambiar prioridad, escalar, asignar, crear, buscar, leer un ticket completo, ver reportes y —en lote—
-**poner en espera o posponer todos los tickets asignados a una persona** (filtrando por el campo
-"Asignado a", nunca por observador o solicitante; "mis tickets" se resuelve por el número de quien
-escribe). No hay alta de usuarios, a propósito. ITHOS **no escribe nada sin un pedido explícito**.
+cambiar prioridad, escalar, asignar, crear, buscar, leer un ticket completo y ver reportes.
+
+Y dos acciones que trabajan **por técnico asignado**, filtrando siempre por el campo "Asignado a" —nunca
+por observador ni solicitante—:
+
+- **Consultar**: "¿cómo están los tickets asignados a mí?", "los de Alejandro" → devuelve los abiertos con
+  su estado.
+- **Actuar en lote**: "poné en espera los tickets asignados a Brian hasta mañana 10:00" → los pone en
+  espera o los pospone, todos juntos.
+
+En los dos casos, decir "mis tickets" o "los míos" alcanza: la persona se identifica por el **número de
+quien escribe** (o su usuario/correo según el canal), así que ITHOS **no pide nombre ni legajo**. Si el
+número no está mapeado, pregunta de quién se trata y ofrece los técnicos cargados, en vez de adivinar.
+
+No hay alta de usuarios, a propósito. ITHOS **no escribe nada sin un pedido explícito**.
 
 ---
 
@@ -519,9 +530,12 @@ cd ITHOS && docker compose -p jarvis-cloud up -d --build             # -p conser
 - **Rollback**: volver al commit anterior y correr el mismo script, o restaurar el backup de esa fecha.
 - **Versionado**: Gestor y Agente suben de versión solos (SemVer) en cada build/deploy.
 
-**Agente (equipo del cliente):** un solo instalador — Windows con Inno **firmado**
-(`compilador/build/ithos-agente.iss`), Linux/Mac con `compilador/instaladores/agente_*.sh`. Instala,
-mueve a otra PC o desinstala desde la misma app.
+**Agente (equipo del cliente):** un solo instalador — Windows con Inno **firmado**, Linux/Mac con
+`compilador/instaladores/agente_*.sh`. Instala, mueve a otra PC o desinstala desde la misma app.
+La **receta de compilación está versionada** en `compilador/build`: `construir_agente.bat` sube la versión,
+genera el icono, empaqueta con PyInstaller, **firma** el ejecutable, arma el instalador con Inno y lo firma;
+`bump_version.py` mantiene sincronizada la versión del instalador y `firmar.ps1` / `confiar_en_cliente.ps1`
+manejan el certificado. Del repositorio se puede reconstruir el agente completo.
 
 ---
 

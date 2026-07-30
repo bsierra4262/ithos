@@ -23,6 +23,10 @@ agente liviano por cliente, con aislamiento total entre empresas. Se instala en 
 - **Reportes ITIL 4 automáticos.** KPIs de creados, resueltos y backlog, cumplimiento de SLA, MTTR, y desglose por
   técnico y categoría. Se envían solos el día y la hora elegidos —por ejemplo, todos los viernes a las 18:00— en
   PDF o CSV, o se generan a demanda por período diario, semanal, mensual, histórico o un rango personalizado.
+- **Trabajo por técnico.** Cada uno puede preguntar por los tickets que tiene asignados —«¿cómo están los
+  míos?»— y ponerlos en espera o posponerlos en lote, y ITHOS lo reconoce por su número de teléfono, sin
+  pedirle nombre ni legajo. Filtra siempre por el campo «Asignado a», así nunca toca un ticket en el que la
+  persona es sólo observador.
 - **Canales.** Recibe y responde en WhatsApp, Telegram, Email, Microsoft Teams, Slack y Matrix/Element. En
   WhatsApp, Telegram, Email y Matrix además ejecuta acciones: leer, cerrar, asignar y posponer un ticket a una
   fecha y hora, reactivándolo solo cuando llega el momento. Los avisos —ticket nuevo, cambios de estado, SLA por

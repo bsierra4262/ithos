@@ -23,12 +23,38 @@ y el versionado, [SemVer](https://semver.org/lang/es/).
   Element) reciben el mismo aviso con el nombre del asignado, y el WhatsApp oficial (Cloud API) se lo
   manda directo a su número: el aviso nunca se pierde. Vale para cualquier sistema de tickets: el
   asignado se resuelve por id de GLPI, id/login/email o nombre según el sistema.
-- **Wake-word "Hey ITHOS"** (`ITHOS/comun/wake.py`, una sola fuente de verdad para el texto del
-  Gestor y el micrófono del agente): activa con la marca sola o llamándolo ("Hey ITHOS", "oye ithos",
-  "ok ithos"), en español o inglés, en mayúsculas o minúsculas, con tildes o puntuación, tolerando
-  que Vosk **parta** la palabra ("hey it hos") o la transcriba con pronunciación inglesa
-  ("hey ethos"). Aditivo: todo lo que activaba antes sigue activando, y la charla normal del grupo
-  ("hola a todos") no activa.
+- **Activación por llamada: "Hey ITHOS"** (`ITHOS/comun/wake.py`, una sola fuente de verdad para los
+  canales de texto, Planka y el micrófono del agente). Hay que **llamarlo**: "Hey ITHOS…" y también
+  "oye/ok/hola/che ithos", en español o inglés, en mayúsculas o minúsculas, con tildes o puntuación,
+  tolerando que el reconocedor **parta** la palabra ("hey it hos"), la pegue ("heyithos") o la
+  transcriba con pronunciación inglesa ("hey ethos"). **Nombrar la marca suelta ya no activa**: en un
+  grupo de trabajo se la menciona todo el tiempo ("preguntale a ITHOS") y no corresponde intervenir.
+  Los textos que explican cómo usarlo —aviso de inicio, mensajes de las tareas del equipo— lo dicen así.
+- **Consultar los tickets por técnico asignado.** Además de poner en espera o posponer en lote, ahora se
+  puede **preguntar** por los tickets de una persona ("¿cómo están los asignados a mí?", "los de
+  Alejandro") y ITHOS devuelve los abiertos con su estado. Identifica a quien escribe por su **número**
+  —o su usuario/correo según el canal—, así que **no pide nombre ni legajo**; si el número no está
+  mapeado, pregunta de quién se trata en vez de adivinar. Filtra por "Asignado a", nunca por observador.
+- **ITHOS se explica desde su propia documentación.** Cuando el **dueño** pide detalle, la respuesta se
+  arma con el **DOCUMENTO_MAESTRO** completo —montado en el Gestor como sólo lectura— más el conocimiento
+  técnico interno; sin pedir detalle contesta lo mismo resumido. A cualquier otro le cuenta **qué hace**
+  ITHOS (alcance resumido) y nunca cómo está construido. Por micrófono se exige, además de la clave de
+  administrador, que la **voz** coincida con el perfil del dueño.
+- **Horario de atención compartido** (`ITHOS/comun/horario.py`): una sola fuente para "¿estamos en
+  horario?" y "¿cuántos días hábiles pasaron?", que usan el ciclo de vida del ticket y las alertas. La
+  **alerta de SLA** ahora sale sólo **dentro del horario del cliente** y agrupada por técnico: antes podía
+  avisar de madrugada o un fin de semana.
+- **La batería de requerimientos vive en el repositorio** (`tests/probar_requerimientos.py`): 117
+  chequeos transversales —marca, multiplataforma, UI/UX, tickets, portero y voz, seguridad, latencia sin
+  N+1, deploy— que corren **sin red ni credenciales**. Incluye los chequeos nuevos de la activación por
+  llamada, del conocimiento propio y de que el README y el documento maestro no puedan divergir.
+- **Documentación 1 a 1 y con diagramas de flujo en todas las guías.** El README trae los **mismos
+  diagramas y el mismo contenido** que el documento maestro (mapa completo del producto, cadena multi-IA,
+  voz y audio, portero, ciclo de vida del ticket, alta con seguridad y suscripción), el mapa de qué hace
+  cada archivo, la operación y los límites; y las guías de arquitectura, despliegue e instalación suman su
+  propio diagrama.
+- **Receta de compilación del agente versionada** (`compilador/build`): del repositorio se puede
+  reconstruir y firmar el instalador. El versionado del agente y del instalador queda sincronizado.
 - **Portero — saludo de entrada coherente con la hora.** En los dispositivos de ENTRADA el saludo
   arranca con «Buenos días / Buenas tardes / Buenas noches» según la hora de la zona del cliente. La
   salida mantiene su despedida. El dedup «una vez por día por persona» ahora **persiste** en disco, así
@@ -62,6 +88,14 @@ y el versionado, [SemVer](https://semver.org/lang/es/).
   renombró a `glpi_ithos_token` (mismo token) en la config y en el ejemplo, y el registro de clientes
   adopta el token de usuario que traiga una config vieja —avisando por log— para no volver a dejar el
   triage apagado sin que se note.
+- **Una actualización del código pisaba el dominio del despliegue.** El `Caddyfile` del paquete traía un
+  marcador de dominio, así que al actualizar el Gestor quedaba pidiendo un certificado equivocado y sin
+  HTTPS. El dominio ahora vive en `ITHOS_DOMINIO` (en el `.env`, que no viaja en el paquete) y el
+  `Caddyfile` lo lee de ahí.
+- **El empaquetado del agente estaba roto** desde que el software pasó a `ITHOS/`: el `.spec` mezclaba
+  rutas y el versionador apuntaba a un instalador que ya no estaba ahí, así que el instalador se quedaba
+  en una versión vieja. Además, un patrón del `.gitignore` excluía **toda la receta de compilación**, de
+  modo que el agente no podía reconstruirse desde el repositorio.
 - **Los recordatorios al cliente podían salir fuera de horario.** El recordatorio de la espera se
   manda ahora sólo **dentro del horario de atención del cliente** (Lun-Vie 09:00-18:00 por defecto,
   en su zona): nunca de noche ni un fin de semana.
