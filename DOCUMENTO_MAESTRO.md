@@ -230,9 +230,10 @@ de WhatsApp, memorias, métricas, cachés de voz, tokens de alta, certificados y
 | `escucha.py` | Micrófono: wake-word con Vosk, grabación por silencio, filtro de voz y envío al Gestor. |
 | `integrador_ivms.py` · `_hikcentral` · `_biostar2` · `_zkteco` · `_honeywell` | Control de acceso: leen fichadas/eventos y los mandan como eventos al Gestor. |
 
-**Fuera del software:** `tests/` (baterías `probar_*.py`: ciclo de ticket, helpdesk, portero, Planka
-rollover, sistema y producción), `compilador/build` (PyInstaller + Inno + firma + `bump_version.py`),
-`compilador/instaladores` (`actualizar.sh` del Gestor y los instaladores del agente por SO) y `docs/`.
+**Fuera del software:** `tests/` (baterías `probar_*.py`, encabezadas por `probar_requerimientos.py` con
+los 115 requerimientos transversales — ver §15), `compilador/build` (PyInstaller + Inno + firma +
+`bump_version.py`), `compilador/instaladores` (`actualizar.sh` del Gestor y los instaladores del agente
+por sistema operativo) y `docs/`.
 
 ---
 
@@ -473,10 +474,20 @@ mueve a otra PC o desinstala desde la misma app.
 
 - **Dos niveles de prueba**: (1) lo que el **usuario** puede tocar (panel, WhatsApp, voz, tickets,
   archivos) y (2) el **código** completo. No se inventan escenarios imposibles ni tests que siempre pasan.
-- **Baterías en `tests/`**: ciclo de vida del ticket contra el sistema real, mejoras del helpdesk (sin red,
-  con mesa de ayuda simulada), saludo del portero, rollover de Planka, sistema completo por HTTP y flujo de
-  producción. Además, una batería de **requerimientos transversales** (multiplataforma, responsive, sin
-  código muerto, latencia sin N+1, seguridad, marca).
+- **Baterías en `tests/`**:
+  - `probar_requerimientos.py` — **115 chequeos de requerimientos transversales**: multiplataforma, marca,
+    UI/UX y responsive, tickets (sin recordatorios falsos, respeta lo manual, notas privadas, voz sin
+    emojis), portero y voz (saludo por hora, velocidad uniforme, variedad, pre-cacheo, cuota), seguridad
+    (cifrado, login, altas de un solo uso, auth del agente), latencia sin N+1 y deploy en LF con rebuild.
+    Corre **sin red ni credenciales** y es la que se pasa en cada cambio.
+  - `probar_helpdesk_mejoras.py` — wake-word, esperas con recordatorio y escalada, @mención al asignado.
+  - `probar_portero_saludo.py` — saludo coherente con la hora y una vez por día por persona.
+  - `probar_ciclo.py` · `probar_produccion.py` · `probar_sistema.py` — ciclo de vida real del ticket, flujo
+    del vigilante y circuito completo por HTTP.
+  - `probar_planka_rollover.py` — rollover semanal/mensual/anual contra la API real (con proyectos de
+    prueba que se borran al terminar).
+- **Cada requerimiento nuevo se agrega como chequeo** en `probar_requerimientos.py`; cuando un
+  requerimiento cambia, se actualiza ahí mismo para que la batería no quede marcando la regla vieja.
 - **Cada bug reportado se arregla y se suma como test de regresión** (falla con el bug, pasa con el fix).
 - **Errores adversariales**: se prueba con entradas humanas, malformadas y maliciosas, no sólo el camino
   feliz.

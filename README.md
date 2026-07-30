@@ -247,15 +247,25 @@ accede a su propio dashboard, y el alta es un enlace temporal de un solo uso.
 
 ## Tests
 
-Baterías de regresión en [`tests/`](tests/): ciclo de vida de tickets, batería de sistema,
-batería de producción, una batería de requerimientos transversales (multiplataforma, latencia
-sin N+1, ausencia de código muerto, seguridad) y pruebas de integración contra las APIs reales
-(por ejemplo, el rollover de Planka). Regla del proyecto: **cada defecto detectado incorpora
-un test de regresión** para impedir su reaparición.
+Baterías en [`tests/`](tests/):
+
+| Batería | Qué cubre | Necesita red |
+| --- | --- | --- |
+| `probar_requerimientos.py` | **115 requerimientos transversales**: multiplataforma, marca, UI/UX y responsive, tickets (nada de recordatorios falsos, respeta lo manual, notas privadas), portero y voz (saludo por hora, velocidad uniforme, pre-cacheo, cuota), seguridad (cifrado, login, altas), latencia sin N+1 y deploy en LF con rebuild. | No |
+| `probar_helpdesk_mejoras.py` | Wake-word, esperas con recordatorio y escalada, @mención al técnico asignado (mesa de ayuda simulada). | No |
+| `probar_portero_saludo.py` | Saludo coherente con la hora y una sola vez por día por persona. | No |
+| `probar_sistema.py` | Circuito completo por HTTP: alta, validaciones, edición, canales, métricas, portal. | Sí |
+| `probar_ciclo.py` · `probar_produccion.py` | Ciclo de vida real de un ticket y flujo del vigilante contra la mesa de ayuda del cliente. | Sí |
+| `probar_planka_rollover.py` | Rollover semanal/mensual/anual contra la API real (usa proyectos de prueba y los borra). | Sí |
+
+Regla del proyecto: **cada defecto detectado incorpora un test de regresión** (que falle con el bug y
+pase con el arreglo) y **cada requerimiento nuevo se agrega como chequeo** en la batería de
+requerimientos, para que nada se pierda con el tiempo.
 
 ```bash
-python tests/probar_todo.py
-python tests/probar_planka_rollover.py
+python tests/probar_requerimientos.py     # sin red: se corre en cada cambio
+python tests/probar_helpdesk_mejoras.py   # sin red
+python tests/probar_todo.py               # circuito completo
 ```
 
 ## Seguridad

@@ -6,7 +6,8 @@ Convenciones del proyecto **ITHOS**.
 
 1. Crear una rama desde `main`: `git checkout -b feat/mi-cambio`.
 2. Realizar cambios atómicos y acompañados de tests.
-3. Ejecutar la batería antes de abrir el Pull Request: `python tests/probar_todo.py`.
+3. Ejecutar las baterías antes de abrir el Pull Request: `python tests/probar_requerimientos.py`
+   (115 requerimientos transversales, sin red) y `python tests/probar_todo.py`.
 4. Abrir un Pull Request describiendo el qué y el porqué del cambio.
 
 ## Mensajes de commit — [Conventional Commits](https://www.conventionalcommits.org/es/)
