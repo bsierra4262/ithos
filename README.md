@@ -65,28 +65,89 @@ otro.
 
 ## Arquitectura
 
+El diagrama es el **mapa completo del producto**: todo lo que ITHOS integra. Cada cliente activa
+sólo lo que usa —una mesa de ayuda, los canales que quiera, un sistema de acceso, una cadena de IA—
+y el resto queda disponible sin tocar código.
+
 ```mermaid
 flowchart LR
-    subgraph Cliente["Equipo del cliente"]
-        AG["Agente (.exe firmado)<br/>voz · micrófono · control de acceso"]
-        HW["Parlantes · Micrófono<br/>IVMS / HikCentral / BioStar 2 / ZKTeco"]
+    subgraph Cliente["Red del cliente"]
+        AG["<b>AGENTE</b> (.exe firmado, Win/Linux/Mac)<br/>app con UI · versionado · singleton"]
+        HW["Parlantes · Micrófono"]
+        subgraph Acc["Control de acceso"]
+            AC1["IVMS<br/>(SQL Server)"]
+            AC2["HikCentral<br/>(Artemis)"]
+            AC3["BioStar 2"]
+            AC4["ZKTeco"]
+            AC5["Honeywell"]
+        end
+        LOC["IA local opcional<br/>Ollama · LM Studio"]
         AG --- HW
+        AG --- Acc
+        AG -.->|"privacidad total"| LOC
     end
 
-    subgraph Nube["Nube — VPS (Docker)"]
-        CA["Gestor / central<br/>FastAPI + WebSocket"]
-        PA["Panel + Dashboard<br/>+ Alta"]
-        CY["Caddy<br/>TLS / WSS"]
-        CA --- PA
-        CY --- CA
+    subgraph Nube["VPS — Docker (solo Caddy publica puertos)"]
+        CY["<b>Caddy</b> 80/443<br/>TLS + WSS (Let's Encrypt)"]
+        CA["<b>GESTOR</b> · central:8080<br/>WebSocket del agente · webhooks<br/>triage · ciclo · proactivo · reportes"]
+        PA["<b>PANEL</b> :8090<br/>superadmin · alta · dashboard del cliente"]
+        DB[("Datos por cliente<br/>SQLite + volumen<br/>secretos AES-256-GCM")]
+        CY --> CA
+        CY --> PA
+        PA -.-> CA
+        CA --- DB
+        PA --- DB
     end
 
-    AG <-->|"WSS · api_key + token"| CY
-    CA -->|"cadena multi-IA"| IA["Gemini · Cerebras · Groq · local"]
-    CA <--> GLPI["Mesa de ayuda<br/>GLPI / Zendesk / Jira / …"]
-    CA <--> WA["WhatsApp · Telegram · Email · Matrix"]
-    CA <--> PL["Planka — tareas del equipo"]
-    CA <--> MP["MercadoPago — facturación"]
+    AG <==>|"WSS · api_key + token de agente"| CY
+
+    subgraph IA["Cadena multi-IA (1 por consulta, salta al agotarse)"]
+        I1["Gemini"]
+        I2["Claude"]
+        I3["OpenAI / ChatGPT"]
+        I4["Grok"]
+        I5["Groq"]
+        I6["Cerebras"]
+        I7["DeepSeek"]
+        I8["Mistral · OpenRouter"]
+        I9["Local (Ollama)"]
+    end
+
+    subgraph VOZ["Voz y audio"]
+        V1["TTS Charon<br/>(Gemini, verbatim)"]
+        V2["edge-tts (gratis)"]
+        V3["SAPI / TTS local"]
+        V4["STT: Whisper (Groq)<br/>Gemini · Vosk local"]
+        V5["VAD Silero → webrtc → energía"]
+        V6["voz-id del dueño<br/>+ wake-word 'Hey ITHOS'"]
+    end
+
+    subgraph TK["Mesa de ayuda"]
+        T1["GLPI"]
+        T2["Zendesk"]
+        T3["Freshservice"]
+        T4["Jira / JSM"]
+        T5["osTicket"]
+        T6["ninguna"]
+    end
+
+    subgraph CH["Canales (avisan y conversan)"]
+        C1["WhatsApp oficial<br/>(Cloud API)"]
+        C2["WhatsApp no oficial<br/>(neonize · QR · grupo)"]
+        C3["Telegram"]
+        C4["Email (IMAP/SMTP)"]
+        C5["Element / Matrix"]
+        C6["Teams · Slack<br/>(solo avisos)"]
+    end
+
+    CA --> IA
+    CA --> TK
+    CA <--> CH
+    CA <--> PL["Planka<br/>tareas del equipo + rollover"]
+    CA <--> MP["MercadoPago<br/>suscripción · dunning · suspensión"]
+    CA --> KB["Base de conocimiento<br/>automática + Outline"]
+    AG --- VOZ
+    CA --- VOZ
 ```
 
 Cada capa degrada de forma controlada: si la IA primaria agota su cuota, la cadena salta al

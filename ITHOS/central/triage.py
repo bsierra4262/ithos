@@ -39,47 +39,14 @@ ITHOS_ID = 28
 TECNICOS = {28, 7, 8}
 TECNICOS_HUMANOS = {7, 8}          # técnicos personas (sin ITHOS): sus comentarios pueden resolver
 
-ZONA_DEFAULT = "America/Argentina/Buenos_Aires"
-# Horario de atención por defecto: Lunes(0)-Viernes(4) de 09:00 a 18:00 (coincide con el calendario
-# del SLA de SRT). Configurable por cliente vía cfg['horario_atencion']={'dias':[0-6],'desde','hasta'}.
-_HORARIO_DEFAULT = {"dias": [0, 1, 2, 3, 4], "desde": "09:00", "hasta": "18:00"}
-
-
-def _ahora_zona(cfg, ahora=None):
-    """AHORA en la zona horaria del cliente (no la del servidor)."""
-    if ahora is not None:
-        return ahora
-    zona = cfg.get("zona_horaria") or ZONA_DEFAULT
-    try:
-        from zoneinfo import ZoneInfo
-        return datetime.now(ZoneInfo(zona))
-    except Exception:  # noqa: BLE001
-        return datetime.now()
-
-
-def en_horario_atencion(cfg, ahora=None):
-    """True si AHORA (zona del cliente) está DENTRO del horario de atención (default Lun-Vie 9-18)."""
-    h = cfg.get("horario_atencion") or _HORARIO_DEFAULT
-    ahora = _ahora_zona(cfg, ahora)
-    if ahora.weekday() not in h.get("dias", _HORARIO_DEFAULT["dias"]):
-        return False
-    hhmm = ahora.strftime("%H:%M")
-    return str(h.get("desde", "09:00")) <= hhmm < str(h.get("hasta", "18:00"))
-
-
-def proximo_inicio_horario(cfg, ahora=None):
-    """datetime (aware) del PRÓXIMO inicio del horario de atención (default próximo día hábil 09:00)."""
-    h = cfg.get("horario_atencion") or _HORARIO_DEFAULT
-    dias = h.get("dias", _HORARIO_DEFAULT["dias"])
-    desde = str(h.get("desde", "09:00"))
-    hh, mm = int(desde[:2]), int(desde[3:5])
-    ahora = _ahora_zona(cfg, ahora)
-    cand = ahora.replace(hour=hh, minute=mm, second=0, microsecond=0)
-    for _ in range(9):                       # como mucho una semana hacia adelante
-        if cand.weekday() in dias and cand > ahora:
-            return cand
-        cand = (cand + timedelta(days=1)).replace(hour=hh, minute=mm, second=0, microsecond=0)
-    return cand
+# El HORARIO DE ATENCIÓN del cliente vive en comun/horario.py (única fuente de verdad, compartida
+# con el proactivo de SLA y los reportes): nada de lo que sale hacia afuera —recordatorios al
+# cliente, avisos al equipo— cae de noche ni un fin de semana. Se re-exporta acá porque el triage
+# es quien más lo usa (esperas, reapertura fuera de horario, escaladas por días hábiles).
+from comun.horario import (ZONA_DEFAULT, HORARIO_DEFAULT as _HORARIO_DEFAULT,  # noqa: E402
+                           ahora_zona as _ahora_zona, ahora_local as _ahora_local,
+                           es_dia_habil, en_horario_atencion, proximo_inicio_horario,
+                           dias_habiles_entre)
 
 
 def _nota_interna_horario(dt):
@@ -677,30 +644,6 @@ def _ya_escalo_espera(fu):
     memoria -> no se repite la escalada tras un reinicio."""
     return any(int(f.get("users_id") or 0) in TECNICOS
                and _MARCA_ESCALADA_ESPERA in str(f.get("content", "")).lower() for f in fu)
-
-
-def es_dia_habil(cfg, dt):
-    """True si `dt` cae en un día de atención del cliente (default Lun-Vie)."""
-    h = cfg.get("horario_atencion") or _HORARIO_DEFAULT
-    return dt.weekday() in h.get("dias", _HORARIO_DEFAULT["dias"])
-
-
-def dias_habiles_entre(cfg, desde, hasta):
-    """Días HÁBILES transcurridos entre dos fechas (sin contar el día de `desde`, contando el de
-    `hasta`). Sirve para 'a los 5 días hábiles sin respuesta'. 0 si `hasta` <= `desde`."""
-    if not desde or not hasta or hasta <= desde:
-        return 0
-    d, fin, n = desde.date(), hasta.date(), 0
-    while d < fin:
-        d += timedelta(days=1)
-        if es_dia_habil(cfg, d):
-            n += 1
-    return n
-
-
-def _ahora_local(cfg):
-    """AHORA en la zona del cliente, SIN tzinfo, para comparar con las fechas de GLPI (naive)."""
-    return _ahora_zona(cfg).replace(tzinfo=None)
 
 
 def _esta_pospuesto(cfg, tid):

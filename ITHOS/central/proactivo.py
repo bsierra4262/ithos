@@ -98,9 +98,15 @@ async def vigilar_sla(conf, notif, stop=None):
     log.info("Proactivo SLA activo para %s (aviso <= %sh, cada %smin).",
              cliente, aviso_horas, revisar // 60)
 
+    from comun.horario import en_horario_atencion
+
     while stop is None or not stop.is_set():
         try:
-            en_riesgo = await asyncio.to_thread(adap.en_riesgo_sla, aviso_horas)
+            # El aviso es para el EQUIPO, pero igual sale por WhatsApp: solo DENTRO del horario de
+            # atención del cliente (default Lun-Vie 09:00-18:00, su zona). Fuera de horario no se
+            # marca como avisado, así el ticket en riesgo se avisa al abrir la jornada (09:00).
+            en_riesgo = (await asyncio.to_thread(adap.en_riesgo_sla, aviso_horas)
+                         if en_horario_atencion(conf) else [])
             if en_riesgo:
                 st = _cargar(cliente)
                 hoy = datetime.now().strftime("%Y-%m-%d")
