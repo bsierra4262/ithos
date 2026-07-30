@@ -111,7 +111,30 @@ flowchart TD
     end
 ```
 
-### 2.3 Ciclo de vida de un ticket (cualquier mesa de ayuda)
+### 2.3 Portero por voz (del fichaje al parlante)
+
+```mermaid
+flowchart TD
+    subgraph AGE["AGENTE (equipo del cliente)"]
+        SIS["Control de acceso<br/>IVMS (SQL) · HikCentral · BioStar 2<br/>ZKTeco · Honeywell"] --> INT["Integrador: lee sólo los eventos NUEVOS<br/>(baseline al arrancar)"]
+        INT --> EV["Evento 'acceso'<br/>{nombre, device, es_fallo}"]
+        DESC["Descubre las terminales<br/>y las lista para el panel"]
+    end
+    EV -->|"WSS"| CLA["GESTOR: clasifica por las REGLAS del cliente<br/>(device → entrada / salida / sala + saludo + frecuencia)"]
+    DESC -->|"WSS"| MAP["El panel mapea cada terminal<br/>(sin tocar código)"]
+    MAP -.-> CLA
+    CLA --> DED{"¿ya se le saludó?<br/>frecuencia: siempre ·<br/>1 por día · 1 por persona"}
+    DED -->|"sí"| NADA["Silencio"]
+    DED -->|"no"| FR["Frase: saludo según la HORA<br/>(buenos días / tardes / noches)<br/>+ variante del día + nombre + empresa"]
+    FR --> CMD["Comando 'decir' al agente"]
+    CMD --> CAC{"¿está en caché?"}
+    CAC -->|"sí"| PAR["Parlantes<br/>(al instante, también con la sesión<br/>bloqueada o después de RDP)"]
+    CAC -->|"no"| TTS["TTS Charon → edge de respaldo"] --> PAR
+    PRE["Pre-cacheo del padrón<br/>(todas las variantes × 3 franjas;<br/>o sólo las personas nuevas)"] --> CAC
+    EV -.->|"si el sistema hace control horario"| ANO["Anomalías: fichaje fuera de horario<br/>o denegado → aviso por los canales"]
+```
+
+### 2.4 Ciclo de vida de un ticket (cualquier mesa de ayuda)
 
 ```mermaid
 flowchart TD
@@ -135,7 +158,7 @@ flowchart TD
 Todo cambio de estado se avisa por los canales del cliente y **@menciona sólo al técnico asignado**.
 ITHOS **respeta la intervención manual**: si el técnico re-categoriza o reasigna, no lo vuelve a tocar.
 
-### 2.4 Alta de cliente, seguridad y suscripción
+### 2.5 Alta de cliente, seguridad y suscripción
 
 ```mermaid
 flowchart LR
@@ -258,6 +281,31 @@ Anuncia por los parlantes del cliente cada acceso o fichada, en tiempo real:
   una acción para cachear **sólo las personas nuevas**, sin regenerar todo.
 - **Suena siempre**: el audio funciona con la sesión bloqueada y **después de una sesión RDP** (el agente
   vuelve a tomar los parlantes físicos de la consola). El equipo **no se suspende** mientras ITHOS corre.
+
+### 4.1 Terminales: descubrimiento y reglas
+
+El agente **descubre** las terminales del sistema de acceso y las manda al Gestor (evento
+`terminales_descubiertos`); desde el panel o el alta se arma la regla de cada una y el Gestor decide con
+eso, sin tocar código:
+
+| Campo de la regla | Para qué sirve |
+| --- | --- |
+| `match` | Texto que identifica la terminal (gana la primera regla cuyo `match` aparece en el `device`). |
+| `tipo` | `entrada` (saludo por hora), `salida` (despedida) o el nombre de una puerta/sala con frase propia. |
+| `saludo` | Frase propia de esa terminal, si no se quiere la de su tipo. |
+| `frecuencia` | `1_por_dia` (por defecto), `siempre` (anuncia cada paso) o `1_por_persona` (una sola vez). |
+
+Un fichaje **denegado** (`es_fallo`) se anuncia distinto del autorizado. Un agente viejo que no manda
+`device` sigue funcionando: se respeta el `tipo` que informe (compatibilidad hacia atrás).
+
+### 4.2 Anomalías de acceso (opcional, apagado por defecto)
+
+Avisa por los canales del cliente cuando alguien ficha **fuera de su horario** o es **denegado por
+franja horaria**. Se apoya en el adaptador de acceso: funciona con los sistemas que **traen su propia
+configuración de horarios por API** (HikCentral, BioStar 2), así el cliente no configura horarios a mano.
+En los sistemas que no hacen control horario (IVMS, ZKTeco, Honeywell) no aplica y nunca corre, aunque
+esté prendido. Anti-spam: un aviso por evento por día. Se activa por cliente
+(`"anomalias": {"enabled": true, "revisar_min": 10}`) y **nunca se enciende solo**.
 
 ---
 

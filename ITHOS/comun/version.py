@@ -10,7 +10,7 @@ Ver ARQUITECTURA_GESTOR_AGENTE.md.
 """
 
 GESTOR_VERSION = "1.1.0"        # el cerebro / control-plane (lo hosteamos nosotros)
-AGENTE_VERSION = "1.1.27"        # la app liviana del cliente (data-plane / executor)
+AGENTE_VERSION = "1.1.28"        # la app liviana del cliente (data-plane / executor)
 PROTOCOL_VERSION = 1            # contrato de mensajes agente <-> gestor (entero; +1 si rompe compat)
 AGENTE_MIN_VERSION = "1.0.0"    # agente MÍNIMO que el gestor soporta (para el aviso de auto-update)
 

@@ -54,7 +54,7 @@ otro.
 
 ## Características
 
-- **Portero por voz.** Anuncia los accesos leídos del control biométrico (IVMS / HikCentral / BioStar 2 / ZKTeco / Honeywell) por los parlantes, con voz natural y verbatim (TTS dedicado de Gemini, *Charon*).
+- **Portero por voz.** Anuncia los accesos leídos del control biométrico (IVMS / HikCentral / BioStar 2 / ZKTeco / Honeywell) por los parlantes, con voz natural y verbatim (TTS dedicado de Gemini, *Charon*). Cada terminal se descubre sola y se mapea a entrada, salida o sala con su propio saludo y frecuencia; el de entrada es coherente con la hora, no repite a la misma persona en el día y suena al instante porque el padrón está pre-cacheado. Opcional: aviso de accesos fuera de horario.
 - **Mesa de ayuda con IA.** Clasifica, prioriza, asigna, responde y gestiona el ciclo de vida de los tickets. Respeta la intervención manual del técnico, deja notas internas privadas, pide procedimientos para la base de conocimiento y gestiona el SLA por calendario y horario. Si el ticket espera una confirmación del cliente, recuerda una vez por día hábil y escala al técnico asignado a los 5 días hábiles sin respuesta.
 - **Cadena multi-IA.** Una IA por consulta; salta a la siguiente sólo al agotarse (Gemini → Cerebras → Groq, configurable). Aviso al cliente cuando una está por agotarse o cambia. Opción **100 % local** (Ollama) para datos que no salen de la red del cliente.
 - **WhatsApp conversacional.** Escucha el grupo del cliente (wake-word «ithos» o «Hey ITHOS», en texto o audio) y responde o ejecuta acciones reales sobre los tickets, @mencionando al técnico asignado cuando avisa algo suyo. Multicanal: WhatsApp oficial y no oficial, Telegram, Email y Matrix.
