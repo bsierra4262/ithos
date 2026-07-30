@@ -13,22 +13,34 @@ import threading
 
 BASE = os.path.dirname(os.path.abspath(__file__))
 
-# La marca es ITHOS: el token del usuario que ESCRIBE en el sistema de tickets se llama
-# `glpi_ithos_token`. Las configuraciones viejas lo tenían con el nombre anterior y, al no
-# encontrarlo, el Gestor arrancaba SIN triage (silenciosamente). Se acepta el nombre viejo como
-# COMPATIBILIDAD al leer (no se reescribe el archivo del cliente).
-_COMPAT_TOKEN = {"glpi_ithos_token": "glpi_jarvis_token"}
+import logging
+
+log = logging.getLogger("registro")
+
+# El token del usuario con el que ITHOS ESCRIBE en el sistema de tickets se llama `glpi_ithos_token`.
+# Una configuración vieja puede traerlo con OTRO nombre (el de la marca anterior) y, al no
+# encontrarlo, el Gestor arrancaba SIN triage y en silencio. Compatibilidad al leer: si falta, se
+# adopta el otro token de usuario que traiga la config (los de rol conocido NO se toman: son de
+# lectura/admin/pruebas). No se reescribe el archivo del cliente.
+_TOKEN_AGENTE = "glpi_ithos_token"
+_TOKENS_CONOCIDOS = {_TOKEN_AGENTE, "glpi_app_token", "glpi_user_token",
+                     "glpi_superadmin_token", "glpi_bsierra_token", "glpi_test_token"}
 
 
 def _normalizar(cliente):
     """Compatibilidad de nombres de config, para que un clientes.json viejo funcione igual."""
     for bloque in ("integrador_glpi", "tickets"):
         cfg = cliente.get(bloque)
-        if not isinstance(cfg, dict):
+        if not isinstance(cfg, dict) or cfg.get(_TOKEN_AGENTE):
             continue
-        for nuevo, viejo in _COMPAT_TOKEN.items():
-            if not cfg.get(nuevo) and cfg.get(viejo):
-                cfg[nuevo] = cfg[viejo]
+        for clave, valor in cfg.items():
+            if (clave.startswith("glpi_") and clave.endswith("_token")
+                    and clave not in _TOKENS_CONOCIDOS and valor):
+                cfg[_TOKEN_AGENTE] = valor
+                log.warning("Config de '%s': '%s' tiene el nombre anterior de la marca; se usa como "
+                            "%s. Renombralo para evitar sorpresas.",
+                            cliente.get("nombre", "?"), clave, _TOKEN_AGENTE)
+                break
     return cliente
 
 

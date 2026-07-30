@@ -57,10 +57,11 @@ y el versionado, [SemVer](https://semver.org/lang/es/).
   el SLA por calendario y horario de atención (Lun–Vie 09–18).
 
 ### Fixed
-- **El token del usuario de ITHOS en GLPI tenía el nombre viejo en la configuración**
-  (`glpi_jarvis_token`), así que el Gestor no lo encontraba y arrancaba **sin triage**, en silencio.
-  Se renombró a `glpi_ithos_token` (mismo token) en la config y el ejemplo, y el registro de
-  clientes acepta el nombre viejo como compatibilidad para no volver a dejar el triage apagado.
+- **El token del usuario de ITHOS en la mesa de ayuda tenía el nombre anterior de la marca en la
+  configuración**, así que el Gestor no lo encontraba y arrancaba **sin triage**, en silencio. Se
+  renombró a `glpi_ithos_token` (mismo token) en la config y en el ejemplo, y el registro de clientes
+  adopta el token de usuario que traiga una config vieja —avisando por log— para no volver a dejar el
+  triage apagado sin que se note.
 - **Los recordatorios al cliente podían salir fuera de horario.** El recordatorio de la espera se
   manda ahora sólo **dentro del horario de atención del cliente** (Lun-Vie 09:00-18:00 por defecto,
   en su zona): nunca de noche ni un fin de semana.
