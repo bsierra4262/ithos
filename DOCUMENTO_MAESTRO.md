@@ -138,7 +138,10 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    N["Ticket nuevo"] --> T["Triage con IA: lee todo el ticket,<br/>categoría · prioridad · SLA/OLA · asigna · 1ª respuesta<br/>(saluda al SOLICITANTE por su nombre)"]
+    N["Ticket nuevo"] --> AL{"¿QUÉ falla?<br/>(alcance, con los casos<br/>parecidos ya trabajados a la vista)"}
+    AL -->|"el fichaje de UNA persona"| T["Triage con IA: lee todo el ticket,<br/>categoría · prioridad · SLA/OLA · asigna · 1ª respuesta<br/>(saluda al SOLICITANTE por su nombre)"]
+    AL -->|"el EQUIPO o la SEDE:<br/>no puede fichar nadie"| SV["Urgente · instalaciones<br/>NO se pide legajo · NO queda en espera<br/>nota interna al técnico con el porqué"]
+    SV --> C
     T -->|"falta un dato"| E["EN ESPERA — SLA pausado"]
     T -->|"entró fuera de horario"| R["EN ESPERA + reapertura automática<br/>(nota interna; el cliente no se entera)"]
     T -->|"todo claro"| C["EN CURSO"]
@@ -317,19 +320,61 @@ activa. Todo lo que sigue vale para cualquiera de ellos.
 
 ### 5.1 Triage (primera pasada)
 
-Lee el ticket **completo** (asunto + descripción + seguimientos) y aplica:
+Lee el ticket **completo** (asunto + descripción + seguimientos), lo compara con los **casos parecidos
+ya trabajados** de ese mismo cliente (§5.4) para clasificarlo con precedentes reales y no con
+intuición, y aplica:
 
+- **Alcance del problema — lo primero que decide**, porque cambia todo lo demás: `individual` (falla el
+  fichaje de una persona), `grupo` (varias identificadas), `equipo` (se cayó un lector de los que tiene
+  la sede), `sede` (la sede se quedó **sin fichaje**: no puede fichar nadie) o `masivo` (varias sedes o
+  el sistema entero). Ver §5.1.1.
 - **Categoría, urgencia/impacto/prioridad** y el **SLA/OLA** correspondiente (TTO y TTR, externos e
   internos). Corrige un ticket **mal cargado** y deja **nota interna privada** al equipo explicando la
   corrección.
-- **Asignación**: ITHOS + el técnico responsable según el tipo de caso. Si ya hay un técnico asignado a
-  mano, **respeta esa asignación**.
+- **Asignación**: ITHOS + el técnico responsable según el tipo de caso. El equipamiento caído de una
+  sede es **instalaciones**; los casos individuales y el software, **soporte**. Si ya hay un técnico
+  asignado a mano, **respeta esa asignación**.
 - **Primera respuesta profesional**, saludando **al solicitante** por su nombre (quien abrió el ticket, no
   la persona mencionada en el texto). Si falta un dato indispensable (p. ej. el legajo) lo pide; si el dato
-  ya está en el ticket, **no lo pide**.
+  ya está en el ticket, **no lo pide**. Se despide **una sola vez**.
 - **Fuera del horario de atención**: el ticket queda **En espera** y se reabre solo al comenzar la jornada.
   El cliente **no se entera** del corte (sólo ve la respuesta profesional); el equipo lo ve por nota interna.
 - **Nunca re-triagea**: una vez que ITHOS pasó, no vuelve a categorizar ni pisa cambios manuales.
+
+#### 5.1.1 El alcance manda: un equipo caído no es el problema de un usuario
+
+Que el ticket **no nombre a nadie** no significa que haya un solo afectado: si lo que dejó de andar es el
+**equipo**, están afectados **todos los que fichan ahí**. De esa lectura salen tres decisiones:
+
+| Alcance | Prioridad mínima | ¿Se pide el legajo? | Quién lo toma |
+|---|---|---|---|
+| `individual` | Baja | **Sí**, si no está en el ticket | Soporte |
+| `grupo` | Media | Sí, de los afectados | Soporte |
+| `equipo` | Alta | **No** | Instalaciones |
+| `sede` | **Urgente** | **No** | Instalaciones |
+| `masivo` | **Urgente** | **No** | Instalaciones (hardware) / Soporte (software) |
+
+Cuando el alcance no es individual **no hay a quién pedirle un legajo**, así que el ticket **nunca queda
+En espera** aguardando al cliente: el técnico tiene que salir a trabajar ya. Lo que ayuda a llegar
+preparado —desde cuándo, si el equipo tiene energía y red, si la sede tiene otro lector— se pide en la
+misma respuesta **sin condicionar el avance**.
+
+Esto no depende de que el modelo se acuerde de cumplirlo. Se aplica en dos capas:
+
+1. **Coherencia**: sobre lo que el modelo devolvió se fuerzan el piso de prioridad, el responsable y el
+   "no se pide legajo". Si además la respuesta que había escrito pedía identificar a un afectado, se
+   **reemplaza** antes de que salga al cliente.
+2. **El texto del ticket manda**: si dice que el equipo *dejó de funcionar / está apagado / no anda*, o
+   que *nadie puede fichar*, y no identifica a ninguna persona (no hay número de legajo), el alcance
+   **sube** aunque el modelo haya dicho "individual". Sólo sube, nunca baja.
+
+Cada corrección se le explica al técnico asignado por **nota interna privada**: qué alcance tiene el
+ticket, con qué prioridad entra, en manos de quién y por qué se ajustó.
+
+> Regresión real (ticket #661, «EL FICHAJE DE ZARATE DEJO DE FUNCIONAR»): el biométrico de la sede quedó
+> apagado y ITHOS lo trató como un usuario suelto —prioridad Baja, asignado a soporte y **En espera**
+> pidiendo "el nombre y el legajo de la persona afectada"—, dejando una sede entera sin fichar mientras
+> el ticket dormía. Verificado por `tests/probar_triage_alcance.py`.
 
 ### 5.2 Ciclo de vida y esperas
 
@@ -598,6 +643,8 @@ manejan el certificado. Del repositorio se puede reconstruir el agente completo.
   - `probar_portero_saludo.py` — saludo coherente con la hora y una vez por día por persona.
   - `probar_ciclo.py` · `probar_produccion.py` · `probar_sistema.py` — ciclo de vida real del ticket, flujo
     del vigilante y circuito completo por HTTP.
+  - `probar_triage_alcance.py` — un equipo o una sede caída no se trata como el caso de un usuario
+    suelto: prioridad, responsable, sin pedir legajo y sin dejar el ticket en espera (sin red).
   - `probar_busqueda_casos.py` — antecedentes: el caso escrito con otras palabras se encuentra, el
     cierre administrativo no se ofrece como resolución y no se pueden inventar números (sin red).
   - `probar_planka_cambios.py` — avisos de cambio de estado del tablero (sin red).

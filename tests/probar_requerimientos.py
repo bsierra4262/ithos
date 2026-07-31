@@ -2998,9 +2998,9 @@ try:
                 return [{"users_id": u, "type": 2} for u in self._asig]
             return {}
     _clf0 = _T77.cerebro.clasificar_ticket
-    _T77.cerebro.clasificar_ticket = lambda ia, n, c, solicitante="": {
-        "categoria": "MOLINETES", "prioridad": "Media", "responsable": "bsierra",
-        "primera_respuesta": "Hola", "necesita_info": False}
+    _T77.cerebro.clasificar_ticket = lambda ia, n, c, **kw: {
+        "alcance": "individual", "categoria": "MOLINETES", "prioridad": "Media",
+        "responsable": "bsierra", "primera_respuesta": "Hola", "necesita_info": False}
     try:
         def _correr(ticket, asig2):
             tr = _T77.Triage.__new__(_T77.Triage)
@@ -3341,6 +3341,15 @@ CAPACIDADES = [
      "docs": {"DOCUMENTO_MAESTRO.md": ["coherente con la hora"], "README.md": ["coherente con la hora"],
               "CHANGELOG.md": ["saludo de entrada coherente con la hora"]},
      "diagrama": ["saludo según la HORA"]},
+    {"que": "el ALCANCE del problema decide prioridad, responsable y si se pide el legajo",
+     "codigo": [("ITHOS/central/cerebro.py", "def coherente"),
+                ("ITHOS/central/cerebro.py", "def alcance_por_texto"),
+                ("ITHOS/central/cerebro.py", "RESPUESTA_SERVICIO_CAIDO"),
+                ("ITHOS/central/triage.py", "def _nota_alcance")],
+     "docs": {"DOCUMENTO_MAESTRO.md": ["El alcance manda", "no hay a quién pedirle un legajo"],
+              "README.md": ["alcance", "no hay a quién pedirle un legajo"],
+              "CHANGELOG.md": ["ALCANCE del problema decide"]},
+     "diagrama": ["no puede fichar nadie"]},
     {"que": "antecedentes: casos parecidos sobre TODO el histórico, con la resolución real",
      "codigo": [("ITHOS/comun/tickets.py", "def casos_similares"),
                 ("ITHOS/comun/tickets.py", "def _cierre_administrativo"),

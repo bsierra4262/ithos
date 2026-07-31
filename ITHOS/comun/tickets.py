@@ -314,7 +314,7 @@ class _GLPI:
         out.sort(key=lambda x: (-x[0], -int(x[1].get("id", 0))))
         return [{"id": t["id"], "asunto": t.get("name", "")} for _, t in out[:8]]
 
-    def casos_similares(self, descripcion, tope=25, estados=(4, 5, 6)):
+    def casos_similares(self, descripcion, tope=25, estados=(4, 5, 6), excluir=()):
         """CASOS PARECIDOS sobre TODO el histórico del cliente, con su RESOLUCIÓN REAL: la
         materia prima para responder "¿qué tickets tuvimos como este y cómo los resolvimos?".
 
@@ -339,7 +339,10 @@ class _GLPI:
         pal = _palabras(descripcion)
         if not pal:
             return []
-        docs = self._corpus(estados)
+        # `excluir`: el propio ticket que se está analizando. Un ticket es siempre idéntico a sí
+        # mismo, así que sin esto encabezaría su propia lista de antecedentes.
+        fuera = {int(x) for x in (excluir or ())}
+        docs = [d for d in self._corpus(estados) if d["id"] not in fuera]
         if not docs:
             return []
 
@@ -849,7 +852,7 @@ class _Nulo:
     def buscar(self, texto):
         return []
 
-    def casos_similares(self, descripcion, tope=20, estados=(4, 5, 6)):
+    def casos_similares(self, descripcion, tope=25, estados=(4, 5, 6), excluir=()):
         return []
 
     def en_riesgo_sla(self, horas=4):

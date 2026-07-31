@@ -30,6 +30,19 @@ y el versionado, [SemVer](https://semver.org/lang/es/).
   transcriba con pronunciación inglesa ("hey ethos"). **Nombrar la marca suelta ya no activa**: en un
   grupo de trabajo se la menciona todo el tiempo ("preguntale a ITHOS") y no corresponde intervenir.
   Los textos que explican cómo usarlo —aviso de inicio, mensajes de las tareas del equipo— lo dicen así.
+- **Triage — el ALCANCE del problema decide el ticket.** Antes de clasificar, ITHOS define **qué**
+  falla: el fichaje de una persona (`individual`), varias identificadas (`grupo`), un lector de los
+  que tiene la sede (`equipo`), la sede entera sin fichaje (`sede`) o varias sedes (`masivo`). De ahí
+  salen el **piso de prioridad** (Baja/Media/Alta/Urgente/Urgente), **quién lo toma** —el equipamiento
+  caído es instalaciones; los casos individuales y el software, soporte— y si corresponde pedir el
+  **legajo**. Cuando el alcance no es individual **no hay a quién pedírselo**: el ticket ya **no queda
+  En espera** aguardando al cliente, y lo que ayuda a llegar preparado se pide sin condicionar el
+  avance. No depende de que el modelo se acuerde: las reglas se aplican sobre lo que devolvió, la
+  respuesta que pedía identificar a un afectado se **reemplaza** antes de salir, y si el texto dice que
+  el equipo *dejó de funcionar / está apagado* o que *nadie puede fichar* y no identifica a nadie, el
+  alcance **sube** aunque el modelo lo haya leído como individual. Cada corrección se le explica al
+  técnico asignado por nota privada. Además, el triage clasifica **viendo los casos parecidos ya
+  trabajados** del cliente, no sólo el texto del ticket.
 - **Antecedentes: "¿qué casos como este ya resolvimos?".** Preguntar por casos ya trabajados ahora
   revisa el **histórico completo** del cliente —todos los tickets cerrados y en espera, no los últimos
   60— y trae cada caso con la **resolución que escribió soporte**. Encuentra el ticket aunque esté
@@ -101,6 +114,16 @@ y el versionado, [SemVer](https://semver.org/lang/es/).
   el SLA por calendario y horario de atención (Lun–Vie 09–18).
 
 ### Fixed
+- **Un equipo caído se trataba como el problema de un usuario suelto.** Un ticket que avisaba que el
+  biométrico de una sede **dejó de funcionar y quedó apagado** —nadie podía fichar ahí— entró con
+  prioridad **Baja**, asignado a soporte y **En espera** pidiendo "el nombre y el legajo de la persona
+  afectada", que no existía: la sede quedó sin fichar mientras el ticket dormía. La regla que exigía el
+  legajo era incondicional y nada distinguía la falla de una persona de la caída del servicio. Ahora lo
+  decide el **alcance** (ver arriba), con corrección determinística y respaldo en el texto del ticket.
+- **La primera respuesta se despedía dos veces.** El modelo cerraba con su propia fórmula ("Quedo a la
+  espera de tu respuesta. Soporte ITH") y el sistema le agregaba la suya, así que el cliente leía la
+  misma frase repetida. Ahora se reconoce cualquier variante de esa despedida y se reemplaza por la
+  única que el ciclo necesita para saber que el ticket espera al cliente.
 - **El token del usuario de ITHOS en la mesa de ayuda tenía el nombre anterior de la marca en la
   configuración**, así que el Gestor no lo encontraba y arrancaba **sin triage**, en silencio. Se
   renombró a `glpi_ithos_token` (mismo token) en la config y en el ejemplo, y el registro de clientes

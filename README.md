@@ -289,7 +289,10 @@ misma interfaz común, de modo que todo lo que sigue vale para cualquiera de ell
 
 ```mermaid
 flowchart TD
-    N["Ticket nuevo"] --> T["Triage con IA: lee todo el ticket,<br/>categoría · prioridad · SLA/OLA · asigna · 1ª respuesta<br/>(saluda al SOLICITANTE por su nombre)"]
+    N["Ticket nuevo"] --> AL{"¿QUÉ falla?<br/>(alcance, con los casos<br/>parecidos ya trabajados a la vista)"}
+    AL -->|"el fichaje de UNA persona"| T["Triage con IA: lee todo el ticket,<br/>categoría · prioridad · SLA/OLA · asigna · 1ª respuesta<br/>(saluda al SOLICITANTE por su nombre)"]
+    AL -->|"el EQUIPO o la SEDE:<br/>no puede fichar nadie"| SV["Urgente · instalaciones<br/>NO se pide legajo · NO queda en espera<br/>nota interna al técnico con el porqué"]
+    SV --> C
     T -->|"falta un dato"| E["EN ESPERA — SLA pausado"]
     T -->|"entró fuera de horario"| R["EN ESPERA + reapertura automática<br/>(nota interna; el cliente no se entera)"]
     T -->|"todo claro"| C["EN CURSO"]
@@ -306,11 +309,33 @@ flowchart TD
     C -.->|"SLA por vencer o vencido"| SLA["Alerta al asignado<br/>(@mención, en horario)"]
 ```
 
-En el **primer triage** ITHOS lee el ticket completo —asunto, descripción y seguimientos—, corrige la
-carga si vino mal, fija categoría, prioridad y SLA/OLA, asigna, y responde saludando a **quien abrió el
-ticket** por su nombre. Pide un dato sólo si de verdad falta. Si el ticket entró fuera del horario de
-atención queda en espera y se reabre solo al comenzar la jornada, sin que el cliente se entere del corte.
-Una vez que pasó, **respeta la intervención manual**: no vuelve a categorizar ni pisa una reasignación.
+En el **primer triage** ITHOS lee el ticket completo —asunto, descripción y seguimientos—, lo compara con
+los casos parecidos ya trabajados de ese cliente, corrige la carga si vino mal, fija categoría, prioridad
+y SLA/OLA, asigna, y responde saludando a **quien abrió el ticket** por su nombre (y despidiéndose una
+sola vez). Pide un dato sólo si de verdad falta. Si el ticket entró fuera del horario de atención queda en
+espera y se reabre solo al comenzar la jornada, sin que el cliente se entere del corte. Una vez que pasó,
+**respeta la intervención manual**: no vuelve a categorizar ni pisa una reasignación.
+
+Lo primero que decide es el **alcance** del problema, porque cambia todo lo demás. Que el ticket **no
+nombre a nadie** no significa que haya un solo afectado: si lo que dejó de andar es el **equipo**, están
+afectados **todos los que fichan ahí**.
+
+| Alcance | Prioridad mínima | ¿Se pide el legajo? | Quién lo toma |
+|---|---|---|---|
+| `individual` — el fichaje de una persona | Baja | **Sí**, si no está en el ticket | Soporte |
+| `grupo` — varias personas identificadas | Media | Sí, de los afectados | Soporte |
+| `equipo` — se cayó un lector de los que hay | Alta | **No** | Instalaciones |
+| `sede` — la sede se quedó sin fichaje | **Urgente** | **No** | Instalaciones |
+| `masivo` — varias sedes o el sistema entero | **Urgente** | **No** | Instalaciones / Soporte |
+
+Cuando el alcance no es individual **no hay a quién pedirle un legajo**, así que el ticket **nunca queda
+en espera** aguardando al cliente: el técnico tiene que salir a trabajar ya. Lo que ayuda a llegar
+preparado —desde cuándo, si el equipo tiene energía y red, si hay otro lector— se pide en la misma
+respuesta **sin condicionar el avance**. No depende de que el modelo se acuerde: el piso de prioridad, el
+responsable y el «no se pide legajo» se aplican sobre lo que devolvió, la respuesta que pedía identificar
+a un afectado se reemplaza antes de salir, y si el texto del ticket dice que el equipo *dejó de funcionar
+/ está apagado* o que *nadie puede fichar* y no identifica a ninguna persona, el alcance **sube** aunque
+el modelo lo haya leído como individual. Cada corrección se le explica al técnico por nota privada.
 
 Mientras la espera **depende del cliente** —un dato que falta o una confirmación para avanzar— el SLA
 queda detenido y ITHOS le recuerda **una vez por día hábil**, dentro del horario de atención y siempre a
@@ -585,6 +610,7 @@ Baterías en [`tests/`](tests/):
 | `probar_portero_saludo.py` | Saludo coherente con la hora y una sola vez por día por persona. | No |
 | `probar_sistema.py` | Circuito completo por HTTP: alta, validaciones, edición, canales, métricas, portal. | Sí |
 | `probar_ciclo.py` · `probar_produccion.py` | Ciclo de vida real de un ticket y flujo del vigilante contra la mesa de ayuda del cliente. | Sí |
+| `probar_triage_alcance.py` | El alcance del problema: un equipo o una sede caída nunca se trata como el caso de un usuario suelto (prioridad, responsable, sin pedir legajo, sin dejarlo en espera). | No |
 | `probar_busqueda_casos.py` | Antecedentes: encuentra el caso redactado con otras palabras, distingue la resolución real del cierre administrativo y no deja inventar números. | No |
 | `probar_planka_cambios.py` | Avisos de cambio de estado del tablero: movimiento a mano, sin repetir, y estado que sobrevive a un reinicio. | No |
 | `probar_planka_rollover.py` | Rollover semanal/mensual/anual contra la API real (usa proyectos de prueba y los borra). | Sí |

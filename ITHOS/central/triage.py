@@ -49,6 +49,25 @@ from comun.horario import (ZONA_DEFAULT, HORARIO_DEFAULT as _HORARIO_DEFAULT,  #
                            dias_habiles_entre)
 
 
+_ALCANCE_TXT = {
+    "individual": "afecta al fichaje de UNA persona",
+    "grupo": "afecta a VARIAS personas identificadas",
+    "equipo": "hay un equipo caído: nadie ficha por ahí, aunque la sede tiene otro",
+    "sede": "la SEDE se quedó sin fichaje: NADIE puede fichar ahí",
+    "masivo": "afecta a varias sedes o al sistema completo",
+}
+
+
+def _nota_alcance(a, correcciones):
+    """Nota PRIVADA que explica al técnico por qué el ticket entra con esa prioridad y en sus
+    manos. Sale sólo cuando hubo que corregir la clasificación."""
+    alc = a.get("alcance", "individual")
+    return ("Nota interna (el cliente no la ve): por lo que dice el ticket, "
+            f"{_ALCANCE_TXT.get(alc, alc)}. Queda con prioridad {a.get('prioridad')} y asignado a "
+            f"{NOMBRES.get(a.get('responsable'), a.get('responsable'))}. Ajustes aplicados: "
+            + "; ".join(correcciones) + ".")
+
+
 def _nota_interna_horario(dt):
     """Nota PRIVADA (solo técnicos) avisando que el ticket entró fuera de horario y cuándo reabre solo.
     El CLIENTE NO ve esto: solo ve la respuesta profesional normal (sin avisos de horario)."""
@@ -95,6 +114,28 @@ class Triage:
         except Exception:  # noqa: BLE001
             return set()
 
+    def _antecedentes(self, tid, ticket):
+        """Casos parecidos REALES ya trabajados de este cliente, para que el triage clasifique con
+        precedentes y no con la intuición del modelo: si un biométrico caído en una sede siempre
+        fue un caso grave de instalaciones, el ticket nuevo se lee con esa historia a la vista.
+        Nunca es fatal: si no se puede leer el histórico, el triage sigue igual que antes."""
+        try:
+            from comun import tickets as TK
+            adap = TK.adaptador({"integrador_glpi": self.cfg_glpi})
+            casos = adap.casos_similares(
+                f"{ticket.get('name', '')} {TK._sin_html(ticket.get('content', ''))}",
+                tope=4, excluir=(tid,))
+        except Exception as e:  # noqa: BLE001
+            log.debug("Triage #%s: sin antecedentes (%s)", tid, str(e)[:80])
+            return ""
+        partes = []
+        for c in casos:
+            resol = (c["resolucion"] if c["resuelto_de_verdad"]
+                     else "(se cerró sin dejar registrada una resolución técnica)")
+            partes.append(f"- #{c['id']} «{c['asunto']}»: {c['problema'][:280]}\n"
+                          f"  Cómo terminó: {resol[:280]}")
+        return "\n".join(partes)
+
     def procesar(self, ticket):
         tid = ticket.get("id")
         # ¿ITHOS YA triageó este ticket? El marcador es que ITHOS esté ASIGNADO. Si SÍ -> NO re-triagear:
@@ -117,11 +158,19 @@ class Triage:
             return None
         # -- PRIMER triage --
         solicitante = self._nombre_solicitante(ticket)
-        a = cerebro.clasificar_ticket(self.ia, ticket.get("name", ""),
-                                      ticket.get("content", ""), solicitante=solicitante)
+        a = cerebro.clasificar_ticket(
+            self.ia, ticket.get("name", ""), ticket.get("content", ""), solicitante=solicitante,
+            antecedentes=self._antecedentes(tid, ticket))
         if not a:
             log.warning("Triage: no se pudo clasificar el ticket %s", tid)
             return None
+        # COHERENCIA: lo que decidió el modelo tiene que sostenerse solo. Si lo que falla es el
+        # equipo o la sede, el ticket NO queda esperando un legajo que no existe, la prioridad no
+        # baja del piso de su alcance y lo toma instalaciones. No depende del prompt.
+        a, correcciones = cerebro.coherente(a, ticket.get("name", ""), ticket.get("content", ""))
+        if correcciones:
+            log.info("Triage #%s: alcance=%s, corregido -> %s", tid, a.get("alcance"),
+                     "; ".join(correcciones))
         # El saludo SIEMPRE es para el solicitante (quien abrió el ticket), no para la persona
         # afectada que aparezca en el texto. Se corrige de forma determinística por las dudas.
         a["primera_respuesta"] = _saludo_solicitante(a.get("primera_respuesta", ""), solicitante)
@@ -181,6 +230,10 @@ class Triage:
             nt = (a.get("nota_tecnico") or "").strip()
             if nt:
                 internas.append(nt)
+            # Si hubo que corregir la clasificación (el alcance no era el que decía), el técnico se
+            # entera: es lo que explica por qué el ticket entra con esa prioridad y en sus manos.
+            if correcciones:
+                internas.append(_nota_alcance(a, correcciones))
             dt_reapertura = proximo_inicio_horario(self.cfg_glpi) if fuera else None
             if fuera:
                 internas.append(_nota_interna_horario(dt_reapertura))
@@ -537,12 +590,28 @@ _DIAS_HABILES_ESCALADA = 5        # días HÁBILES sin respuesta -> avisar al T�
 _CIERRE_ESPERA = " Quedamos a la espera de su respuesta. Soporte ITH."
 
 
+# El modelo suele despedirse con su propia fórmula ("Quedo a la espera de tu respuesta. Soporte
+# ITH"). Si sólo buscáramos el texto exacto del marcador, esa despedida no coincide y el cierre se
+# agrega igual: el cliente termina leyendo la misma frase dos veces seguidas. Se reconoce cualquier
+# variante (quedo/quedamos, tu/su, aguardo…) y se REEMPLAZA por la canónica, que es la que el ciclo
+# necesita para saber que el ticket espera al cliente.
+_RE_DESPEDIDA_ESPERA = re.compile(
+    r"\s*(?:qued(?:o|amos)|estar(?:é|emos)|aguard(?:o|amos))\s+"
+    r"(?:atentos?\s+)?a\s+la\s+espera\s+de\s+(?:tu|su|la)\s+"
+    r"(?:respuesta|confirmaci[oó]n|respuesta\s+o\s+confirmaci[oó]n)\s*\.?"
+    r"(?:\s*(?:atentamente\s*,?\s*)?(?:soporte\s+ith|saludos)\s*\.?)?\s*$",
+    re.I)
+
+
 def _con_cierre_espera(texto):
-    """Agrega al final el cierre con el marcador de ESPERA (si no lo trae ya). Se usa en la 1ª
-    respuesta cuando FALTA un dato del cliente: así el ciclo reconoce que el ticket espera SU
-    respuesta y le recuerda una vez por día hábil, igual que con el pedido de confirmación."""
+    """Deja la 1ª respuesta terminando con el cierre de ESPERA, UNA sola vez. Se usa cuando FALTA
+    un dato del cliente: así el ciclo reconoce que el ticket espera SU respuesta y le recuerda una
+    vez por día hábil, igual que con el pedido de confirmación."""
     t = (texto or "").strip()
-    return t if _MARCA_ESPERA_CLIENTE in t.lower() else (t + _CIERRE_ESPERA).strip()
+    if _MARCA_ESPERA_CLIENTE in t.lower():
+        return t
+    t = _RE_DESPEDIDA_ESPERA.sub("", t).strip()      # sacamos la despedida propia del modelo
+    return (t + _CIERRE_ESPERA).strip()
 
 
 def _texto_recordatorio_espera(motivo):
