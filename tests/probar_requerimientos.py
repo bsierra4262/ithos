@@ -3182,7 +3182,7 @@ try:
     main81 = leer(os.path.join(_cen81, "main.py"))
     agenda81 = leer(os.path.join(APP, "comun", "agenda.py"))
     logica = ("_agendar_reapertura_horario" in tri81 and "agenda.programar" in tri81
-              and "4 if (necesita or fuera) else 2" in tri81
+              and "4 if (espera_cliente or fuera) else 2" in tri81
               and 'gl["nombre_cliente"]' in main81 and 'gl["zona_horaria"]' in main81)
     # el CLIENTE NO se entera del horario: el aviso va como NOTA INTERNA (privada, _nota_interna_horario)
     # y la reapertura es SILENCIOSA (silencioso=True); el helper público viejo ya NO existe.
@@ -3341,15 +3341,18 @@ CAPACIDADES = [
      "docs": {"DOCUMENTO_MAESTRO.md": ["coherente con la hora"], "README.md": ["coherente con la hora"],
               "CHANGELOG.md": ["saludo de entrada coherente con la hora"]},
      "diagrama": ["saludo según la HORA"]},
-    {"que": "el ALCANCE del problema decide prioridad, responsable y si se pide el legajo",
+    {"que": "el ALCANCE del problema decide prioridad, responsable y qué se le pide al cliente",
      "codigo": [("ITHOS/central/cerebro.py", "def coherente"),
                 ("ITHOS/central/cerebro.py", "def alcance_por_texto"),
-                ("ITHOS/central/cerebro.py", "RESPUESTA_SERVICIO_CAIDO"),
+                ("ITHOS/central/cerebro.py", "RESPUESTA_COORDINAR_VISITA"),
+                ("ITHOS/central/cerebro.py", "MARCA_COORDINAR"),
                 ("ITHOS/central/triage.py", "def _nota_alcance")],
-     "docs": {"DOCUMENTO_MAESTRO.md": ["El alcance manda", "no hay a quién pedirle un legajo"],
-              "README.md": ["alcance", "no hay a quién pedirle un legajo"],
-              "CHANGELOG.md": ["ALCANCE del problema decide"]},
-     "diagrama": ["no puede fichar nadie"]},
+     "docs": {"DOCUMENTO_MAESTRO.md": ["El alcance manda", "no hay a quién pedirle un legajo",
+                                       "lo único que se pide es coordinar la visita"],
+              "README.md": ["alcance", "no hay a quién pedirle un legajo",
+                            "coordinar la visita"],
+              "CHANGELOG.md": ["ALCANCE del problema decide", "coordinar la\n  visita"]},
+     "diagrama": ["COORDINAR LA VISITA"]},
     {"que": "antecedentes: casos parecidos sobre TODO el histórico, con la resolución real",
      "codigo": [("ITHOS/comun/tickets.py", "def casos_similares"),
                 ("ITHOS/comun/tickets.py", "def _cierre_administrativo"),

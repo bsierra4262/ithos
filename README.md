@@ -291,8 +291,8 @@ misma interfaz común, de modo que todo lo que sigue vale para cualquiera de ell
 flowchart TD
     N["Ticket nuevo"] --> AL{"¿QUÉ falla?<br/>(alcance, con los casos<br/>parecidos ya trabajados a la vista)"}
     AL -->|"el fichaje de UNA persona"| T["Triage con IA: lee todo el ticket,<br/>categoría · prioridad · SLA/OLA · asigna · 1ª respuesta<br/>(saluda al SOLICITANTE por su nombre)"]
-    AL -->|"el EQUIPO o la SEDE:<br/>no puede fichar nadie"| SV["Urgente · instalaciones<br/>NO se pide legajo · NO queda en espera<br/>nota interna al técnico con el porqué"]
-    SV --> C
+    AL -->|"el EQUIPO o la SEDE:<br/>no puede fichar nadie"| SV["Urgente · instalaciones · hay que ir al lugar<br/>NO se pide legajo ni datos que ya tenemos:<br/>se pide COORDINAR LA VISITA (día y horario)"]
+    SV --> E
     T -->|"falta un dato"| E["EN ESPERA — SLA pausado"]
     T -->|"entró fuera de horario"| R["EN ESPERA + reapertura automática<br/>(nota interna; el cliente no se entera)"]
     T -->|"todo claro"| C["EN CURSO"]
@@ -320,22 +320,27 @@ Lo primero que decide es el **alcance** del problema, porque cambia todo lo dem�
 nombre a nadie** no significa que haya un solo afectado: si lo que dejó de andar es el **equipo**, están
 afectados **todos los que fichan ahí**.
 
-| Alcance | Prioridad mínima | ¿Se pide el legajo? | Quién lo toma |
+| Alcance | Prioridad mínima | Qué se le pide al cliente | Quién lo toma |
 |---|---|---|---|
-| `individual` — el fichaje de una persona | Baja | **Sí**, si no está en el ticket | Soporte |
-| `grupo` — varias personas identificadas | Media | Sí, de los afectados | Soporte |
-| `equipo` — se cayó un lector de los que hay | Alta | **No** | Instalaciones |
-| `sede` — la sede se quedó sin fichaje | **Urgente** | **No** | Instalaciones |
-| `masivo` — varias sedes o el sistema entero | **Urgente** | **No** | Instalaciones / Soporte |
+| `individual` — el fichaje de una persona | Baja | El **legajo**, si no está en el ticket | Soporte |
+| `grupo` — varias personas identificadas | Media | El legajo de los afectados | Soporte |
+| `equipo` — se cayó un lector de los que hay | Alta | **Coordinar la visita** | Instalaciones |
+| `sede` — la sede se quedó sin fichaje | **Urgente** | **Coordinar la visita** | Instalaciones |
+| `masivo` — varias sedes o el sistema entero | **Urgente** | Coordinar la visita, si es hardware | Instalaciones / Soporte |
 
-Cuando el alcance no es individual **no hay a quién pedirle un legajo**, así que el ticket **nunca queda
-en espera** aguardando al cliente: el técnico tiene que salir a trabajar ya. Lo que ayuda a llegar
-preparado —desde cuándo, si el equipo tiene energía y red, si hay otro lector— se pide en la misma
-respuesta **sin condicionar el avance**. No depende de que el modelo se acuerde: el piso de prioridad, el
-responsable y el «no se pide legajo» se aplican sobre lo que devolvió, la respuesta que pedía identificar
-a un afectado se reemplaza antes de salir, y si el texto del ticket dice que el equipo *dejó de funcionar
-/ está apagado* o que *nadie puede fichar* y no identifica a ninguna persona, el alcance **sube** aunque
-el modelo lo haya leído como individual. Cada corrección se le explica al técnico por nota privada.
+Cuando el alcance no es individual **no hay a quién pedirle un legajo**, así que ese pedido nunca sale. Y
+si hay que **ir al lugar** —un equipo caído no se arregla por mail— lo único que se le pide al cliente es
+**coordinar la visita**: qué día y en qué franja horaria podemos pasar, y con quién nos encontramos. Las
+instalaciones las hicimos nosotros, así que preguntar la ubicación, si tiene energía o si hay otro lector
+queda pésimo y no aporta: eso lo vemos al llegar. Con ese pedido el ticket queda **en espera de la
+coordinación**, con el recordatorio por día hábil y la escalada al técnico a los cinco días.
+
+No depende de que el modelo se acuerde: el piso de prioridad, el responsable, el «no se pide legajo» y el
+«hay que ir al lugar» se aplican sobre lo que devolvió; la respuesta se reemplaza antes de salir si pide
+identificar a un afectado, si pregunta datos del equipo que ya tenemos o si no pide la coordinación; y si
+el texto del ticket dice que el equipo *dejó de funcionar / está apagado* o que *nadie puede fichar* y no
+identifica a ninguna persona, el alcance **sube** aunque el modelo lo haya leído como individual. Cada
+corrección se le explica al técnico por nota privada.
 
 Mientras la espera **depende del cliente** —un dato que falta o una confirmación para avanzar— el SLA
 queda detenido y ITHOS le recuerda **una vez por día hábil**, dentro del horario de atención y siempre a

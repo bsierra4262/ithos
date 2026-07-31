@@ -35,14 +35,18 @@ y el versionado, [SemVer](https://semver.org/lang/es/).
   que tiene la sede (`equipo`), la sede entera sin fichaje (`sede`) o varias sedes (`masivo`). De ahí
   salen el **piso de prioridad** (Baja/Media/Alta/Urgente/Urgente), **quién lo toma** —el equipamiento
   caído es instalaciones; los casos individuales y el software, soporte— y si corresponde pedir el
-  **legajo**. Cuando el alcance no es individual **no hay a quién pedírselo**: el ticket ya **no queda
-  En espera** aguardando al cliente, y lo que ayuda a llegar preparado se pide sin condicionar el
-  avance. No depende de que el modelo se acuerde: las reglas se aplican sobre lo que devolvió, la
-  respuesta que pedía identificar a un afectado se **reemplaza** antes de salir, y si el texto dice que
-  el equipo *dejó de funcionar / está apagado* o que *nadie puede fichar* y no identifica a nadie, el
-  alcance **sube** aunque el modelo lo haya leído como individual. Cada corrección se le explica al
-  técnico asignado por nota privada. Además, el triage clasifica **viendo los casos parecidos ya
-  trabajados** del cliente, no sólo el texto del ticket.
+  **legajo**. Cuando el alcance no es individual **no hay a quién pedírselo**, y si hay que **ir al
+  lugar** —un equipo caído no se arregla por mail— lo único que se le pide al cliente es **coordinar la
+  visita**: qué día y en qué franja horaria podemos pasar, y con quién nos encontramos. Las
+  instalaciones las hicimos nosotros, así que no se pregunta la ubicación, si tiene energía ni si hay
+  otro lector: eso ya lo sabemos y se ve al llegar. Con ese pedido el ticket queda **En espera de la
+  coordinación**, con el recordatorio por día hábil y la escalada al técnico a los cinco. No depende de
+  que el modelo se acuerde: las reglas se aplican sobre lo que devolvió, la respuesta se **reemplaza**
+  antes de salir si pide identificar a un afectado, si pregunta datos que ya tenemos o si no pide la
+  coordinación, y si el texto dice que el equipo *dejó de funcionar / está apagado* o que *nadie puede
+  fichar* y no identifica a nadie, el alcance **sube** aunque el modelo lo haya leído como individual.
+  Cada corrección se le explica al técnico asignado por nota privada. Además, el triage clasifica
+  **viendo los casos parecidos ya trabajados** del cliente, no sólo el texto del ticket.
 - **Antecedentes: "¿qué casos como este ya resolvimos?".** Preguntar por casos ya trabajados ahora
   revisa el **histórico completo** del cliente —todos los tickets cerrados y en espera, no los últimos
   60— y trae cada caso con la **resolución que escribió soporte**. Encuentra el ticket aunque esté

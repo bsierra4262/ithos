@@ -140,8 +140,8 @@ flowchart TD
 flowchart TD
     N["Ticket nuevo"] --> AL{"¿QUÉ falla?<br/>(alcance, con los casos<br/>parecidos ya trabajados a la vista)"}
     AL -->|"el fichaje de UNA persona"| T["Triage con IA: lee todo el ticket,<br/>categoría · prioridad · SLA/OLA · asigna · 1ª respuesta<br/>(saluda al SOLICITANTE por su nombre)"]
-    AL -->|"el EQUIPO o la SEDE:<br/>no puede fichar nadie"| SV["Urgente · instalaciones<br/>NO se pide legajo · NO queda en espera<br/>nota interna al técnico con el porqué"]
-    SV --> C
+    AL -->|"el EQUIPO o la SEDE:<br/>no puede fichar nadie"| SV["Urgente · instalaciones · hay que ir al lugar<br/>NO se pide legajo ni datos que ya tenemos:<br/>se pide COORDINAR LA VISITA (día y horario)"]
+    SV --> E
     T -->|"falta un dato"| E["EN ESPERA — SLA pausado"]
     T -->|"entró fuera de horario"| R["EN ESPERA + reapertura automática<br/>(nota interna; el cliente no se entera)"]
     T -->|"todo claro"| C["EN CURSO"]
@@ -346,24 +346,30 @@ intuición, y aplica:
 Que el ticket **no nombre a nadie** no significa que haya un solo afectado: si lo que dejó de andar es el
 **equipo**, están afectados **todos los que fichan ahí**. De esa lectura salen tres decisiones:
 
-| Alcance | Prioridad mínima | ¿Se pide el legajo? | Quién lo toma |
+| Alcance | Prioridad mínima | Qué se le pide al cliente | Quién lo toma |
 |---|---|---|---|
-| `individual` | Baja | **Sí**, si no está en el ticket | Soporte |
-| `grupo` | Media | Sí, de los afectados | Soporte |
-| `equipo` | Alta | **No** | Instalaciones |
-| `sede` | **Urgente** | **No** | Instalaciones |
-| `masivo` | **Urgente** | **No** | Instalaciones (hardware) / Soporte (software) |
+| `individual` | Baja | El **legajo**, si no está en el ticket | Soporte |
+| `grupo` | Media | El legajo de los afectados | Soporte |
+| `equipo` | Alta | **Coordinar la visita** (día y horario) | Instalaciones |
+| `sede` | **Urgente** | **Coordinar la visita** (día y horario) | Instalaciones |
+| `masivo` | **Urgente** | Coordinar la visita, si es hardware | Instalaciones (hardware) / Soporte (software) |
 
-Cuando el alcance no es individual **no hay a quién pedirle un legajo**, así que el ticket **nunca queda
-En espera** aguardando al cliente: el técnico tiene que salir a trabajar ya. Lo que ayuda a llegar
-preparado —desde cuándo, si el equipo tiene energía y red, si la sede tiene otro lector— se pide en la
-misma respuesta **sin condicionar el avance**.
+Cuando el alcance no es individual **no hay a quién pedirle un legajo**, así que ese pedido nunca sale.
+
+**Si hay que ir al lugar, lo único que se pide es coordinar la visita.** Un equipo caído no se arregla
+por mail. Y las instalaciones **las hicimos nosotros**: ya sabemos dónde está el equipo, cómo está
+montado y con qué red trabaja, así que preguntar la ubicación, si tiene energía o si hay otro lector
+queda pésimo y no aporta nada —eso lo vemos al llegar—. Lo único que hace falta del cliente es **qué día
+y en qué franja horaria podemos pasar, y con quién nos encontramos**. Con eso el ticket queda **En
+espera de esa coordinación** (no de "un dato que falta"), con el recordatorio de una vez por día hábil y
+la escalada al técnico a los 5 días hábiles, igual que cualquier otra espera.
 
 Esto no depende de que el modelo se acuerde de cumplirlo. Se aplica en dos capas:
 
-1. **Coherencia**: sobre lo que el modelo devolvió se fuerzan el piso de prioridad, el responsable y el
-   "no se pide legajo". Si además la respuesta que había escrito pedía identificar a un afectado, se
-   **reemplaza** antes de que salga al cliente.
+1. **Coherencia**: sobre lo que el modelo devolvió se fuerzan el piso de prioridad, el responsable, el
+   "no se pide legajo" y el "hay que ir al lugar". La respuesta que había escrito se **reemplaza** antes
+   de salir si pide identificar a un afectado, si pregunta datos del equipo que ya tenemos, o si no
+   pide la coordinación de la visita.
 2. **El texto del ticket manda**: si dice que el equipo *dejó de funcionar / está apagado / no anda*, o
    que *nadie puede fichar*, y no identifica a ninguna persona (no hay número de legajo), el alcance
    **sube** aunque el modelo haya dicho "individual". Sólo sube, nunca baja.

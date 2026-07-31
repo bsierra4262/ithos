@@ -80,6 +80,11 @@ ok(fijo["necesita_info"] is False,
    "una sede sin fichaje NO queda esperando el legajo de nadie")
 ok(fijo["prioridad"] == "Urgente", "la prioridad sube al piso de su alcance", fijo["prioridad"])
 ok(fijo["responsable"] == "jayala", "lo toma instalaciones", fijo["responsable"])
+ok(fijo["requiere_visita"] is True, "un equipo caído no se arregla por mail: hay que ir al lugar")
+ok(cerebro.MARCA_COORDINAR in fijo["primera_respuesta"].lower(),
+   "y lo que se le pide al cliente es COORDINAR LA VISITA", fijo["primera_respuesta"][:80])
+ok(not cerebro._RE_PREGUNTA_OBVIA.search(fijo["primera_respuesta"]),
+   "sin preguntarle cosas que ya sabemos: la instalación la hicimos nosotros")
 ok(len(corr) >= 3 and any("legajo" in c for c in corr) and any("prioridad" in c for c in corr)
    and any("instalaciones" in c for c in corr),
    "y queda registrado por qué se corrigió", str(corr))
@@ -104,6 +109,18 @@ ok(enganio["alcance"] == "sede",
    "si el modelo lee mal el ticket, el TEXTO lo corrige", enganio["alcance"])
 ok("legajo" not in (enganio["primera_respuesta"] or "").lower(),
    "y la respuesta que iba a salir pidiendo el legajo se reemplaza")
+ok(cerebro.MARCA_COORDINAR in (enganio["primera_respuesta"] or "").lower(),
+   "por el pedido de coordinar la visita")
+# Aunque el modelo acierte el alcance, si su respuesta pregunta lo que ya sabemos, se reemplaza.
+obvia, corr_o = cerebro.coherente(
+    {"alcance": "sede", "categoria": "TERMINALES", "prioridad": "Urgente",
+     "responsable": "jayala", "necesita_info": False, "requiere_visita": True,
+     "primera_respuesta": "¿El equipo tiene energía y conexión de red? ¿Hay otro lector?"},
+    *texto_661)
+ok(cerebro.MARCA_COORDINAR in obvia["primera_respuesta"].lower()
+   and any("ya tenemos" in c for c in corr_o),
+   "preguntar por la energía o la red de un equipo que instalamos nosotros no sale al cliente",
+   str(corr_o))
 ok(not enganio["nota_tecnico"],
    "la nota al técnico basada en ese error también se descarta")
 
@@ -215,9 +232,11 @@ ok(res and res.get("prioridad") == "Urgente",
    "el ticket entra como Urgente aunque el modelo dijo Baja", str(res and res.get("prioridad")))
 ok(res and res.get("responsable_login") == "jayala",
    "y asignado a instalaciones (Alejandro Ayala)", str(res and res.get("responsable_login")))
-ok(res and res.get("necesita_info") is False, "no queda esperando datos del cliente")
+ok(res and res.get("necesita_info") is False, "no queda esperando un dato del afectado")
+ok(res and res.get("requiere_visita") is True, "queda marcado que hay que ir al lugar")
 estados = [p.get("status") for p in falso.puts if "status" in p]
-ok(estados and estados[-1] == 2, "el ticket queda EN CURSO, no EN ESPERA", str(estados))
+ok(estados and estados[-1] == 4,
+   "el ticket queda EN ESPERA de que el cliente confirme cuándo podemos pasar", str(estados))
 prio = [p for p in falso.puts if "priority" in p]
 ok(prio and prio[0]["priority"] == 5 and prio[0]["urgency"] == 5 and prio[0]["impact"] == 5,
    "urgencia, impacto y prioridad quedan en Urgente (no en Baja)", str(prio[:1]))
@@ -229,10 +248,18 @@ privadas = [f["content"] for f in falso.followups if f.get("is_private")]
 ok(len(publicas) == 1, "se manda UNA sola respuesta al cliente")
 ok(publicas and "legajo" not in publicas[0].lower() or not publicas,
    "la respuesta al cliente ya no pide un legajo que no existe", (publicas or [""])[0][:90])
+ok(publicas and cerebro.MARCA_COORDINAR in publicas[0].lower(),
+   "le pide coordinar la visita: qué día y en qué horario podemos pasar")
+ok(publicas and not cerebro._RE_PREGUNTA_OBVIA.search(publicas[0]),
+   "y no le pregunta lo que ya sabemos (ubicación, energía, red, otro lector)")
+ok(publicas and TR._MARCA_ESPERA_CLIENTE in publicas[0].lower(),
+   "con el marcador de espera, así se le recuerda una vez por día hábil")
 ok(publicas and publicas[0].lower().count("a la espera de") <= 1,
    "y no se despide dos veces", (publicas or [""])[0][-70:])
 ok(any("prioridad" in p.lower() and "nadie puede fichar" in p.lower() for p in privadas),
    "el técnico recibe por nota privada por qué el ticket entra así", str(privadas)[:160])
+ok(any("hay que ir al lugar" in p.lower() for p in privadas),
+   "y que el ticket espera la coordinación de la visita")
 ok(not any("solicita legajo" in p.lower() for p in privadas),
    "y no le queda la nota vieja pidiendo un legajo", str(privadas)[:160])
 ok(getattr(AdaptadorFalso, "excluidos", None) == {661},

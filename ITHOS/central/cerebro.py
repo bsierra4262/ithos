@@ -65,11 +65,21 @@ REGLAS FIJAS (cumplilas SIEMPRE, sin excepción):
 - alcance="individual" y el texto NO trae el NÚMERO de legajo (un número, no sólo el
   nombre) -> necesita_info=true. Si trae el número -> necesita_info=false.
 - alcance distinto de "individual" -> necesita_info=false SIEMPRE. No hay una persona
-  a la que pedirle el legajo, y el técnico tiene que salir a trabajar YA: el ticket no
-  puede quedar esperando al cliente. Si te sirve algún dato (desde cuándo, si el
-  equipo tiene energía o red, si la sede tiene otro lector, quién está en el lugar),
-  pedilo en la respuesta SIN frenar el ticket ni pedirlo como condición para avanzar.
+  a la que pedirle el legajo.
 - La prioridad sale de la tabla de arriba, no del texto.
+
+VISITA AL LUGAR (requiere_visita): un equipo caído —terminal, lector, molinete o reloj
+que dejó de funcionar, quedó apagado, sin energía o sin red— NO se arregla por mail:
+hay que ir. En esos casos requiere_visita=true.
+
+⛔ Las instalaciones las hicimos NOSOTROS: ya sabemos dónde está cada equipo, cómo está
+montado y con qué red trabaja. NO preguntes nada de eso —ni la ubicación, ni si tiene
+energía, ni si hay otro lector—: queda pésimo, es información que ya tenemos y encima
+lo vemos nosotros al llegar. Lo ÚNICO que hay que pedirle al cliente es COORDINAR LA
+VISITA: qué día y en qué franja horaria podemos pasar, y con quién nos encontramos.
+Con eso el ticket queda EN ESPERA de su confirmación —es él quien tiene que decirnos
+cuándo podemos ir— y se le recuerda una vez por día hábil hasta que responda. Eso NO
+es "falta un dato del afectado": es una coordinación (necesita_info sigue en false).
 
 RESPONSABLE:
 - "jayala" (instalaciones/infra/redes): TODO lo que sea alcance "equipo", "sede" o
@@ -82,10 +92,11 @@ PRIMERA RESPUESTA: cordial, breve y profesional; si corregís categoría/priorid
 explicalo en positivo. Firmá "Soporte ITH" UNA sola vez, al final, y no agregues
 ninguna otra fórmula de cierre ni repitas la despedida.
 - Caso individual sin legajo: pedilo con amabilidad.
-- Equipo/sede/masivo: NO pidas legajo. Reconocé el alcance real ("nadie puede fichar
-  en esa sede"), decí que se deriva al equipo de instalaciones y que se está
-  trabajando, y pedí en la misma línea lo que ayude a llegar preparado (desde cuándo,
-  si tiene energía o red, si hay otro lector) SIN condicionar el avance.
+- Equipo caído (requiere_visita): NO pidas legajo NI datos del equipo. Reconocé el
+  alcance real ("mientras esté así no puede fichar nadie en esa sede"), decí que lo
+  toma el equipo de instalaciones y que para resolverlo hay que ir al lugar, y pedí
+  COORDINAR LA VISITA: qué día y en qué franja horaria pueden recibirnos, y con quién
+  nos encontramos. Cerrá diciendo que apenas confirmen se agenda.
 SALUDO: saludá SIEMPRE al SOLICITANTE (quien ABRIÓ el ticket) por su nombre de pila,
 que se te indica como "SOLICITANTE". JAMÁS uses el nombre de la persona AFECTADA que
 aparezca en el asunto o el texto (p. ej. el empleado del legajo): esa NO es a quien le
@@ -107,7 +118,8 @@ Respondé SOLO este JSON:
 {"alcance":"individual|grupo|equipo|sede|masivo",
  "categoria":"TERMINALES|MOLINETES|HIK-CENTRAL|INTERFACE|OTRA",
  "prioridad":"Baja|Media|Alta|Urgente","responsable":"bsierra|jayala",
- "necesita_info":true|false,"resumen":"una linea","primera_respuesta":"texto",
+ "necesita_info":true|false,"requiere_visita":true|false,
+ "resumen":"una linea","primera_respuesta":"texto",
  "nota_tecnico":"nota interna breve para el equipo, o \"\" si no hay nada"}"""
 
 
@@ -157,17 +169,35 @@ _RE_PERSONA = re.compile(r"legajo\s*n?[°º:.\s-]*\d{2,}|\bleg\.?\s*\d{2,}", re.
 # La respuesta está pidiendo identificar a un afectado que en este ticket no existe.
 _RE_PIDE_DATOS_PERSONA = re.compile(
     r"legajo|nombre\s+y\s+apellido|persona\s+afectada|agente\s+afectad", re.I)
+# La respuesta está preguntando cosas que YA sabemos: nosotros instalamos ese equipo.
+_RE_PREGUNTA_OBVIA = re.compile(
+    r"tiene\s+(?:energ[ií]a|corriente|luz|red|conexi[oó]n)|est[aá]\s+conectad|"
+    r"hay\s+otro\s+lector|d[oó]nde\s+est[aá]\s+(?:ubicad|instalad)|qu[eé]\s+modelo", re.I)
+# La respuesta SÍ está pidiendo coordinar la visita (que es lo único que hay que pedir).
+_RE_PIDE_COORDINAR = re.compile(
+    r"coordinar\s+la\s+visita|qu[eé]\s+d[ií]a\s+y|podemos\s+pasar|coordinar\s+(?:una\s+)?visita|"
+    r"franja\s+horaria", re.I)
 
-# Respuesta para cuando el equipo dejó de dar servicio: reconoce el alcance real, avisa que ya se
-# derivó y pide lo que sirve para llegar preparado, SIN condicionar el avance del ticket.
+# Frase estable para que el ciclo sepa que lo que se está esperando es una COORDINACIÓN (y no un
+# dato que falta): así el recordatorio diario le habla de confirmar el día, no de "la información".
+MARCA_COORDINAR = "coordinar la visita"
+
+# Respuesta cuando el equipo se cayó y hay que ir al lugar. Las instalaciones las hicimos nosotros:
+# no se pregunta dónde está, si tiene energía ni si hay otro lector —eso ya lo sabemos y lo vemos al
+# llegar—. Lo único que hace falta del cliente es CUÁNDO podemos pasar.
 RESPUESTA_SERVICIO_CAIDO = (
+    "recibimos el aviso y lo tomamos como una falla del servicio: mientras esté así no puede "
+    "fichar nadie en esa ubicación, por lo que el ticket queda con prioridad alta y a cargo del "
+    "equipo correspondiente, que ya está trabajando en esto. Les confirmamos apenas tengamos "
+    "novedades.")
+
+RESPUESTA_COORDINAR_VISITA = (
     "recibimos el aviso de que el equipo de fichaje dejó de funcionar. Lo tomamos como una falla "
-    "del servicio —mientras esté así no puede fichar nadie en esa ubicación—, por lo que el ticket "
-    "queda con prioridad alta y derivado al equipo de instalaciones, que ya está trabajando en "
-    "esto. Para llegar mejor preparados, si lo tienen a mano nos sirve saber desde cuándo dejó de "
-    "funcionar, si el equipo tiene energía y conexión de red, y si en la sede hay otro lector "
-    "disponible mientras tanto; no hace falta que nos respondan para que avancemos. Les "
-    "confirmamos apenas tengamos novedades. Soporte ITH.")
+    "del servicio —mientras esté así no puede fichar nadie en esa ubicación—, así que el ticket "
+    "queda con prioridad alta y a cargo de nuestro equipo de instalaciones.\n\n"
+    "Para resolverlo necesitamos ir hasta el lugar, por lo que sólo nos falta coordinar la visita: "
+    "por favor indíquennos qué día y en qué franja horaria podemos pasar, y con quién nos "
+    "encontramos al llegar. Apenas nos confirmen, la agendamos con el técnico.")
 
 
 def alcance_por_texto(asunto, descripcion):
@@ -229,14 +259,30 @@ def coherente(a, asunto="", descripcion=""):
         a["responsable"] = "jayala"
         hechas.append("lo toma instalaciones: hay equipamiento caído en la sede")
 
-    # Si corregimos el alcance, la respuesta que escribió el modelo quedó hablando de otro ticket:
-    # sigue pidiendo el legajo de una persona que no existe. Eso NO puede salir al cliente.
-    if alcance in ALCANCE_SERVICIO and _RE_PIDE_DATOS_PERSONA.search(a.get("primera_respuesta") or ""):
-        a["primera_respuesta"] = RESPUESTA_SERVICIO_CAIDO
-        hechas.append("se reemplazó la respuesta al cliente: pedía el legajo de una persona que "
-                      "este ticket no tiene")
-        # La nota al técnico venía del mismo razonamiento equivocado: la reemplaza la nota de
-        # alcance, que sí explica por qué el ticket entra como entra.
+    # ¿Hay que ir al lugar? Un equipo caído no se arregla por mail.
+    visita = bool(a.get("requiere_visita"))
+    if alcance in ALCANCE_SERVICIO and a.get("categoria") in ("TERMINALES", "MOLINETES") \
+            and not visita:
+        visita = True
+        hechas.append("hace falta ir al lugar: hay equipamiento caído")
+    a["requiere_visita"] = visita
+
+    # La respuesta que escribió el modelo puede estar hablando de otro ticket: pedir el legajo de
+    # una persona que no existe, o preguntar cosas que ya sabemos porque instalamos nosotros el
+    # equipo. Y si hay que ir, lo único que falta pedir —la coordinación— no puede faltar.
+    r = a.get("primera_respuesta") or ""
+    motivo = ""
+    if alcance in ALCANCE_SERVICIO and _RE_PIDE_DATOS_PERSONA.search(r):
+        motivo = "pedía el legajo de una persona que este ticket no tiene"
+    elif visita and _RE_PREGUNTA_OBVIA.search(r):
+        motivo = "preguntaba datos del equipo que ya tenemos (la instalación la hicimos nosotros)"
+    elif visita and not _RE_PIDE_COORDINAR.search(r):
+        motivo = "no pedía coordinar la visita, que es lo único que hace falta del cliente"
+    if motivo:
+        a["primera_respuesta"] = RESPUESTA_COORDINAR_VISITA if visita else RESPUESTA_SERVICIO_CAIDO
+        hechas.append("se reemplazó la respuesta al cliente: " + motivo)
+        # La nota al técnico venía del mismo razonamiento: la reemplaza la nota de alcance, que sí
+        # explica por qué el ticket entra como entra.
         if _RE_PIDE_DATOS_PERSONA.search(a.get("nota_tecnico") or ""):
             a["nota_tecnico"] = ""
     return a, hechas

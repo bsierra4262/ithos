@@ -62,10 +62,14 @@ def _nota_alcance(a, correcciones):
     """Nota PRIVADA que explica al técnico por qué el ticket entra con esa prioridad y en sus
     manos. Sale sólo cuando hubo que corregir la clasificación."""
     alc = a.get("alcance", "individual")
+    visita = ("" if not a.get("requiere_visita") else
+              " Hay que ir al lugar: se le pidió al cliente que confirme qué día y en qué franja "
+              "horaria podemos pasar, así que el ticket queda EN ESPERA de esa coordinación (se le "
+              "recuerda una vez por día hábil).")
     return ("Nota interna (el cliente no la ve): por lo que dice el ticket, "
             f"{_ALCANCE_TXT.get(alc, alc)}. Queda con prioridad {a.get('prioridad')} y asignado a "
-            f"{NOMBRES.get(a.get('responsable'), a.get('responsable'))}. Ajustes aplicados: "
-            + "; ".join(correcciones) + ".")
+            f"{NOMBRES.get(a.get('responsable'), a.get('responsable'))}.{visita} Ajustes "
+            "aplicados: " + "; ".join(correcciones) + ".")
 
 
 def _nota_interna_horario(dt):
@@ -207,14 +211,19 @@ class Triage:
             # del cliente, queda EN ESPERA hasta que abra el horario y la agenda lo reabre solo. OJO: el
             # CLIENTE ve SOLO la respuesta profesional; lo del horario va como NOTA INTERNA (no se entera).
             necesita = bool(a.get("necesita_info"))
-            fuera = (not necesita) and (not en_horario_atencion(self.cfg_glpi))
+            # Si hay que IR al lugar, el ticket también queda esperando al cliente: lo que falta es
+            # que nos confirme CUÁNDO podemos pasar. No es un dato del afectado, es una
+            # coordinación, y el ciclo se la recuerda una vez por día hábil igual que cualquier otra.
+            visita = bool(a.get("requiere_visita"))
+            espera_cliente = necesita or visita
+            fuera = (not espera_cliente) and (not en_horario_atencion(self.cfg_glpi))
             # PÚBLICO: la 1ª respuesta tal cual. NO FATAL: si GLPI la rechaza (p. ej. el usuario MySQL de
             # GLPI sin permiso INSERT), igual dejamos el ticket categorizado/asignado/con estado.
             # Si FALTA UN DATO (necesita_info), se le agrega el cierre con el marcador de ESPERA para
             # que el ciclo sepa que el ticket quedó esperando al CLIENTE y le recuerde una vez por día
             # hábil hasta que responda (igual que el pedido de confirmación del técnico).
             respuesta = a.get("primera_respuesta", "")
-            if necesita:
+            if espera_cliente:
                 respuesta = _con_cierre_espera(respuesta)
             try:
                 self.cli.request("/ITILFollowup", "POST",
@@ -246,7 +255,7 @@ class Triage:
                     log.warning("Triage #%s: no pude agregar una nota interna (¿permiso INSERT?): %s",
                                 tid, str(e)[:120])
             self.cli.request(f"/Ticket/{tid}", "PUT",
-                             {"input": {"status": 4 if (necesita or fuera) else 2}})
+                             {"input": {"status": 4 if (espera_cliente or fuera) else 2}})
         except Exception as e:  # noqa: BLE001
             log.error("Triage: fallo al aplicar el ticket %s: %s", tid, e)
             return None
@@ -255,6 +264,7 @@ class Triage:
         if fuera:                               # reapertura AUTOMÁTICA y SILENCIOSA al abrir el horario
             self._agendar_reapertura_horario(tid, dt_reapertura)
         estado_txt = ("EN ESPERA (datos)" if necesita
+                      else "EN ESPERA (coordinar la visita)" if visita
                       else "EN ESPERA (fuera de horario)" if fuera else "EN CURSO")
         log.info("Triage OK #%s: cat=%s prio=%s -> %s (%s)", tid, a.get("categoria"),
                  prioridad, resp_login, estado_txt)
@@ -270,6 +280,7 @@ class Triage:
                 "asignados": asignados_finales,
                 "telefonos": TK.telefonos_asignados(self.cfg_glpi, asignados_finales),
                 "categoria": a.get("categoria"), "necesita_info": necesita,
+                "requiere_visita": visita, "alcance": a.get("alcance"),
                 "fuera_horario": fuera}
 
     def _agendar_reapertura_horario(self, tid, dt=None):
@@ -705,6 +716,13 @@ def _espera_pendiente(fu):
                 if int(f.get("users_id") or 0) in TECNICOS and not int(f.get("is_private") or 0)]
     ultimo_pedido = max(int(f.get("id") or 0) for f in avisos)
     motivo = "datos" if publicos and ultimo_pedido == min(publicos) else "confirmacion"
+    # Excepción: la 1ª respuesta puede estar pidiendo COORDINAR una visita en vez de un dato que
+    # falta. Se reconoce por su frase estable, así el recordatorio le habla de confirmar el día y
+    # no de "la información que le solicitamos", que no le pedimos.
+    texto_ultimo = next((str(f.get("content", "")) for f in avisos
+                         if int(f.get("id") or 0) == ultimo_pedido), "")
+    if cerebro.MARCA_COORDINAR in texto_ultimo.lower():
+        motivo = "confirmacion"
     return fechas[0], fechas[-1], motivo
 
 
