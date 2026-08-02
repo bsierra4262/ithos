@@ -33,6 +33,9 @@ NIVEL_SLA = {
 PRIORIDAD_NUM = {"Baja": 2, "Media": 3, "Alta": 4, "Urgente": 5}
 NIVEL_POR_PRIORIDAD = {"Baja": "LEVE", "Media": "LEVE", "Alta": "GRAVE",
                        "Urgente": "MUY GRAVE"}
+# Equipo por DEFECTO (SRT/ITH). Lo real sale de la config del cliente (`tecnicos`): cuando entra
+# alguien nuevo al equipo alcanza con cargarlo ahí para que ITHOS lo reconozca como técnico —sus
+# comentarios resuelven, se le puede asignar y recibe las @menciones—, sin tocar el código.
 RESPONSABLES = {"bsierra": 7, "jayala": 8}
 NOMBRES = {"bsierra": "Brian Sierra", "jayala": "Alejandro Ayala"}
 ITHOS_ID = 28
@@ -46,7 +49,7 @@ TECNICOS_HUMANOS = {7, 8}          # técnicos personas (sin ITHOS): sus comenta
 from comun.horario import (ZONA_DEFAULT, HORARIO_DEFAULT as _HORARIO_DEFAULT,  # noqa: E402
                            ahora_zona as _ahora_zona, ahora_local as _ahora_local,
                            es_dia_habil, en_horario_atencion, proximo_inicio_horario,
-                           dias_habiles_entre)
+                           dias_habiles_entre, horas_habiles_entre)
 
 
 _ALCANCE_TXT = {
@@ -72,12 +75,56 @@ def _nota_alcance(a, correcciones):
             "aplicados: " + "; ".join(correcciones) + ".")
 
 
+_MARCA_SIN_ATENDER = "el cliente respondió y todavía no le contestamos"
+# Horas HÁBILES que puede quedar sin respuesta del técnico antes de que salte el aviso.
+_HORAS_SIN_ATENDER = 2
+
+
+def _nota_respuesta_fuera_horario(dt, motivo=""):
+    """Nota PRIVADA: el cliente respondió fuera del horario, así que el ticket espera al lunes en
+    vez de dejar corriendo el SLA. El cliente NO ve esto."""
+    cuando = dt.strftime("%d/%m a las %H:%M") if dt else "el próximo día hábil"
+    extra = f" Dijo: «{motivo.strip()[:200]}»." if motivo else ""
+    return ("Nota interna (el cliente no la ve): el cliente respondió FUERA del horario de atención."
+            + extra + " Para que el SLA no corra de noche ni un fin de semana contra un equipo que "
+            f"no está trabajando, el ticket queda EN ESPERA y vuelve solo a EN CURSO {cuando}. "
+            "No hace falta hacer nada: se reabre automáticamente.")
+
+
+def _nota_sin_atender(desde, horas):
+    """Nota PRIVADA de supervisión: el cliente contestó y el técnico no respondió."""
+    cuando = desde.strftime("%d/%m a las %H:%M") if desde else "hace un rato"
+    return (f"Nota interna (el cliente no la ve): {_MARCA_SIN_ATENDER}. Respondió el {cuando} y ya "
+            f"pasaron {horas} horas hábiles sin que le contestemos. Es un ticket con la pelota de "
+            "nuestro lado: respondele o dejá asentado qué se está haciendo, para que no quede "
+            "esperando sin noticias.")
+
+
 def _nota_interna_horario(dt):
     """Nota PRIVADA (solo técnicos) avisando que el ticket entró fuera de horario y cuándo reabre solo.
     El CLIENTE NO ve esto: solo ve la respuesta profesional normal (sin avisos de horario)."""
     cuando = dt.strftime("%d/%m a las %H:%M") if dt else "el próximo día hábil"
     return ("Nota interna (el cliente no la ve): el ticket ingresó FUERA del horario de atención, así "
             f"que queda EN ESPERA y se reabrirá solo (EN CURSO) {cuando}.")
+
+
+def ids_humanos(cfg):
+    """Ids de los TÉCNICOS PERSONAS del cliente (sin ITHOS), leídos de su config `tecnicos`. Sus
+    comentarios resuelven un ticket y son los que reciben las @menciones. Si el cliente todavía no
+    tiene el equipo cargado, se usa el de SRT/ITH por defecto."""
+    from comun import tickets as TK
+    ids = set()
+    for t in TK.tecnicos(cfg):
+        try:
+            ids.add(int(t.get("glpi_id") or t.get("id")))
+        except (TypeError, ValueError):
+            pass
+    return (ids or set(TECNICOS_HUMANOS)) - {ITHOS_ID}
+
+
+def ids_tecnicos(cfg):
+    """Los técnicos personas MÁS ITHOS: quiénes hablan 'del lado de soporte' en un ticket."""
+    return ids_humanos(cfg) | {ITHOS_ID}
 
 
 # El saludo al solicitante vive en comun/glpi.py (compartido con el camino de voz aplicar_ciclo).
@@ -182,7 +229,15 @@ class Triage:
         nivel = NIVEL_POR_PRIORIDAD.get(prioridad, "LEVE")
         num = PRIORIDAD_NUM.get(prioridad, 3)
         resp_login = a.get("responsable", "bsierra")
-        resp_id = RESPONSABLES.get(resp_login, RESPONSABLES["bsierra"])
+        from comun import tickets as TK
+        _ficha = TK.tecnico_por_id(self.cfg_glpi, resp_login) or {}
+        try:
+            resp_id = int(_ficha.get("glpi_id"))
+        except (TypeError, ValueError):
+            resp_id = RESPONSABLES.get(resp_login, RESPONSABLES["bsierra"])
+        # ACOMPAÑAN: mientras alguien se forma, trabaja el MISMO ticket que su responsable, al mismo
+        # tiempo y con el mismo criterio. Se declara en la config (`responsable` en su ficha).
+        acompanan = [u for u in TK.acompanan_a(self.cfg_glpi, resp_login) if u != resp_id]
         try:
             self.cli.abrir()
             campos = {"urgency": num, "impact": num, "priority": num}
@@ -195,9 +250,10 @@ class Triage:
             self.cli.request(f"/Ticket/{tid}", "PUT", {"input": campos})
             # ASIGNACIÓN: ITHOS siempre. El responsable AUTOMÁTICO (bsierra/jayala) SOLO si NO hay ya un
             # técnico HUMANO asignado a mano -> se respeta una reasignación manual previa.
+            humanos = ids_humanos(self.cfg_glpi)
             a_poner = [ITHOS_ID]
-            if not (asignados & TECNICOS_HUMANOS):
-                a_poner.append(resp_id)
+            if not (asignados & humanos):
+                a_poner.extend([resp_id] + acompanan)
             for uid in a_poner:
                 if uid in asignados:
                     continue
@@ -271,7 +327,7 @@ class Triage:
         # QUIÉN quedó ASIGNADO de verdad: el técnico humano que ya estaba (asignación manual, que se
         # respeta) o el responsable que puso ITHOS. Se devuelve para @MENCIONARLO en WhatsApp (solo
         # a él) y para que el aviso diga el nombre correcto, no siempre el del default.
-        asignados_finales = sorted((asignados & TECNICOS_HUMANOS) or {resp_id})
+        asignados_finales = sorted((asignados & humanos) or ({resp_id} | set(acompanan)))
         from comun import tickets as TK
         nombres = (TK.nombres_asignados(self.cfg_glpi, asignados_finales)
                    or _nombres_por_id(asignados_finales) or [NOMBRES.get(resp_login, resp_login)])
@@ -310,6 +366,31 @@ class Triage:
             return False
         finally:
             self.cli.cerrar()
+
+    def esperar_hasta_horario(self, tid, motivo=""):
+        """El cliente respondió FUERA del horario de atención. Si el ticket quedara EN CURSO, el SLA
+        correría toda la noche o todo el fin de semana contra un equipo que no está trabajando, y el
+        lunes ya nace vencido. Así que queda EN ESPERA y se reabre SOLO al comenzar la jornada.
+
+        El cliente no se entera del corte —el aviso va como nota interna— y no recibe recordatorios:
+        no le estamos pidiendo nada, la pelota es nuestra. Devuelve la fecha de reapertura o None."""
+        dt = proximo_inicio_horario(self.cfg_glpi)
+        try:
+            self.cli.abrir()
+            self.cli.request(f"/Ticket/{tid}", "PUT", {"input": {"status": 4}})
+        except Exception as e:  # noqa: BLE001
+            log.warning("Triage: no pude dejar en espera por horario #%s: %s", tid, e)
+            return None
+        finally:
+            self.cli.cerrar()
+        self.nota_interna(tid, _nota_respuesta_fuera_horario(dt, motivo))
+        self._agendar_reapertura_horario(tid, dt)
+        return dt
+
+    def avisar_tecnico_sin_atender(self, tid, desde, horas):
+        """Aviso de SUPERVISOR al técnico asignado: el cliente respondió y nadie le contestó. Va
+        como NOTA INTERNA (el cliente no la ve); el ciclo lo repite por WhatsApp @mencionándolo."""
+        return self.nota_interna(tid, _nota_sin_atender(desde, horas))
 
     def marcar_resuelto(self, tid, solucion=""):
         """Pasa el ticket a RESUELTO (status 5). Intenta cargar la SOLUCIÓN (así queda documentada
@@ -684,6 +765,21 @@ def _coordinacion_despues_de(fu, tec_fu_id):
     return any(_es_pedido_al_cliente(f) and int(f.get("id") or 0) > int(tec_fu_id or 0) for f in fu)
 
 
+def _texto_plano(html):
+    """El comentario del cliente en texto legible, para poder citarlo en el aviso del grupo."""
+    import html as _html
+    t = _html.unescape(_html.unescape(str(html or "")))
+    t = re.sub(r"<\s*br\s*/?>|</\s*p\s*>", " ", t, flags=re.I)
+    return re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", t)).strip()
+
+
+def _ya_aviso_sin_atender(fu, desde_id):
+    """True si YA se dejó el aviso de 'te contestaron y no respondiste' DESPUÉS del mensaje del
+    cliente. Se lee del propio GLPI para no repetirlo tras un reinicio del Gestor."""
+    return any(int(f.get("is_private") or 0) and int(f.get("id") or 0) > int(desde_id or 0)
+               and _MARCA_SIN_ATENDER in str(f.get("content", "")).lower() for f in fu)
+
+
 def _ultimo_id_cliente(fu):
     """Mayor id de followup de un NO técnico = la última vez que HABLÓ el cliente (0 si nunca)."""
     return max((int(f.get("id") or 0) for f in fu
@@ -945,13 +1041,27 @@ def gestionar_ciclo(cliente, triage, entidad, estado):
                     continue                  # ya lo procesamos en este ciclo
 
         if status == 4:                       # EN ESPERA
-            if nuevos:                        # el cliente respondió -> EN CURSO
+            if nuevos:                        # el cliente respondió
                 autor = _nombre_usuario(cliente, nuevos[-1].get("users_id"))
-                if triage.poner_en_curso(t["id"]):
+                dijo = _texto_plano(nuevos[-1].get("content"))
+                # FUERA DE HORARIO: no se pasa a EN CURSO. Si se pasara, el SLA correría toda la
+                # noche o todo el fin de semana contra un equipo que no está trabajando y el lunes
+                # el ticket nacería vencido. Queda EN ESPERA y se reabre solo al abrir la jornada.
+                if not en_horario_atencion(cfg):
+                    dt = triage.esperar_hasta_horario(t["id"], dijo)
+                    cuando = dt.strftime("%A %d/%m a las %H:%M") if dt else "el próximo día hábil"
+                    anunciar(t["id"],
+                             f"El cliente {autor} respondió el ticket número {t['id']} fuera del "
+                             f"horario de atención. Lo dejé en espera y se retoma {cuando}.",
+                             f"🔔 *Ticket #{t['id']}* — {autor} respondió (fuera de horario):\n"
+                             f"_{dijo[:300]}_\n⏸️ Queda en espera para que el SLA no corra; se "
+                             f"retoma solo *{cuando}*.")
+                elif triage.poner_en_curso(t["id"]):
                     anunciar(t["id"],
                              f"El cliente {autor} respondió el ticket número "
                              f"{t['id']}. Vuelve a estar en curso.",
-                             f"🔔 *Ticket #{t['id']}* — {autor} respondió. En curso otra vez.")
+                             f"🔔 *Ticket #{t['id']}* — {autor} respondió. En curso otra vez.\n"
+                             f"_{dijo[:300]}_")
                 estado.pop(tid, None)
             else:
                 # NO se envían recordatorios automáticos genéricos ("esperamos su respuesta"): eran
@@ -987,6 +1097,49 @@ def gestionar_ciclo(cliente, triage, entidad, estado):
                                  f"⌛ *Ticket #{t['id']}* — {habiles} días hábiles sin respuesta del "
                                  f"cliente a {que}. Requiere una definición: contactarlo, "
                                  "posponerlo o cerrarlo.")
+
+        elif status in (1, 2) and nuevos:     # NUEVO / EN CURSO y el cliente escribió algo
+            # La pelota está de NUESTRO lado. Dos cosas que antes no pasaban y dolían:
+            #  1) Si escribió FUERA del horario, el ticket quedaba EN CURSO y el SLA corría toda la
+            #     noche o el fin de semana entero contra un equipo que no está: el lunes ya nacía
+            #     vencido. Ahora queda EN ESPERA y se reabre solo al abrir la jornada.
+            #  2) Nadie se enteraba de que el cliente había escrito. Ahora se avisa por los canales
+            #     con lo que dijo, y si pasan horas HÁBILES sin que le contestemos, el técnico
+            #     asignado recibe el aviso —una vez por día hábil— hasta que lo atienda.
+            autor = _nombre_usuario(cliente, nuevos[-1].get("users_id"))
+            dijo = _texto_plano(nuevos[-1].get("content"))
+            ultimo_id = int(nuevos[-1].get("id") or 0)
+            if not en_horario_atencion(cfg):
+                if int(st.get("espera_horario", 0)) != ultimo_id:
+                    st["espera_horario"] = ultimo_id
+                    dt = triage.esperar_hasta_horario(t["id"], dijo)
+                    cuando = dt.strftime("%d/%m a las %H:%M") if dt else "el próximo día hábil"
+                    anunciar(t["id"],
+                             f"El cliente {autor} respondió el ticket número {t['id']} fuera del "
+                             f"horario de atención. Lo dejé en espera y se retoma {cuando}.",
+                             f"🔔 *Ticket #{t['id']}* — {autor} escribió (fuera de horario):\n"
+                             f"_{dijo[:300]}_\n⏸️ En espera para que el SLA no corra; se retoma "
+                             f"solo *{cuando}*.")
+            else:
+                if int(st.get("avisada_respuesta", 0)) != ultimo_id:
+                    st["avisada_respuesta"] = ultimo_id
+                    anunciar(t["id"],
+                             f"El cliente {autor} escribió en el ticket número {t['id']}.",
+                             f"🔔 *Ticket #{t['id']}* — {autor} escribió:\n_{dijo[:300]}_\n"
+                             "El ticket está EN CURSO, esperando nuestra respuesta.")
+                desde = _parse_fecha(nuevos[-1].get("date_creation") or nuevos[-1].get("date"))
+                horas = horas_habiles_entre(cfg, desde, _ahora_local(cfg)) if desde else 0
+                hoy = _ahora_local(cfg).date()
+                if horas >= _HORAS_SIN_ATENDER and st.get("aviso_sin_atender") != hoy \
+                        and not _ya_aviso_sin_atender(fu, ultimo_id):
+                    st["aviso_sin_atender"] = hoy
+                    triage.avisar_tecnico_sin_atender(t["id"], desde, horas)
+                    anunciar(t["id"],
+                             f"En el ticket número {t['id']} el cliente respondió hace "
+                             f"{int(horas)} horas hábiles y todavía no le contestamos.",
+                             f"⚠️ *Ticket #{t['id']}* — {autor} respondió hace *{int(horas)} h "
+                             "hábiles* y sigue sin respuesta nuestra. La pelota es nuestra: "
+                             "contestale o dejá asentado qué se está haciendo.")
 
         elif status == 5:                     # RESUELTO: confirmar antes de cerrar
             # Feedback INTERNO al equipo (para la BASE DE CONOCIMIENTO): si la resolución NO explica el

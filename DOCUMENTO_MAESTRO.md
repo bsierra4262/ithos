@@ -341,6 +341,19 @@ intuición, y aplica:
   El cliente **no se entera** del corte (sólo ve la respuesta profesional); el equipo lo ve por nota interna.
 - **Nunca re-triagea**: una vez que ITHOS pasó, no vuelve a categorizar ni pisa cambios manuales.
 
+#### 5.1.0 El equipo sale de la configuración
+
+Los técnicos del cliente se declaran en `tecnicos` (nombre, id/login del sistema de tickets y
+teléfonos). Con eso ITHOS lo reconoce como técnico —sus comentarios pueden resolver un ticket—, se
+le puede asignar, contesta "mis tickets" por su número y recibe las @menciones. **Sumar a alguien
+al equipo no toca código**: se carga en la config y ya está.
+
+**Formación acompañada.** Un técnico nuevo aprende haciendo. Si en su ficha se indica un
+`responsable`, el ticket que le toca a esa persona se le asigna **también a él, al mismo tiempo y
+con el mismo criterio**: trabajan el mismo caso hasta que pueda resolverlo solo. Los tres quedan
+asignados y los tres reciben los avisos. Cuando ya no hace falta, se saca ese campo y se pasa a
+derivar por criticidad.
+
 #### 5.1.1 El alcance manda: un equipo caído no es el problema de un usuario
 
 Que el ticket **no nombre a nadie** no significa que haya un solo afectado: si lo que dejó de andar es el
@@ -402,6 +415,17 @@ ticket, con qué prioridad entra, en manos de quién y por qué se ajustó.
   por nota privada el **procedimiento paso a paso**. Eso alimenta la base de conocimiento.
 - **SLA en riesgo**: alerta de los tickets por vencer o vencidos, **agrupada por técnico asignado** y
   @mencionando sólo a él, una vez por día por ticket y dentro del horario de atención.
+- **El cliente responde**: se avisa por los canales del equipo **cada vez**, citando lo que dijo y
+  cómo queda el ticket. Si respondió **dentro del horario**, el ticket vuelve a **En curso**. Si
+  respondió **fuera del horario** —de noche, un sábado o un domingo— el ticket **no** pasa a En
+  curso: queda **En espera** y se reabre solo al abrir la jornada. Es la diferencia entre que el
+  SLA corra todo un fin de semana contra un equipo que no está trabajando —y el lunes el ticket ya
+  nazca vencido— o que empiece a correr cuando alguien puede atenderlo. El cliente no se entera del
+  corte y no recibe recordatorios: no le estamos pidiendo nada, la pelota es nuestra.
+- **Respuesta sin atender**: si el cliente escribió y pasan **2 horas hábiles** sin que le
+  contestemos, el **técnico asignado** recibe el aviso —nota interna privada y WhatsApp
+  @mencionándolo— de que le respondieron y todavía no contestó. Una vez por día hábil, y no se
+  repite tras un reinicio (el aviso queda asentado en el propio ticket).
 
 ### 5.3 Acciones que se pueden pedir por chat o por voz
 
@@ -562,6 +586,12 @@ Integración `ITHOS/central/planka_integrador.py` (cliente `ITHOS/comun/planka.p
   revisión/Esperando), salteando las movidas hace menos de una hora.
 - **Mover / crear por WhatsApp**: "ithos, terminé X" → a Hecho; "ithos, cargá tal tarea para Carlos en
   haciendo" → crea la tarjeta asignada. Intérprete **conservador**: si es ambiguo, no adivina.
+- **El tablero se lee de un vistazo**: las columnas mantienen siempre los mismos colores (Por
+  hacer, Haciendo, En revisión / Esperando, Hecho), y cada mes nuevo nace igual que el anterior. Si
+  una quedó gris, se corrige sola en el siguiente recorrido.
+- **El equipo se mantiene al día**: quien entra al equipo se suma como miembro de **todos** los
+  tableros del mes, incluidos los que ya existían, así se le puede asignar una tarjeta desde el
+  primer día.
 - **Avisa los cambios del tablero**: en cada recorrido compara contra el **último estado conocido** de
   cada tarjeta. Si alguna cambió de lista —la hayan movido a mano en el tablero o la haya movido ITHOS—
   lo anuncia en el grupo diciendo **de qué estado viene, a cuál pasó y quién la tiene asignada**, y recién
@@ -649,6 +679,8 @@ manejan el certificado. Del repositorio se puede reconstruir el agente completo.
   - `probar_portero_saludo.py` — saludo coherente con la hora y una vez por día por persona.
   - `probar_ciclo.py` · `probar_produccion.py` · `probar_sistema.py` — ciclo de vida real del ticket, flujo
     del vigilante y circuito completo por HTTP.
+  - `probar_respuesta_cliente.py` — el SLA no corre fuera de horario y ninguna respuesta del
+    cliente pasa desapercibida (sin red).
   - `probar_triage_alcance.py` — un equipo o una sede caída no se trata como el caso de un usuario
     suelto: prioridad, responsable, sin pedir legajo y sin dejar el ticket en espera (sin red).
   - `probar_busqueda_casos.py` — antecedentes: el caso escrito con otras palabras se encuentra, el

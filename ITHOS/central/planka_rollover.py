@@ -32,6 +32,10 @@ MESES = ["", "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio",
 
 # Nombres EXACTOS de las listas (igual que el board de Julio) y su orden.
 LISTAS = ["Por hacer", "Haciendo", "En revisión / Esperando", "Hecho"]
+# Color de cada columna, de la paleta de Planka. El tablero se lee de un vistazo por el color, así
+# que un mes nuevo tiene que verse igual que el anterior: sin esto las columnas salían todas grises.
+COLORES = {"Por hacer": "berry-red", "Haciendo": "pumpkin-orange",
+           "En revisión / Esperando": "antique-blue", "Hecho": "bright-moss"}
 MENSUAL = "MENSUAL"                       # board de archivo del mes (pestaña extra)
 
 # Nombre de lista -> clave interna (tolerante a acentos/variantes).
@@ -113,7 +117,7 @@ class Rollover:
         self.equipo = [str(x) for x in (equipo or []) if x]   # planka_ids del equipo (para asignarles)
         self._proj = {}        # nombre_proyecto -> project_id
         self._boards = {}      # (project_id, nombre_board) -> board_id
-        self._listas = {}      # board_id -> {clave: list_id}
+        self._listas = {}      # (board_id, equipo) -> {clave: list_id}
 
     # ------------------------------------------------------------------ índice / creación
     def _reindex(self):
@@ -155,22 +159,40 @@ class Rollover:
         return bid
 
     def asegurar_listas(self, board_id):
-        """{clave: list_id} del board. Reusa las que ya están; crea SÓLO las que falten."""
-        if board_id in self._listas:
-            return self._listas[board_id]
+        """{clave: list_id} del board, con sus COLORES y con todo el equipo como miembro.
+
+        Reusa las listas que ya están y crea sólo las que falten. Además:
+          · le pone a cada columna su color (una que quedó gris se corrige), y
+          · suma como miembros del board a los del equipo que falten — no sólo al crearlo, así
+            alguien que entra al equipo a mitad de mes aparece en los tableros que ya existían.
+        """
+        clave_cache = (board_id, tuple(sorted(self.equipo)))
+        if clave_cache in self._listas:
+            return self._listas[clave_cache]
         inc = self.pk.board(board_id)
-        por_clave = {}
+        por_clave, color_actual = {}, {}
         for l in (inc.get("lists", []) if isinstance(inc, dict) else []):
             cl = clave_lista(l.get("name"))
             if cl:
                 por_clave[cl] = str(l["id"])
+                color_actual[cl] = l.get("color")
         for i, nom in enumerate(LISTAS):
-            cl = clave_lista(nom)
+            cl, color = clave_lista(nom), COLORES.get(nom)
             if cl not in por_clave:
-                nid = str(self.pk.crear_lista(board_id, nom, (i + 1) * POS).get("id"))
+                nid = str(self.pk.crear_lista(board_id, nom, (i + 1) * POS, color=color).get("id"))
                 por_clave[cl] = nid
                 log.info("Planka rollover: lista '%s' creada en board %s.", nom, board_id)
-        self._listas[board_id] = por_clave
+            elif color and color_actual.get(cl) != color:
+                try:
+                    self.pk.actualizar_lista(por_clave[cl], color=color)
+                    log.info("Planka rollover: color de '%s' -> %s (board %s).", nom, color, board_id)
+                except Exception as e:  # noqa: BLE001  (el color es cosmético: nunca es fatal)
+                    log.warning("Planka rollover: no pude pintar '%s': %s", nom, str(e)[:100])
+        ya = {str(m.get("userId")) for m in (inc.get("boardMemberships") or [])}
+        for uid in self.equipo:
+            if str(uid) not in ya and self.pk.agregar_miembro_board(board_id, uid):
+                log.info("Planka rollover: %s sumado al board %s.", uid, board_id)
+        self._listas[clave_cache] = por_clave
         return por_clave
 
     def asegurar_mes(self, anio, mes):

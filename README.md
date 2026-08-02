@@ -354,6 +354,18 @@ el procedimiento paso a paso, que alimenta la base de conocimiento.
 Todos los avisos de un ticket —y la alerta de **SLA en riesgo o vencido**, agrupada por técnico— salen por
 los canales del cliente **mencionando sólo al asignado**, así cada uno ve lo suyo.
 
+Cuando **el cliente responde** se avisa por los canales del equipo **cada vez**, citando lo que dijo.
+Si respondió dentro del horario, el ticket vuelve a **en curso**; si respondió de noche, un sábado o
+un domingo, queda **en espera** y se reabre solo al abrir la jornada, para que el SLA no corra todo
+un fin de semana contra un equipo que no está trabajando y el lunes el ticket no nazca vencido. Y si
+pasan **dos horas hábiles** sin que le contestemos, el técnico asignado recibe el aviso de que le
+respondieron y todavía no contestó: una vez por día hábil, sin repetirse tras un reinicio.
+
+El **equipo** se declara en la configuración del cliente (`tecnicos`): con eso ITHOS reconoce a cada
+técnico, le asigna, le menciona y le responde «mis tickets» por su número, sin tocar código. Un
+técnico en **formación** puede tener un `responsable`: entonces el ticket que le toca a esa persona
+se le asigna también a él, al mismo tiempo y con el mismo criterio, hasta que pueda resolverlo solo.
+
 Por chat o por voz se puede pedir: cerrar, reabrir, poner en espera, posponer con fecha y hora, responder
 al cliente, categorizar, fijar SLA, cambiar prioridad, escalar, asignar, crear, buscar, leer un ticket
 completo y ver reportes. Dos acciones trabajan **por técnico asignado**, filtrando por el campo «Asignado
@@ -427,6 +439,10 @@ Los **reportes ITIL** cubren volumen, cumplimiento de SLA, MTTR, backlog y desgl
 categoría y técnico. Salen automáticos —diario, semanal o mensual— sobre el **período cerrado**, en la zona
 horaria del cliente y sólo en días hábiles, o a demanda desde su panel en PDF y CSV. Las lecturas son
 masivas: no hay una consulta por ítem.
+
+Las columnas del tablero mantienen siempre los mismos colores y cada mes nuevo nace igual que el
+anterior; y quien entra al equipo se suma como miembro de todos los tableros del mes, incluidos los
+que ya existían.
 
 Las **tareas del equipo** se mantienen al día sobre Planka desde WhatsApp: resumen por persona a primera
 hora, seguimiento de lo que está en curso, alta y movimiento de tarjetas por texto o audio, y **rollover**
@@ -615,6 +631,7 @@ Baterías en [`tests/`](tests/):
 | `probar_portero_saludo.py` | Saludo coherente con la hora y una sola vez por día por persona. | No |
 | `probar_sistema.py` | Circuito completo por HTTP: alta, validaciones, edición, canales, métricas, portal. | Sí |
 | `probar_ciclo.py` · `probar_produccion.py` | Ciclo de vida real de un ticket y flujo del vigilante contra la mesa de ayuda del cliente. | Sí |
+| `probar_respuesta_cliente.py` | El cliente responde: fuera de horario el ticket espera al día hábil (el SLA no corre), se avisa cada respuesta y se reclama al técnico que no contestó. | No |
 | `probar_triage_alcance.py` | El alcance del problema: un equipo o una sede caída nunca se trata como el caso de un usuario suelto (prioridad, responsable, sin pedir legajo, sin dejarlo en espera). | No |
 | `probar_busqueda_casos.py` | Antecedentes: encuentra el caso redactado con otras palabras, distingue la resolución real del cierre administrativo y no deja inventar números. | No |
 | `probar_planka_cambios.py` | Avisos de cambio de estado del tablero: movimiento a mano, sin repetir, y estado que sobrevive a un reinicio. | No |

@@ -72,6 +72,28 @@ def proximo_inicio_horario(cfg, ahora=None):
     return cand
 
 
+def horas_habiles_entre(cfg, desde, hasta):
+    """Horas de ATENCIÓN transcurridas entre dos fechas: cuenta sólo lo que cae dentro del horario
+    del cliente. Un mensaje que llega el viernes a las 17:30 y se mira el lunes a las 09:30 lleva
+    1,5 horas hábiles, no 64 de reloj. Con eso se mide si un ticket quedó desatendido de verdad."""
+    if not desde or not hasta or hasta <= desde:
+        return 0.0
+    h = _cfg(cfg)
+    dias = h.get("dias", HORARIO_DEFAULT["dias"])
+    ini, fin = str(h.get("desde", "09:00")), str(h.get("hasta", "18:00"))
+    total, d = 0.0, desde.date()
+    while d <= hasta.date():
+        if d.weekday() in dias:
+            jornada_ini = datetime.combine(d, datetime.strptime(ini, "%H:%M").time())
+            jornada_fin = datetime.combine(d, datetime.strptime(fin, "%H:%M").time())
+            a = max(jornada_ini, desde.replace(tzinfo=None))
+            b = min(jornada_fin, hasta.replace(tzinfo=None))
+            if b > a:
+                total += (b - a).total_seconds() / 3600.0
+        d += timedelta(days=1)
+    return round(total, 2)
+
+
 def dias_habiles_entre(cfg, desde, hasta):
     """Días HÁBILES transcurridos entre dos fechas (sin contar el día de `desde`, contando el de
     `hasta`). Sirve para "a los 5 días hábiles sin respuesta". 0 si `hasta` <= `desde`."""

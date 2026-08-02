@@ -928,6 +928,36 @@ def nombres_asignados(cli_cfg, uids):
     return out
 
 
+def acompanan_a(cli_cfg, login_o_id):
+    """Quiénes trabajan el ticket JUNTO a un técnico mientras se están formando.
+
+    Un técnico nuevo aprende haciendo: se le asigna el MISMO ticket que a su responsable, al mismo
+    tiempo y con el mismo criterio, hasta que pueda resolverlo solo. Se declara en la config con
+    `responsable` en la ficha del técnico (`tecnicos`), y se saca cuando ya no hace falta —ahí se
+    pasa a derivar por criticidad—. Devuelve los ids de GLPI de quienes acompañan."""
+    ref = str(login_o_id or "").strip().lower()
+    if not ref:
+        return []
+    jefe = None
+    for t in tecnicos(cli_cfg):
+        if ref in {str(t.get("glpi_id") or "").lower(), str(t.get("glpi_login") or "").lower(),
+                   str(t.get("nombre") or "").lower()}:
+            jefe = t
+            break
+    if not jefe:
+        return []
+    claves = {str(jefe.get("glpi_id") or "").lower(), str(jefe.get("glpi_login") or "").lower(),
+              str(jefe.get("nombre") or "").lower()} - {""}
+    out = []
+    for t in tecnicos(cli_cfg):
+        if str(t.get("responsable") or "").strip().lower() in claves:
+            try:
+                out.append(int(t.get("glpi_id")))
+            except (TypeError, ValueError):
+                pass
+    return out
+
+
 def adaptador(cli_cfg):
     """Devuelve el adaptador del sistema de tickets del cliente. GLPI nativo; los demás
     (Zendesk/Jira/Freshservice/osTicket) por sus clientes REALES en tickets_otros.py,

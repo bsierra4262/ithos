@@ -98,10 +98,17 @@ class Planka:
         return self._req(f"/api/projects/{project_id}/boards", "POST",
                          {"name": nombre, "position": position}).get("item", {})
 
-    def crear_lista(self, board_id, nombre, position=POS_STEP, tipo="active"):
-        """Crea una lista (columna) en un board. Devuelve su item."""
-        return self._req(f"/api/boards/{board_id}/lists", "POST",
-                         {"name": nombre, "position": position, "type": tipo}).get("item", {})
+    def crear_lista(self, board_id, nombre, position=POS_STEP, tipo="active", color=None):
+        """Crea una lista (columna) en un board. `color` es un nombre de la paleta de Planka
+        (p. ej. 'berry-red'); sin color la columna queda gris. Devuelve su item."""
+        datos = {"name": nombre, "position": position, "type": tipo}
+        if color:
+            datos["color"] = color
+        return self._req(f"/api/boards/{board_id}/lists", "POST", datos).get("item", {})
+
+    def actualizar_lista(self, list_id, **campos):
+        """Cambia campos de una lista existente (nombre, color, posición)."""
+        return self._req(f"/api/lists/{list_id}", "PATCH", campos).get("item", {})
 
     def borrar_board(self, board_id):
         self._req(f"/api/boards/{board_id}", "DELETE")

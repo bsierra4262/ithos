@@ -30,6 +30,16 @@ y el versionado, [SemVer](https://semver.org/lang/es/).
   transcriba con pronunciación inglesa ("hey ethos"). **Nombrar la marca suelta ya no activa**: en un
   grupo de trabajo se la menciona todo el tiempo ("preguntale a ITHOS") y no corresponde intervenir.
   Los textos que explican cómo usarlo —aviso de inicio, mensajes de las tareas del equipo— lo dicen así.
+- **El equipo sale de la configuración, y los que se están formando trabajan acompañados.** Los
+  técnicos se declaran en `tecnicos` (nombre, id/login y teléfonos): con eso ITHOS los reconoce
+  —sus comentarios resuelven—, les asigna, les menciona y les responde «mis tickets» por su número,
+  **sin tocar código**. Si en la ficha de alguien se indica un `responsable`, el ticket que le toca
+  a esa persona **se le asigna también a él, al mismo tiempo y con el mismo criterio**: trabajan el
+  mismo caso hasta que pueda resolverlo solo. Se saca el campo y se vuelve a la derivación normal.
+- **Tareas del equipo — las columnas conservan su color y el equipo se mantiene al día.** Cada mes
+  nuevo nace con los mismos colores que el anterior (y una columna que quedó gris se corrige sola),
+  y quien entra al equipo se suma como miembro de **todos** los tableros del mes —incluidos los que
+  ya existían—, así se le puede asignar una tarjeta desde el primer día.
 - **Triage — el ALCANCE del problema decide el ticket.** Antes de clasificar, ITHOS define **qué**
   falla: el fichaje de una persona (`individual`), varias identificadas (`grupo`), un lector de los
   que tiene la sede (`equipo`), la sede entera sin fichaje (`sede`) o varias sedes (`masivo`). De ahí
@@ -118,6 +128,17 @@ y el versionado, [SemVer](https://semver.org/lang/es/).
   el SLA por calendario y horario de atención (Lun–Vie 09–18).
 
 ### Fixed
+- **El SLA corría de noche y los fines de semana.** Cuando el cliente respondía fuera del horario de
+  atención el ticket pasaba a **En curso** igual, así que el reloj del SLA corría sábado y domingo
+  contra un equipo que no estaba trabajando y el lunes el ticket ya nacía vencido. Ahora, si la
+  respuesta llega fuera de horario, el ticket queda **En espera** y se reabre **solo** al abrir la
+  jornada (por defecto el próximo día hábil a las 09:00). El cliente no se entera del corte y no
+  recibe recordatorios: no le estamos pidiendo nada.
+- **Una respuesta del cliente podía pasar desapercibida.** Un ticket ya **En curso** no avisaba nada
+  cuando el cliente escribía. Ahora **cada** respuesta se avisa por los canales del equipo citando lo
+  que dijo y cómo queda el ticket; y si pasan **2 horas hábiles** sin que le contestemos, el técnico
+  asignado recibe el aviso —nota interna privada y WhatsApp @mencionándolo— de que le respondieron y
+  todavía no contestó. Una vez por día hábil y sin repetirse tras un reinicio.
 - **Un equipo caído se trataba como el problema de un usuario suelto.** Un ticket que avisaba que el
   biométrico de una sede **dejó de funcionar y quedó apagado** —nadie podía fichar ahí— entró con
   prioridad **Baja**, asignado a soporte y **En espera** pidiendo "el nombre y el legajo de la persona
