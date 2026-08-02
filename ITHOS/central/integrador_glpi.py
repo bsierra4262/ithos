@@ -50,11 +50,12 @@ async def vigilar(cfg_glpi, enviar_comando, triage=None, wa=None, stop=None,
         aviso normal — nunca se pierde."""
         if not wa or not mensaje:
             return
+        from comun import ambitos as AV
         fn = getattr(wa, "enviar_mencion", None)
         if telefonos and fn:
-            await asyncio.to_thread(fn, mensaje, telefonos)
+            await asyncio.to_thread(lambda: AV.llamar(fn, mensaje, telefonos, tipo=AV.TICKETS))
         else:
-            await asyncio.to_thread(wa.enviar, mensaje)
+            await asyncio.to_thread(lambda: AV.llamar(wa.enviar, mensaje, tipo=AV.TICKETS))
 
     fallos = 0
     while stop is None or not stop.is_set():

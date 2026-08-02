@@ -24,6 +24,8 @@ import os
 import json
 import asyncio
 import logging
+
+from comun import ambitos as AMB
 from datetime import datetime
 
 log = logging.getLogger("proactivo")
@@ -120,9 +122,12 @@ async def vigilar_sla(conf, notif, stop=None):
                         for nombres, tels, ts in _por_tecnico(conf, nuevos):
                             texto = _texto_alerta(ts, nombres)
                             if tels and hasattr(notif, "enviar_mencion"):
-                                await asyncio.to_thread(notif.enviar_mencion, texto, tels)
+                                await asyncio.to_thread(
+                                    lambda t=texto, x=tels: AMB.llamar(
+                                        notif.enviar_mencion, t, x, tipo=AMB.SLA))
                             else:
-                                await asyncio.to_thread(notif.enviar, texto)
+                                await asyncio.to_thread(
+                                    lambda t=texto: AMB.llamar(notif.enviar, t, tipo=AMB.SLA))
                     st["avisados"].extend(t["id"] for t in nuevos)
                     _guardar(cliente, st)
                     log.info("Proactivo: avisé %d tickets SLA a %s.", len(nuevos), cliente)

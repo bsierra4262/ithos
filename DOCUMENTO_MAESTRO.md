@@ -492,6 +492,26 @@ pero no en los reportes", "¿hubo algo parecido antes?", "traeme uno de modelo"�
 - **Canales**: WhatsApp **oficial** (Cloud API, webhook) y **no oficial** (grupo del equipo, vinculado por
   QR desde el panel), **Telegram**, **Email** (IMAP/SMTP), **Element/Matrix** y **Teams/Slack** (avisos).
   Todos usan el mismo asistente, el mismo gateo y el formato correcto de cada plataforma.
+- **Un grupo por tema (ámbitos)**: un solo grupo para todo se vuelve inservible —las alertas de tickets
+  tapan las tareas del equipo, las cosas del sistema le llegan a gente a la que no le sirven, y quien
+  sólo quiere preguntar algo termina leyendo alertas todo el día—. Cada grupo de WhatsApp declara su
+  **ámbito**, y el ámbito define **dos cosas independientes**: qué avisos recibe y sobre qué se puede
+  consultar ahí.
+
+| Ámbito | Qué avisos recibe | Sobre qué se consulta ahí |
+|---|---|---|
+| `consultas` | **ninguno** | **todo** lo que ITHOS sabe hacer |
+| `soporte` | tickets y SLA (incluidos los reportes) | sólo tickets |
+| `tareas` | el tablero del equipo | sólo el tablero |
+| `sistema` | reinicios, cuotas de IA, cobranza y voz | todo |
+| `todo` | todos | todo |
+
+Se configura en el canal del cliente (`grupos: [{grupo, ambito}]`). Un aviso **nace con su tipo**
+(tickets, sla, planka, sistema, voz) y va **sólo** a donde corresponde; las @menciones al técnico
+asignado siguen la misma regla. Si alguien pregunta algo fuera del alcance de ese grupo, ITHOS **lo
+deriva** al grupo correcto en vez de dejarlo sin respuesta. Los canales que no tienen grupos
+(Telegram, email, Teams) reciben todo, como siempre, y un cliente con un solo `grupo` configurado
+sigue funcionando igual que antes.
 - **Activación (la llamada)**: hay que **llamarlo**, no sólo nombrarlo: **"Hey ITHOS, ..."** (también
   "oye/ok/hola/che ithos", en español o inglés, mayúsculas o minúsculas, con o sin tildes). Decir "ITHOS"
   suelto **no activa**: en un grupo de trabajo se lo menciona todo el tiempo ("preguntale a ITHOS", "lo
@@ -679,6 +699,7 @@ manejan el certificado. Del repositorio se puede reconstruir el agente completo.
   - `probar_portero_saludo.py` — saludo coherente con la hora y una vez por día por persona.
   - `probar_ciclo.py` · `probar_produccion.py` · `probar_sistema.py` — ciclo de vida real del ticket, flujo
     del vigilante y circuito completo por HTTP.
+  - `probar_grupos_ambito.py` — cada grupo de WhatsApp recibe lo suyo y contesta lo suyo (sin red).
   - `probar_respuesta_cliente.py` — el SLA no corre fuera de horario y ninguna respuesta del
     cliente pasa desapercibida (sin red).
   - `probar_triage_alcance.py` — un equipo o una sede caída no se trata como el caso de un usuario

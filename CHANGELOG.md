@@ -7,6 +7,15 @@ y el versionado, [SemVer](https://semver.org/lang/es/).
 ## [Unreleased]
 
 ### Added
+- **Un grupo de WhatsApp por tema (ámbitos).** Un solo grupo para todo se volvía inservible: las alertas
+  de tickets tapaban las tareas del equipo y quien sólo quería preguntar algo leía alertas todo el día.
+  Ahora cada grupo declara su **ámbito**, que define **qué avisos recibe** y **sobre qué se consulta
+  ahí**: `consultas` (ninguna alerta, pero todas las capacidades), `soporte` (tickets y SLA, y sólo se
+  contestan tickets), `tareas` (el tablero del equipo) y `sistema` (reinicios, cuotas, cobranza y
+  entrenamiento de voz). Cada aviso **nace con su tipo** y va sólo a donde corresponde —las @menciones
+  al técnico asignado también—, y una consulta fuera del alcance de un grupo se **deriva** al que sí la
+  maneja en vez de quedar sin respuesta. Se configura con `grupos: [{grupo, ambito}]`; un cliente con un
+  solo `grupo` sigue funcionando igual que antes.
 - **Helpdesk — espera por el cliente con recordatorio y escalada.** Cuando el ticket queda En espera
   porque depende del cliente —falta un **dato** que le pedimos en la primera respuesta, o tiene que
   **confirmar/coordinar** algo—, ITHOS le manda **un recordatorio por día hábil**, siempre **dentro

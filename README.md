@@ -418,7 +418,20 @@ existen. El histórico leído se reutiliza unos minutos, así dos preguntas segu
 
 Recibe y responde en **WhatsApp** (Cloud API oficial y no oficial, vinculado por QR), **Telegram**,
 **Email** (IMAP/SMTP), **Element/Matrix** y, para avisos, **Teams** y **Slack**; además del micrófono del
-equipo. Antes de responder carga el panorama real del cliente —tickets, SLA, estado— y usa su base de
+equipo. En WhatsApp puede trabajar con **varios grupos, cada uno con su
+ámbito**: uno para consultas de cualquier tema (que no recibe ninguna alerta), otro para las alertas y
+consultas de tickets, otro para el tablero del equipo y otro para los avisos del sistema. Cada aviso nace
+con su tipo y va sólo a donde corresponde, y una consulta fuera del alcance de un grupo se deriva al que
+sí la maneja.
+
+| Ámbito | Qué avisos recibe | Sobre qué se consulta ahí |
+|---|---|---|
+| `consultas` | **ninguno** | **todo** lo que ITHOS sabe hacer |
+| `soporte` | tickets y SLA (incluidos los reportes) | sólo tickets |
+| `tareas` | el tablero del equipo | sólo el tablero |
+| `sistema` | reinicios, cuotas de IA, cobranza y voz | todo |
+| `todo` | todos | todo |
+ Antes de responder carga el panorama real del cliente —tickets, SLA, estado— y usa su base de
 conocimiento y su memoria. Responde corto por defecto y detalla cuando se lo piden, en el idioma que el
 cliente eligió, y puede contestar en texto, en nota de voz o en ambos.
 
@@ -631,6 +644,7 @@ Baterías en [`tests/`](tests/):
 | `probar_portero_saludo.py` | Saludo coherente con la hora y una sola vez por día por persona. | No |
 | `probar_sistema.py` | Circuito completo por HTTP: alta, validaciones, edición, canales, métricas, portal. | Sí |
 | `probar_ciclo.py` · `probar_produccion.py` | Ciclo de vida real de un ticket y flujo del vigilante contra la mesa de ayuda del cliente. | Sí |
+| `probar_grupos_ambito.py` | Ruteo por grupo: cada aviso va al que corresponde, el de consultas no recibe alertas y cada grupo contesta sólo lo suyo. | No |
 | `probar_respuesta_cliente.py` | El cliente responde: fuera de horario el ticket espera al día hábil (el SLA no corre), se avisa cada respuesta y se reclama al técnico que no contestó. | No |
 | `probar_triage_alcance.py` | El alcance del problema: un equipo o una sede caída nunca se trata como el caso de un usuario suelto (prioridad, responsable, sin pedir legajo, sin dejarlo en espera). | No |
 | `probar_busqueda_casos.py` | Antecedentes: encuentra el caso redactado con otras palabras, distingue la resolución real del cierre administrativo y no deja inventar números. | No |

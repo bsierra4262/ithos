@@ -281,6 +281,22 @@ class Asistente:
                      f"NO inventes otros horarios.")
         return base
 
+    def _regla_ambito(self):
+        """Qué se puede contestar en el grupo por el que llegó el mensaje. En un grupo dedicado a
+        los tickets, una consulta de otro tema se deriva en vez de contestarse: para eso está el
+        grupo de consultas. Sin ámbito (un chat común), no limita nada."""
+        try:
+            from comun import ambitos as AMB
+            if AMB.responde(getattr(self, "_ambito", None)) != AMB.TICKETS:
+                return ""
+        except Exception:  # noqa: BLE001
+            return ""
+        return ("\n🎯 ESTE GRUPO ES SÓLO DE TICKETS DE SOPORTE. Contestá únicamente lo que tenga "
+                "que ver con los tickets (estado, contenido, SLA, reportes, acciones sobre ellos). "
+                "Si te preguntan otra cosa —el tablero de tareas, algo del sistema, una charla— "
+                "NO la respondas: decí amablemente que en este grupo sólo se manejan los tickets e "
+                "indicá que esa consulta va al grupo de consultas generales.\n")
+
     def _elegir(self, texto):
         catalogo = "\n".join(f"- {n}: {h['desc']}" for n, h in self.herramientas.items())
         sistema = (
@@ -332,10 +348,13 @@ class Asistente:
         except Exception:  # noqa: BLE001
             return True
 
-    def responder_texto(self, texto, canal="chat", remitente=None, audio=None):
+    def responder_texto(self, texto, canal="chat", remitente=None, audio=None, ambito=None):
         import re
         import time as _time
         import json as _json
+        # ÁMBITO del grupo por el que llegó (comun/ambitos.py): en el grupo de soporte sólo se
+        # contestan tickets, así no se mezcla con el resto. Sin ámbito, se responde todo.
+        self._ambito = ambito
         # --- Modo ADMIN (conocimiento propietario) ---------------------------------------
         # Autorizado si el remitente es el DUEÑO (por su número/identidad) O si se dijo la
         # CLAVE de administrador (estilo Iron Man), que destraba UNA sola consulta y después
@@ -551,6 +570,7 @@ class Asistente:
             "\"recordar\": {\"clave\":\"...\",\"valor\":\"...\"}|null, \"respuesta\": \"<texto para el usuario>\"}. "
             "Podés poner 0, 1 o varias acciones. (También se acepta el formato viejo con "
             "\"accion\" y \"args\" sueltos para una sola.)\n"
+            + self._regla_ambito() +
             "REGLAS de la 'respuesta': " + ("usá TODO el detalle que haga falta, podés "
             "extenderte y ser preciso" if es_admin else "clara y no demasiado larga") + ". PODÉS usar listas con "
             "viñetas (empezá la línea con '- ') y *negrita* (UN asterisco) — quedan muy "
@@ -760,7 +780,8 @@ class Asistente:
             self.memoria.agregar("assistant", completo, canal)
         return completo or "Listo, señor."
 
-    def responder_audio(self, audio_bytes, mime="audio/ogg", canal="whatsapp", remitente=None):
+    def responder_audio(self, audio_bytes, mime="audio/ogg", canal="whatsapp", remitente=None,
+                        ambito=None):
         # FILTRO ANTI-RUIDO (Silero VAD): deja SOLO la voz humana antes de transcribir, igual que el
         # micrófono. Descarta ruido de ambiente/música de fondo -> la transcripción es más fiel. Si
         # falla o no detecta voz, transcribe el audio original tal cual (no se pierde nada).
@@ -779,7 +800,8 @@ class Asistente:
             return {"transcripcion": "", "respuesta": _mensaje_error(e, self.zona, self.gestor)}   # sin cuota / alta demanda
         log.info("Audio transcripto: %s", texto)
         return {"transcripcion": texto,
-                "respuesta": self.responder_texto(texto, canal=canal, remitente=remitente)}
+                "respuesta": self.responder_texto(texto, canal=canal, remitente=remitente,
+                                                  ambito=ambito)}
 
 
 def herramientas_glpi(cfg_glpi, entidad):

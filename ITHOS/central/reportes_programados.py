@@ -76,7 +76,8 @@ def enviar_reporte(conf, notif, periodo=None, desde=None, hasta=None):
         # de que arranque la jornada.
         k = RI.calcular(gl, ent, periodo, zona, con_tecnico=con_tec, cerrado=True)
     k["empresa"] = empresa
-    notif.enviar(RI.resumen_texto(k, empresa))
+    from comun import ambitos as AMB
+    AMB.llamar(notif.enviar, RI.resumen_texto(k, empresa), tipo=AMB.SLA)
     formatos = r.get("formato", ["pdf"])
     seguro = "".join(ch if ch.isalnum() else "_" for ch in empresa) or "reporte"
     base = f"reporte_ITIL_{seguro}_{periodo}"

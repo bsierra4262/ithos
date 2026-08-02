@@ -135,7 +135,7 @@ def _avisar_mantenimiento():
     for cliente, wa in list(notificadores_activos.items()):
         try:
             if wa:
-                wa.enviar(MSG_MANTENIMIENTO)   # a TODOS sus canales (WhatsApp/email/Telegram/...)
+                wa.enviar(MSG_MANTENIMIENTO, tipo=AV.SISTEMA)   # a TODOS sus canales
                 avisados += 1
         except Exception:  # noqa: BLE001
             pass
@@ -361,6 +361,7 @@ async def ws(websocket: WebSocket):
         # Canales de notificación del cliente (los que ELIGIÓ: whatsapp/telegram/
         # email/teams/slack). Un solo objeto que manda a todos.
         from comun import notificadores as NOTIF
+        from comun import ambitos as AV      # tipos de aviso -> a qué grupo va cada uno
         # Sesión de WhatsApp ESTABLE y AISLADA por cliente (multi-tenant): el runtime usa EXACTAMENTE
         # el mismo archivo que la vinculación por QR del panel/alta. Sin esto, dos clientes chocarían
         # sobre 'wa_session.sqlite3' y lo vinculado no serviría para enviar.
@@ -388,7 +389,7 @@ async def ws(websocket: WebSocket):
                 try:
                     # El canal WhatsApp está caído (limpiamos _listo en el logout), así que enviar()
                     # salta WhatsApp y entrega por los OTROS canales (email/telegram/etc).
-                    wa.enviar(msg)
+                    wa.enviar(msg, tipo=AV.SISTEMA)
                 except Exception:  # noqa: BLE001
                     pass
                 try:
@@ -419,7 +420,7 @@ async def ws(websocket: WebSocket):
                             pass
                         await asyncio.sleep(1)
                     try:
-                        await asyncio.to_thread(wa.enviar, MSG_DISPONIBLE)
+                        await asyncio.to_thread(lambda: wa.enviar(MSG_DISPONIBLE, tipo=AV.SISTEMA))
                         log.info("Mantenimiento: avisado 'disponible' a %s.", cliente)
                     except Exception:  # noqa: BLE001
                         pass
@@ -431,7 +432,7 @@ async def ws(websocket: WebSocket):
             log.warning("[CUOTA %s] %s: %s", nivel, cliente, mensaje)
             if wa:
                 try:
-                    wa.enviar(mensaje)
+                    wa.enviar(mensaje, tipo=AV.SISTEMA)
                 except Exception:  # noqa: BLE001
                     pass
             try:
@@ -450,7 +451,7 @@ async def ws(websocket: WebSocket):
             if wa:
                 try:
                     wa.enviar(F.texto_aviso_pago(cliente, fact, F.link_pago(fact, cliente),
-                                                 suspender=True))
+                                                 suspender=True), tipo=AV.SISTEMA)
                 except Exception:  # noqa: BLE001
                     pass
 
@@ -468,7 +469,8 @@ async def ws(websocket: WebSocket):
                         link = F.link_pago({**f, **cambios}, cliente)
                         wa.enviar(F.texto_aviso_pago(
                             cliente, f, link, suspender=(accion == "suspender"),
-                            dias_rest=None if accion == "suspender" else F.dias_gracia_restantes(f)))
+                            dias_rest=None if accion == "suspender" else F.dias_gracia_restantes(f)),
+                            tipo=AV.SISTEMA)
                 except Exception as e:  # noqa: BLE001
                     log.warning("Cobranza %s: %s", cliente, e)
                 await asyncio.sleep(24 * 3600)
@@ -501,7 +503,7 @@ async def ws(websocket: WebSocket):
                 # avisar: cuando el admin cambia el estado de un ticket por voz/chat (en espera/cerrar/
                 # reabrir/posponer), se notifica al grupo de WhatsApp/canales (igual que el ciclo automático).
                 acc = conversacion.acciones_tickets(
-                    conf, avisar=((lambda m: wa.enviar(m)) if wa else None))
+                    conf, avisar=((lambda m: wa.enviar(m, tipo=AV.TICKETS)) if wa else None))
                 kb_dir = conf.get("kb_dir")
                 try:
                     import kb_auto
@@ -536,14 +538,15 @@ async def ws(websocket: WebSocket):
                     # WhatsApp NO-OFICIAL conversacional: engancha el asistente para que RESPONDA los
                     # mensajes/audios del grupo (antes SOLO posteaba tickets/reportes) y ENTRENE la voz
                     # del dueño (voz-id). Esto solo estaba en la demo -> en producción no contestaba.
-                    def _wa_on_consulta(tipo, contenido, mime=None, remitente=None):
+                    def _wa_on_consulta(tipo, contenido, mime=None, remitente=None, ambito=None):
                         try:
                             if tipo == "audio" and hasattr(asistente, "responder_audio"):
                                 r = asistente.responder_audio(contenido, mime or "audio/ogg",
-                                                              canal="whatsapp", remitente=remitente)
+                                                              canal="whatsapp", remitente=remitente,
+                                                              ambito=ambito)
                                 return r.get("respuesta", "") if isinstance(r, dict) else (r or "")
                             return asistente.responder_texto(contenido, canal="whatsapp",
-                                                             remitente=remitente)
+                                                             remitente=remitente, ambito=ambito)
                         except Exception as e:  # noqa: BLE001
                             log.warning("WhatsApp consulta %s: %s", cliente, e)
                             return ""
@@ -564,7 +567,8 @@ async def ws(websocket: WebSocket):
                             if recien:
                                 try:
                                     wa.enviar("Ya tengo suficientes muestras de tu voz. Reconocimiento "
-                                              "por voz ACTIVO: de acá en más verifico que seas vos.")
+                                              "por voz ACTIVO: de acá en más verifico que seas vos.",
+                                              tipo=AV.VOZ)
                                 except Exception:  # noqa: BLE001
                                     pass
                         except Exception as e:  # noqa: BLE001
@@ -583,18 +587,28 @@ async def ws(websocket: WebSocket):
                         except Exception as e:  # noqa: BLE001
                             log.warning("Planka integrador %s: %s", cliente, e)
 
-                    def _consulta(tipo, contenido, mime, remitente=None, nombre=None,
+                    def _consulta(tipo, contenido, mime, remitente=None, nombre=None, ambito=None,
                                   _orig=_wa_on_consulta, _pk=_planka):
+                        # Cada grupo tiene su ÁMBITO: en el del tablero sólo se habla de tareas, en el
+                        # de soporte sólo de tickets, y en el de consultas se puede todo. Así nadie
+                        # recibe lo que no le sirve ni pregunta donde no le van a contestar.
+                        from comun import ambitos as AMB
+                        tema = AMB.responde(ambito)
                         # Planka primero: identifica al remitente por teléfono o, si WhatsApp lo ocultó
                         # con un LID, por nombre (PushName). Si no es sobre el tablero, sigue el asistente.
-                        if _pk is not None and tipo == "texto" and contenido and (remitente or nombre):
+                        if (_pk is not None and tipo == "texto" and contenido
+                                and (remitente or nombre) and tema in (AMB.PLANKA, AMB.TODO)):
                             try:
                                 r = _pk.interpretar(remitente, contenido, nombre)
                                 if r:
                                     return r
                             except Exception as e:  # noqa: BLE001
                                 log.warning("Planka interpretar %s: %s", cliente, e)
-                        return _orig(tipo, contenido, mime, remitente)
+                        if tema == AMB.PLANKA:
+                            # Grupo del tablero: si el mensaje no era una orden de tareas, se dice
+                            # dónde preguntar en vez de contestar cualquier cosa.
+                            return AMB.fuera_de_alcance(AMB.PLANKA, getattr(_wa_canal, "grupos", []))
+                        return _orig(tipo, contenido, mime, remitente, ambito)
 
                     _wa_canal = None
                     try:
@@ -610,7 +624,8 @@ async def ws(websocket: WebSocket):
                         log.warning("No se pudo activar WhatsApp conversacional %s: %s", cliente, e)
                     if _planka is not None and _wa_canal is not None:
                         tareas_extra.append(asyncio.create_task(
-                            _planka.vigilar(lambda t, tels: _wa_canal.enviar_mencion(t, tels))))
+                            _planka.vigilar(lambda t, tels: _wa_canal.enviar_mencion(
+                                t, tels, tipo=AV.PLANKA))))
                         log.info("Planka integrador ARRANCADO para %s.", cliente)
 
         # Integrador GLPI + triage (lado central).
@@ -663,9 +678,10 @@ async def ws(websocket: WebSocket):
             await asyncio.sleep(12)          # dar tiempo a que WhatsApp se vincule
             try:
                 from comun import conversacion as CV
-                await asyncio.to_thread(wa.enviar, CV.mensaje_inicio(
+                texto_inicio = CV.mensaje_inicio(
                     cliente, ia_disponible=True,
-                    zona=conf.get("zona_horaria", "America/Argentina/Buenos_Aires"), gestor=gestor))
+                    zona=conf.get("zona_horaria", "America/Argentina/Buenos_Aires"), gestor=gestor)
+                await asyncio.to_thread(lambda: wa.enviar(texto_inicio, tipo=AV.SISTEMA))
             except Exception:  # noqa: BLE001
                 pass
         if wa and not _suspendido:

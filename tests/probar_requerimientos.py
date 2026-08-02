@@ -3054,7 +3054,7 @@ try:
                and "incluir esa acción en 'acciones'" in conv_src
                and "def acciones_tickets(cli_cfg, avisar=None)" in conv_src   # aviso al grupo por comando
                and "def _avisar(msg)" in conv_src
-               and "avisar=((lambda m: wa.enviar(m))" in main_src77
+               and "avisar=((lambda m: wa.enviar(m, tipo=AV.TICKETS))" in main_src77
                # el ESTADO real de GLPI SIEMPRE gana sobre la MEMORIA (no 'ya está en espera' de memoria vieja)
                and "EL ESTADO de cada " in conv_src and "MANDAN los datos" in conv_src)
     # (d) la voz NUNCA lee emojis (regex ampliado + funcional)
@@ -3341,6 +3341,14 @@ CAPACIDADES = [
      "docs": {"DOCUMENTO_MAESTRO.md": ["coherente con la hora"], "README.md": ["coherente con la hora"],
               "CHANGELOG.md": ["saludo de entrada coherente con la hora"]},
      "diagrama": ["saludo según la HORA"]},
+    {"que": "cada grupo de WhatsApp recibe lo suyo y contesta lo suyo (ámbitos)",
+     "codigo": [("ITHOS/comun/ambitos.py", "def recibe"),
+                ("ITHOS/comun/ambitos.py", "def fuera_de_alcance"),
+                ("ITHOS/comun/whatsapp.py", "def _destinos"),
+                ("ITHOS/comun/conversacion.py", "def _regla_ambito")],
+     "docs": {"DOCUMENTO_MAESTRO.md": ["Un grupo por tema (ámbitos)"],
+              "README.md": ["ámbito"],
+              "CHANGELOG.md": ["Un grupo de WhatsApp por tema"]}},
     {"que": "el SLA no corre fuera de horario y una respuesta del cliente nunca pasa desapercibida",
      "codigo": [("ITHOS/central/triage.py", "def esperar_hasta_horario"),
                 ("ITHOS/central/triage.py", "def avisar_tecnico_sin_atender"),

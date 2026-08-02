@@ -217,10 +217,11 @@ def estado_canal(c):
     nombre = c.__class__.__name__
     try:
         if nombre == "WhatsAppNoOficial":
-            activo = (getattr(c, "_listo", None) is not None and c._listo.is_set()
-                      and getattr(c, "grupo_jid", None) is not None)
+            listos = [g for g in getattr(c, "grupos", []) if g.get("jid") is not None]
+            activo = (getattr(c, "_listo", None) is not None and c._listo.is_set() and listos)
+            detalle = ", ".join(f"{g['grupo']} ({g['ambito']})" for g in listos)
             return {"tipo": "whatsapp_no_oficial", "activo": bool(activo),
-                    "detalle": (f"grupo {c.grupo_nombre}" if activo else "sin conectar / re-vincular")}
+                    "detalle": detalle if activo else "sin conectar / re-vincular"}
         if nombre == "WhatsAppOficial":
             return {"tipo": "whatsapp_oficial",
                     "activo": bool(getattr(c, "token", "") and getattr(c, "phone_id", "")),
@@ -259,27 +260,37 @@ class Notificadores:
         """True si al menos un canal está activo (para saber si el aviso llegará a algún lado)."""
         return any(e["activo"] for e in self.estado())
 
-    def enviar(self, texto):
+    @staticmethod
+    def _con_tipo(fn, args, tipo):
+        """Le pasa el TIPO al canal si lo entiende (sólo WhatsApp separa por grupos)."""
+        from comun import ambitos as _AMB
+        return _AMB.llamar(fn, *args, tipo=tipo)
+
+    def enviar(self, texto, tipo=None):
+        """Manda el aviso a los canales del cliente. `tipo` (tickets / sla / planka / sistema / voz)
+        decide a QUÉ GRUPO de WhatsApp va: el de soporte no se llena de tareas del equipo y el de
+        consultas no recibe alertas. Ver comun/ambitos.py."""
         ok = False
         for c in self.canales:
             try:
-                ok = c.enviar(texto) or ok
+                ok = self._con_tipo(c.enviar, (texto,), tipo) or ok
             except Exception:  # noqa: BLE001
                 pass
         return ok
 
-    def enviar_mencion(self, texto, telefonos):
+    def enviar_mencion(self, texto, telefonos, tipo=None):
         """Aviso @MENCIONANDO a `telefonos` (el TÉCNICO ASIGNADO) en los canales que lo soportan
         (WhatsApp). Los canales que NO tienen menciones (Telegram/email/Teams/Element) reciben el
         MISMO texto sin @ — el aviso nunca se pierde y el texto ya dice a quién está asignado.
         Sin teléfonos, es un envío normal."""
         if not telefonos:
-            return self.enviar(texto)
+            return self.enviar(texto, tipo=tipo)
         ok = False
         for c in self.canales:
             fn = getattr(c, "enviar_mencion", None)
             try:
-                ok = (fn(texto, telefonos) if fn else c.enviar(texto)) or ok
+                ok = (self._con_tipo(fn, (texto, telefonos), tipo) if fn
+                      else self._con_tipo(c.enviar, (texto,), tipo)) or ok
             except Exception:  # noqa: BLE001
                 pass
         return ok

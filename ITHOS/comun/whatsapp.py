@@ -243,10 +243,16 @@ class WhatsAppNoOficial:
     Si además asignás `tts(texto)->wav_bytes`, responde también con una NOTA DE VOZ.
     Reusa la sesión ya vinculada (no vuelve a pedir QR)."""
 
+    grupos = []          # se completan en __init__; acá para quien arme la instancia sin pasar por él
+    grupo_nombre = ""
+
     def __init__(self, cfg):
+        from comun import ambitos as _AMB
         self.session = _ruta_sesion(cfg.get("session", "wa_session.sqlite3"))
-        self.grupo_nombre = cfg.get("grupo", "")
-        self.grupo_jid = None
+        # VARIOS grupos, cada uno con su ÁMBITO: qué avisos recibe y qué se puede consultar ahí
+        # (comun/ambitos.py). Con un `grupo` suelto se comporta como antes: un grupo que recibe todo.
+        self.grupos = [dict(g, jid=None) for g in _AMB.grupos_de(cfg)]
+        self.grupo_nombre = self.grupos[0]["grupo"] if self.grupos else ""
         self.client = None
         self.on_consulta = None      # callable(tipo, contenido, mime[, remitente]) -> str
         self.on_audio = None         # callable(audio_bytes, mime, remitente) -> None (voz-id)
@@ -365,10 +371,13 @@ class WhatsAppNoOficial:
             if tsec < self._desde - 5:              # viejo o desconocido -> NO responder
                 return
             chat = src.Chat
-            # SOLO el grupo configurado: ignora DMs, otros grupos, estados/broadcast.
-            # Así ITHOS NUNCA le escribe a un contacto ni sube estados: solo ESE grupo.
-            if not self._es_mi_grupo(chat):
+            # SOLO los grupos configurados: ignora DMs, otros grupos, estados/broadcast.
+            # Así ITHOS NUNCA le escribe a un contacto ni sube estados: solo ESOS grupos.
+            grupo = self._es_mi_grupo(chat)
+            if grupo is None:
                 return
+            # El ÁMBITO del grupo define sobre qué se puede consultar acá (tickets, tablero, todo).
+            ambito = grupo.get("ambito")
             # Número REAL de quien escribe (para autorizar el conocimiento propietario).
             # WhatsApp usa LID (id opaco) y esconde el teléfono: hay que buscar el JID de
             # teléfono (server s.whatsapp.net) entre Sender/SenderAlt. Si el mensaje es
@@ -424,11 +433,13 @@ class WhatsAppNoOficial:
                 threading.Thread(target=self._safe, args=(
                     self.on_audio, audio_data, audio_mime, remitente), daemon=True).start()
             if es_audio and not texto:                   # audio sin transcribir -> tal cual
-                resp = self._llamar(self.on_consulta, "audio", audio_data, audio_mime, remitente, nombre_rem)
+                resp = self._llamar(self.on_consulta, "audio", audio_data, audio_mime,
+                                    remitente, nombre_rem, ambito)
             else:
                 if not (texto or "").strip():
                     return
-                resp = self._llamar(self.on_consulta, "texto", texto, None, remitente, nombre_rem)
+                resp = self._llamar(self.on_consulta, "texto", texto, None,
+                                    remitente, nombre_rem, ambito)
             if not resp:
                 return
             self._ultima_respuesta = resp                # para filtrar el eco de esta nota de voz
@@ -489,34 +500,59 @@ class WhatsAppNoOficial:
             log.warning("callback de audio (voz-id): %s", e)
 
     @staticmethod
-    def _llamar(fn, tipo, contenido, mime, remitente, nombre=""):
-        """Llama on_consulta con el remitente (4º arg) y el nombre/PushName (5º arg) si los acepta;
-        si no, con menos argumentos."""
+    def _llamar(fn, tipo, contenido, mime, remitente, nombre="", ambito=None):
+        """Llama on_consulta con el remitente (4º), el nombre/PushName (5º) y el ÁMBITO del grupo
+        (6º) si los acepta; si no, con menos argumentos."""
         try:
             import inspect
             params = len(inspect.signature(fn).parameters)
         except Exception:  # noqa: BLE001
             params = 3
+        if params >= 6:
+            return fn(tipo, contenido, mime, remitente, nombre, ambito)
         if params >= 5:
             return fn(tipo, contenido, mime, remitente, nombre)
         if params >= 4:
             return fn(tipo, contenido, mime, remitente)
         return fn(tipo, contenido, mime)
 
-    def _es_mi_grupo(self, chat):
-        """True SOLO si el chat es el grupo configurado (ignora DMs, otros grupos y
-        estados/broadcast). Garantiza que ITHOS no le escriba a ningún contacto."""
-        if self.grupo_jid is None or chat is None:
+    @property
+    def grupo_jid(self):
+        """El primer grupo resuelto. Se conserva para el estado del canal y la compatibilidad."""
+        for g in self.grupos:
+            if g.get("jid") is not None:
+                return g["jid"]
+        return None
+
+    @grupo_jid.setter
+    def grupo_jid(self, jid):
+        """Compatibilidad: fijar el jid a mano (la demo, los tests) apunta al primer grupo. Si no
+        hay ninguno configurado, se crea uno que recibe todo."""
+        if not self.grupos:
+            from comun import ambitos as _AMB
+            self.grupos = [{"grupo": self.grupo_nombre or "", "ambito": _AMB.DEFECTO, "jid": None}]
+        self.grupos[0]["jid"] = jid
+
+    def _mismo_jid(self, chat, jid):
+        if jid is None or chat is None:
             return False
         try:
             if str(getattr(chat, "Server", "")).lower() == "broadcast":
                 return False
-            cu, gu = getattr(chat, "User", None), getattr(self.grupo_jid, "User", None)
+            cu, gu = getattr(chat, "User", None), getattr(jid, "User", None)
             if cu is not None and gu is not None:
                 return cu == gu
-            return str(chat) == str(self.grupo_jid)
+            return str(chat) == str(jid)
         except Exception:  # noqa: BLE001
-            return str(chat) == str(self.grupo_jid)
+            return str(chat) == str(jid)
+
+    def _es_mi_grupo(self, chat):
+        """El grupo configurado al que pertenece el chat, o None si no es ninguno (un DM, otro
+        grupo, un estado). Garantiza que ITHOS sólo hable en los grupos que le indicaron."""
+        for g in self.grupos:
+            if self._mismo_jid(chat, g.get("jid")):
+                return g
+        return None
 
     def _resolver(self):
         time.sleep(5)
@@ -532,58 +568,85 @@ class WhatsAppNoOficial:
             pass
         for _ in range(15):
             try:
-                for g in self.client.get_joined_groups():
-                    if g.GroupName.Name == self.grupo_nombre:
-                        self.grupo_jid = g.JID
-                        self._listo.set()
-                        log.info("WhatsApp no-oficial listo (grupo %s%s).", self.grupo_nombre,
-                                 f", dueño {self.mi_numero}" if self.mi_numero else "")
-                        return
+                unidos = {g.GroupName.Name: g.JID for g in self.client.get_joined_groups()}
+                for g in self.grupos:
+                    if g.get("jid") is None and g["grupo"] in unidos:
+                        g["jid"] = unidos[g["grupo"]]
+                faltan = [g["grupo"] for g in self.grupos if g.get("jid") is None]
+                if any(g.get("jid") is not None for g in self.grupos):
+                    self._listo.set()
+                    log.info("WhatsApp no-oficial listo (%s%s).",
+                             ", ".join(f"{g['grupo']}→{g['ambito']}" for g in self.grupos
+                                       if g.get("jid") is not None),
+                             f", dueño {self.mi_numero}" if self.mi_numero else "")
+                    if faltan:
+                        log.warning("WhatsApp: no encontré estos grupos (¿el número está adentro?): %s",
+                                    ", ".join(faltan))
+                    return
             except Exception:  # noqa: BLE001
                 pass
             time.sleep(3)
 
-    def enviar(self, texto):
-        """Aviso al grupo, respetando el FORMATO elegido por el cliente ('texto' | 'audio' |
-        'ambos'): manda texto y/o una NOTA DE VOZ. Igual criterio que las respuestas entrantes,
-        así los avisos suenan igual en demo y en producción."""
-        if not self._listo.is_set() or self.grupo_jid is None:
+    def _destinos(self, tipo):
+        """Los grupos que tienen que recibir un aviso de este tipo. Un grupo de consultas no
+        recibe ninguno; el de soporte, los de tickets y SLA; el del tablero, los de Planka."""
+        from comun import ambitos as _AMB
+        return [g for g in self.grupos
+                if g.get("jid") is not None and _AMB.recibe(g["ambito"], tipo)]
+
+    def enviar(self, texto, tipo=None):
+        """Aviso a los grupos que corresponden según el TIPO (tickets, sla, planka, sistema, voz),
+        respetando el FORMATO elegido por el cliente ('texto' | 'audio' | 'ambos'). Sin tipo va a
+        todos los grupos que reciban algo — un aviso sin clasificar no se pierde."""
+        from comun import ambitos as _AMB
+        if not self._listo.is_set():
             return False
+        destinos = self._destinos(tipo) if tipo else [
+            g for g in self.grupos if g.get("jid") is not None
+            and _AMB.AMBITOS[_AMB.normalizar(g["ambito"])]["recibe"]]
         ok = False
-        if self.respuesta in ("texto", "ambos"):
-            try:
-                self.client.send_message(self.grupo_jid, con_prefijo(texto))
+        for g in destinos:
+            if self.respuesta in ("texto", "ambos"):
+                try:
+                    self.client.send_message(g["jid"], con_prefijo(texto))
+                    ok = True
+                except Exception as e:  # noqa: BLE001
+                    log.warning("WhatsApp no-oficial (%s): no se pudo enviar texto: %s",
+                                g["grupo"], e)
+            if self.respuesta in ("audio", "ambos"):
+                self._mandar_voz(g["jid"], texto)      # nota de voz en segundo plano
                 ok = True
-            except Exception as e:  # noqa: BLE001
-                log.warning("WhatsApp no-oficial: no se pudo enviar texto: %s", e)
-        if self.respuesta in ("audio", "ambos"):
-            self._mandar_voz(self.grupo_jid, texto)    # nota de voz en segundo plano
-            ok = True
         return ok
 
-    def enviar_mencion(self, texto, telefonos):
-        """Manda un aviso al grupo @MENCIONANDO a los `telefonos` (los notifica si están en el grupo).
-        Siempre TEXTO (una mención no tiene sentido como nota de voz). Si no se puede construir la
-        mención (versión de neonize), cae a texto plano con '@numero'. Usado por el integrador de Planka."""
-        if not self._listo.is_set() or self.grupo_jid is None:
+    def enviar_mencion(self, texto, telefonos, tipo=None):
+        """Aviso @MENCIONANDO a los `telefonos` (los notifica si están en el grupo), a los grupos
+        que corresponden según el TIPO. Siempre TEXTO (una mención no tiene sentido como nota de
+        voz). Si no se puede construir la mención (versión de neonize), cae a texto plano."""
+        if not self._listo.is_set():
+            return False
+        destinos = self._destinos(tipo) if tipo else [g for g in self.grupos if g.get("jid")]
+        if not destinos:
             return False
         nums = [re.sub(r"\D", "", str(t)) for t in (telefonos or []) if t]
         prefijo = " ".join(f"@{n}" for n in nums)               # el texto DEBE tener @numero para renderizar
         cuerpo = con_prefijo(((prefijo + " " + texto).strip()) if prefijo else texto)
         jids = [f"{n}@s.whatsapp.net" for n in nums]
-        try:
-            msg = self._msg_con_menciones(cuerpo, jids)
-            if msg is not None:
-                self.client.send_message(self.grupo_jid, msg)
-                return True
-        except Exception as e:  # noqa: BLE001
-            log.info("WhatsApp mención (proto) falló (%s); mando texto plano.", str(e)[:80])
-        try:
-            self.client.send_message(self.grupo_jid, cuerpo)     # cuerpo ya trae el prefijo
-            return True
-        except Exception as e:  # noqa: BLE001
-            log.warning("WhatsApp enviar_mencion: %s", e)
-            return False
+        ok = False
+        for g in destinos:
+            try:
+                msg = self._msg_con_menciones(cuerpo, jids)
+                if msg is not None:
+                    self.client.send_message(g["jid"], msg)
+                    ok = True
+                    continue
+            except Exception as e:  # noqa: BLE001
+                log.info("WhatsApp mención (proto) falló (%s); mando texto plano.", str(e)[:80])
+            try:
+                self.client.send_message(g["jid"], cuerpo)      # cuerpo ya trae el prefijo
+                ok = True
+            except Exception as e:  # noqa: BLE001
+                log.warning("WhatsApp enviar_mencion (%s): %s", g["grupo"], e)
+        return ok
 
     @staticmethod
     def _msg_con_menciones(texto, jids):
