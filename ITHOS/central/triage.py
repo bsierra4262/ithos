@@ -392,9 +392,36 @@ class Triage:
         como NOTA INTERNA (el cliente no la ve); el ciclo lo repite por WhatsApp @mencionándolo."""
         return self.nota_interna(tid, _nota_sin_atender(desde, horas))
 
-    def marcar_resuelto(self, tid, solucion=""):
-        """Pasa el ticket a RESUELTO (status 5). Intenta cargar la SOLUCIÓN (así queda documentada
-        y GLPI lo deja en Resuelto); si el perfil no permite ITILSolution, cae a cambiar el estado."""
+    def _sesion_de(self, uid):
+        """Sesión de GLPI con el token del TÉCNICO `uid`, o None si no lo tiene configurado.
+
+        Sirve para que lo que hace un técnico quede a SU nombre: si la solución la carga ITHOS (o
+        peor, el usuario administrador), el historial dice que resolvió alguien que no resolvió."""
+        try:
+            from comun import tickets as TK
+            ficha = TK.tecnico_por_id(self.cfg_glpi, uid) or {}
+            login = str(ficha.get("glpi_login") or "").strip()
+            token = self.cfg_glpi.get(f"glpi_{login}_token") if login else None
+            return G.sesion(self.cfg_glpi, token) if token else None
+        except Exception:  # noqa: BLE001
+            return None
+
+    def marcar_resuelto(self, tid, solucion="", autor=None):
+        """Pasa el ticket a RESUELTO (status 5) documentando la SOLUCIÓN. Si se indica el `autor`
+        —el técnico que lo resolvió— y tiene su token configurado, la solución se carga CON SU
+        USUARIO, así el ticket dice quién resolvió de verdad. Si no, la carga ITHOS como antes."""
+        propia = self._sesion_de(autor)
+        if propia is not None:
+            try:
+                propia.request("/ITILSolution", "POST", {"input": {
+                    "itemtype": "Ticket", "items_id": tid,
+                    "content": solucion or "Resuelto por el equipo de soporte técnico."}})
+                return True
+            except Exception as e:  # noqa: BLE001
+                log.info("Triage #%s: no pude cargar la solución con el usuario del técnico (%s); "
+                         "la carga ITHOS.", tid, str(e)[:90])
+            finally:
+                propia.cerrar()
         try:
             self.cli.abrir()
             try:
@@ -755,21 +782,23 @@ def _ya_pidio_confirmacion(fu):
     return any(_es_aviso_confirmacion(f) for f in fu)
 
 
-def _es_pedido_al_cliente(f):
+def _es_pedido_al_cliente(f, tecs=None):
     """True si el followup `f` es un pedido PÚBLICO de ITHOS al cliente (un dato que falta o una
     confirmación para avanzar) y por lo tanto el ticket está esperando SU respuesta. Las notas
-    internas (is_private) NO cuentan: el cliente no las ve."""
-    if int(f.get("users_id") or 0) not in TECNICOS or int(f.get("is_private") or 0):
+    internas (is_private) NO cuentan: el cliente no las ve.
+    `tecs`: ids del lado de soporte (por config del cliente); sin él, el equipo por defecto."""
+    if int(f.get("users_id") or 0) not in (tecs or TECNICOS) or int(f.get("is_private") or 0):
         return False
     return _MARCA_ESPERA_CLIENTE in str(f.get("content", "")).lower()
 
 
-def _coordinacion_despues_de(fu, tec_fu_id):
+def _coordinacion_despues_de(fu, tec_fu_id, tecs=None):
     """True si ITHOS ya dejó un pedido al cliente POSTERIOR al comentario `tec_fu_id`. Así el
     pedido NO se repite para el MISMO comentario del técnico tras un reinicio (el estado en memoria
     se pierde), pero SÍ se puede volver a pedir si el técnico deja un comentario NUEVO más adelante.
     Lee la verdad del propio GLPI, no la memoria."""
-    return any(_es_pedido_al_cliente(f) and int(f.get("id") or 0) > int(tec_fu_id or 0) for f in fu)
+    return any(_es_pedido_al_cliente(f, tecs) and int(f.get("id") or 0) > int(tec_fu_id or 0)
+               for f in fu)
 
 
 def _texto_plano(html):
@@ -787,13 +816,13 @@ def _ya_aviso_sin_atender(fu, desde_id):
                and _MARCA_SIN_ATENDER in str(f.get("content", "")).lower() for f in fu)
 
 
-def _ultimo_id_cliente(fu):
+def _ultimo_id_cliente(fu, tecs=None):
     """Mayor id de followup de un NO técnico = la última vez que HABLÓ el cliente (0 si nunca)."""
     return max((int(f.get("id") or 0) for f in fu
-                if int(f.get("users_id") or 0) not in TECNICOS), default=0)
+                if int(f.get("users_id") or 0) not in (tecs or TECNICOS)), default=0)
 
 
-def _espera_pendiente(fu):
+def _espera_pendiente(fu, tecs=None):
     """(fecha del PRIMER pedido, fecha del ÚLTIMO aviso, motivo) si el ticket está esperando una
     respuesta DEL CLIENTE y todavía no contestó. None si no aplica. `motivo`:
       · 'datos'        -> le pedimos un DATO que falta (la primera respuesta del triage), o
@@ -801,10 +830,10 @@ def _espera_pendiente(fu):
     Pendiente = hay un pedido PÚBLICO de ITHOS POSTERIOR a lo último que dijo el cliente. Se lee del
     propio GLPI (no de la memoria) -> sobrevive reinicios y no manda recordatorios falsos: si el
     cliente ya respondió, el ciclo lo pasa a EN CURSO y esto deja de dar True."""
-    avisos = [f for f in fu if _es_pedido_al_cliente(f)]
+    avisos = [f for f in fu if _es_pedido_al_cliente(f, tecs)]
     if not avisos:
         return None
-    if max(int(f.get("id") or 0) for f in avisos) <= _ultimo_id_cliente(fu):
+    if max(int(f.get("id") or 0) for f in avisos) <= _ultimo_id_cliente(fu, tecs):
         return None                          # el cliente ya contestó después del pedido
     fechas = sorted(d for d in (_parse_fecha(f.get("date_creation") or f.get("date"))
                                 for f in avisos) if d)
@@ -816,7 +845,8 @@ def _espera_pendiente(fu):
     # `fechas[0]` (el PRIMER pedido) es la referencia para la escalada: mide cuánto lleva el ticket
     # trabado esperando al cliente, aunque en el medio le hayamos pedido otra cosa.
     publicos = [int(f.get("id") or 0) for f in fu
-                if int(f.get("users_id") or 0) in TECNICOS and not int(f.get("is_private") or 0)]
+                if int(f.get("users_id") or 0) in (tecs or TECNICOS)
+                and not int(f.get("is_private") or 0)]
     ultimo_pedido = max(int(f.get("id") or 0) for f in avisos)
     motivo = "datos" if publicos and ultimo_pedido == min(publicos) else "confirmacion"
     # Excepción: la 1ª respuesta puede estar pidiendo COORDINAR una visita en vez de un dato que
@@ -871,7 +901,7 @@ def _ya_pidio_procedimiento(fu):
                and _MARCA_PROCEDIMIENTO in str(f.get("content", "")).lower() for f in fu)
 
 
-def _texto_resolucion(cliente, tid, fu):
+def _texto_resolucion(cliente, tid, fu, humanos=None):
     """Junta el texto de la RESOLUCIÓN para que la IA juzgue si explica el procedimiento: la
     ITILSolution documentada (si hay) + el último comentario de un técnico HUMANO. '' si no hay nada."""
     partes = []
@@ -884,7 +914,7 @@ def _texto_resolucion(cliente, tid, fu):
                     partes.append(c)
     except Exception:  # noqa: BLE001
         pass
-    tec = [f for f in fu if int(f.get("users_id") or 0) in TECNICOS_HUMANOS]
+    tec = [f for f in fu if int(f.get("users_id") or 0) in (humanos or TECNICOS_HUMANOS)]
     if tec:
         c = re.sub(r"<[^>]+>", " ", str(tec[-1].get("content", ""))).strip()
         if c:
@@ -954,6 +984,9 @@ def gestionar_ciclo(cliente, triage, entidad, estado):
     es una respuesta del cliente (robusto ante reinicios)."""
     anuncios = []
     cfg = getattr(triage, "cfg_glpi", None) or {}
+    # QUIÉNES son "del lado de soporte" en ESTE cliente: sale de su config (`tecnicos`). Sin esto,
+    # un técnico nuevo no se reconoce y todo lo que escribe se lee como si fuera el CLIENTE.
+    tecs, humanos = ids_tecnicos(cfg), ids_humanos(cfg)
     try:
         tickets = G.de_entidad(cliente.tickets_recientes(40), entidad)
     except Exception:  # noqa: BLE001
@@ -1002,24 +1035,26 @@ def gestionar_ciclo(cliente, triage, entidad, estado):
                 continue
         st = estado.setdefault(tid, {})
         base = max((int(f["id"]) for f in fu
-                    if int(f.get("users_id") or 0) in TECNICOS), default=0)
+                    if int(f.get("users_id") or 0) in tecs), default=0)
         nuevos = [f for f in fu if int(f["id"]) > base
-                  and int(f.get("users_id") or 0) not in TECNICOS]
+                  and int(f.get("users_id") or 0) not in tecs]
 
         # ¿Un TÉCNICO HUMANO resolvió el ticket con un comentario? -> marcarlo Resuelto y pedirle
         # confirmación al cliente (mismo flujo que si lo pasaran a 'Resuelto' a mano). Solo en
         # tickets abiertos (no resueltos/cerrados) y una sola vez por comentario nuevo del técnico.
         if status in (1, 2, 4) and not _ya_pidio_confirmacion(fu):
-            tec_fus = [f for f in fu if int(f.get("users_id") or 0) in TECNICOS_HUMANOS]
+            tec_fus = [f for f in fu if int(f.get("users_id") or 0) in humanos]
             ult = tec_fus[-1] if tec_fus else None
             if ult and int(ult["id"]) > int(st.get("ultimo_tec_fu", 0)):
                 st["ultimo_tec_fu"] = int(ult["id"])
                 cont = re.sub(r"<[^>]+>", " ", str(ult.get("content", ""))).strip()
                 if triage.tecnico_resolvio(cont):
-                    # Marcamos Resuelto con una nota de solución ESTÁNDAR: NO copiamos el
-                    # comentario del técnico (ya está en el ticket; duplicarlo se lee como una
-                    # confirmación repetida). Pedimos UNA sola confirmación al cliente.
-                    if triage.marcar_resuelto(t["id"]) and triage.pedir_confirmacion(t["id"]):
+                    # La SOLUCIÓN es lo que escribió el técnico —ahí está el procedimiento, que es
+                    # lo que alimenta la base de conocimiento— y se carga CON SU USUARIO, para que
+                    # el ticket diga quién resolvió. Después, UNA sola confirmación al cliente.
+                    if triage.marcar_resuelto(t["id"], cont,
+                                              autor=int(ult.get("users_id") or 0)) \
+                            and triage.pedir_confirmacion(t["id"]):
                         st["confirm_pedido"] = True
                         anunciar(
                             t["id"],
@@ -1036,7 +1071,7 @@ def gestionar_ciclo(cliente, triage, entidad, estado):
                 # = users_id in TECNICOS_HUMANOS), NUNCA del cliente. Si el CLIENTE escribe algo como
                 # "coordinemos una reunión", eso es una respuesta del cliente (`nuevos`) y NO dispara
                 # esta lógica: la coordinación en espera es exclusiva de lo que pide el TÉCNICO.
-                if (status != 4 and not _coordinacion_despues_de(fu, int(ult["id"]))
+                if (status != 4 and not _coordinacion_despues_de(fu, int(ult["id"]), tecs)
                         and triage.tecnico_pide_confirmacion(cont)):
                     if triage.poner_en_espera_pedido(t["id"], cont):
                         anunciar(
@@ -1081,7 +1116,7 @@ def gestionar_ciclo(cliente, triage, entidad, estado):
                 #   · a los 5 días hábiles sin respuesta, aviso al TÉCNICO ASIGNADO (nota interna
                 #     privada + WhatsApp @mencionándolo) para que decida.
                 # Si el ticket está POSPUESTO (reactivación agendada), no se molesta a nadie.
-                espera = _espera_pendiente(fu)
+                espera = _espera_pendiente(fu, tecs)
                 if espera and not _esta_pospuesto(cfg, t["id"]):
                     primero, ultimo, motivo = espera
                     ahora = _ahora_local(cfg)
@@ -1156,7 +1191,7 @@ def gestionar_ciclo(cliente, triage, entidad, estado):
             if not st.get("rev_solucion"):
                 st["rev_solucion"] = True
                 if not _ya_pidio_procedimiento(fu):
-                    resol = _texto_resolucion(cliente, t["id"], fu)
+                    resol = _texto_resolucion(cliente, t["id"], fu, humanos)
                     explica = triage.explica_procedimiento(resol) if resol else False
                     if explica is False:      # False EXPLÍCITO (no None -> IA caída): no explica -> pedir
                         triage.nota_interna(t["id"], _NOTA_PEDIR_PROCEDIMIENTO)

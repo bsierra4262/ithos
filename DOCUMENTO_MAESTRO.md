@@ -350,6 +350,16 @@ teléfonos). Con eso ITHOS lo reconoce como técnico —sus comentarios pueden r
 le puede asignar, contesta "mis tickets" por su número y recibe las @menciones. **Sumar a alguien
 al equipo no toca código**: se carga en la config y ya está.
 
+Ese mismo conjunto es el que usa el **ciclo de vida** para saber quién habla "del lado de soporte".
+Es lo que separa un comentario del equipo de una respuesta del cliente, así que un técnico que no
+esté cargado se lee como si fuera el cliente: su resolución no cierra nada y el ticket queda
+esperando una respuesta que ya llegó.
+
+Si además se configura el **token de cada técnico** (`glpi_<login>_token`), lo que ITHOS documenta
+por él queda **con su usuario**: cuando alguien resuelve por comentario, la **solución se carga a su
+nombre y con su procedimiento**, no a nombre de ITHOS ni del administrador. El historial dice quién
+resolvió de verdad. Sin token configurado, la carga ITHOS como siempre.
+
 **Formación acompañada.** Un técnico nuevo aprende haciendo. Si en su ficha se indica un
 `responsable`, el ticket que le toca a esa persona se le asigna **también a él, al mismo tiempo y
 con el mismo criterio**: trabajan el mismo caso hasta que pueda resolverlo solo. Los tres quedan

@@ -368,6 +368,12 @@ técnico, le asigna, le menciona y le responde «mis tickets» por su número, s
 técnico en **formación** puede tener un `responsable`: entonces el ticket que le toca a esa persona
 se le asigna también a él, al mismo tiempo y con el mismo criterio, hasta que pueda resolverlo solo.
 
+Ese mismo conjunto es el que separa, en el ciclo de vida, un comentario del equipo de una respuesta
+del cliente: un técnico que no esté cargado se lee como si fuera el cliente y su resolución no cierra
+nada. Y si se configura el **token de cada técnico**, cuando alguien resuelve por comentario la
+**solución se documenta con su usuario y con su procedimiento** —no a nombre de ITHOS ni del
+administrador—, y acto seguido se le informa al cliente para que confirme.
+
 Por chat o por voz se puede pedir: cerrar, reabrir, poner en espera, posponer con fecha y hora, responder
 al cliente, categorizar, fijar SLA, cambiar prioridad, escalar, asignar, crear, buscar, leer un ticket
 completo y ver reportes. Dos acciones trabajan **por técnico asignado**, filtrando por el campo «Asignado

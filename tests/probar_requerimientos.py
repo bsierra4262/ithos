@@ -481,7 +481,7 @@ try:
 
     class _Tri:
         def tecnico_resolvio(self, t): return True     # el comentario del técnico resuelve
-        def marcar_resuelto(self, tid, sol=""): llam["marcar"] += 1; return True
+        def marcar_resuelto(self, tid, sol="", autor=None):llam["marcar"] += 1; return True
         def pedir_confirmacion(self, tid): llam["confirm"] += 1; return True
         def poner_en_curso(self, tid): return True
         def cerrar(self, tid): return True
@@ -519,7 +519,7 @@ try:
 
     class _Tri2:
         def tecnico_resolvio(self, t): return True
-        def marcar_resuelto(self, tid, sol=""): return True
+        def marcar_resuelto(self, tid, sol="", autor=None):return True
         def pedir_confirmacion(self, tid): llam2["confirm"] += 1; return True
         def poner_en_curso(self, tid): return True
         def cerrar(self, tid): return True
@@ -706,7 +706,7 @@ try:
         def cerrar(self, tid): return True
         def reabrir(self, tid): return True
         def cliente_confirma(self, t): return None
-        def marcar_resuelto(self, tid, sol=""): return True
+        def marcar_resuelto(self, tid, sol="", autor=None):return True
         def tecnico_resolvio(self, t): return False
         def nota_interna(self, tid, texto): return True
     od7 = _TRI.G.de_entidad
@@ -3358,7 +3358,9 @@ CAPACIDADES = [
               "CHANGELOG.md": ["El SLA corría de noche"]}},
     {"que": "el equipo sale de la configuración y los que se forman trabajan acompañados",
      "codigo": [("ITHOS/comun/tickets.py", "def acompanan_a"),
-                ("ITHOS/central/triage.py", "def ids_humanos")],
+                ("ITHOS/central/triage.py", "def ids_humanos"),
+                ("ITHOS/central/triage.py", "tecs, humanos = ids_tecnicos(cfg), ids_humanos(cfg)"),
+                ("ITHOS/central/triage.py", "def _sesion_de")],
      "docs": {"DOCUMENTO_MAESTRO.md": ["El equipo sale de la configuración",
                                        "Formación acompañada"],
               "README.md": ["formación", "responsable"],

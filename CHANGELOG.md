@@ -137,6 +137,16 @@ y el versionado, [SemVer](https://semver.org/lang/es/).
   el SLA por calendario y horario de atención (Lun–Vie 09–18).
 
 ### Fixed
+- **Un técnico nuevo se leía como si fuera el cliente.** El ciclo de vida reconocía sólo a los
+  técnicos escritos en el código, no a los de la configuración. Cuando alguien que entró al equipo
+  resolvió un ticket a las 18:30, ITHOS lo tomó como «el cliente respondió fuera de horario» y lo
+  dejó **En espera** hasta el día siguiente, en vez de marcarlo resuelto y pedirle la confirmación
+  al cliente. Ahora el ciclo usa el equipo de la config, igual que el triage.
+- **La solución quedaba a nombre de quien no resolvió.** Cuando un técnico resuelve por comentario,
+  la solución se documenta ahora **con su usuario** (si tiene su token configurado) y **con su
+  procedimiento** —el texto que escribió, que es lo que alimenta la base de conocimiento— en vez de
+  una frase genérica a nombre de ITHOS. Y acto seguido se le informa al cliente para que confirme:
+  como el técnico ya explicó cómo lo resolvió, no se le pide además que lo documente.
 - **Pedía un legajo que ya estaba en el ticket.** El asunto se carga como «00084 Zuker Sebastián»: el
   número **es** el legajo aunque no diga la palabra. ITHOS leía sólo la descripción, no lo veía, y dejaba
   el ticket **En espera** pidiéndole al cliente un dato que ya había escrito. Ahora el legajo se reconoce

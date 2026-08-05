@@ -194,6 +194,85 @@ tri, _ = correr(2, [PEDIDO, RESPUESTA, YA_AVISADO], datetime(2026, 8, 3, 15, 0))
 ok(not tri.avisos_tecnico,
    "y no se repite tras un reinicio (el aviso ya está escrito en el ticket)")
 
+print("\n=== 6 · Un TÉCNICO NUEVO no es el cliente ===")
+# Regresión: entró gente nueva al equipo y el ciclo seguía reconociendo sólo a los técnicos que
+# estaban escritos en el código. Una técnica resolvió el ticket a las 18:30 y el ciclo lo leyó como
+# "el cliente respondió fuera de horario": lo dejó EN ESPERA hasta el otro día en vez de marcarlo
+# resuelto y pedirle la confirmación al cliente.
+LAURA = 30
+CFG_EQUIPO = dict(CFG, tecnicos=[
+    {"nombre": "Brian Sierra", "glpi_id": 7, "glpi_login": "bsierra"},
+    {"nombre": "Laura Zaltron", "glpi_id": LAURA, "glpi_login": "lzaltron"},
+    {"nombre": "Lisandro Campos", "glpi_id": 31, "glpi_login": "lcampos"}])
+ok(LAURA in TR.ids_humanos(CFG_EQUIPO) and LAURA in TR.ids_tecnicos(CFG_EQUIPO),
+   "el equipo sale de la config: la técnica nueva cuenta como soporte",
+   str(sorted(TR.ids_humanos(CFG_EQUIPO))))
+ok(LAURA not in TR.TECNICOS_HUMANOS,
+   "y no estaba en el equipo fijo del código (por eso fallaba)")
+
+RESOLUCION = {"id": 103, "users_id": LAURA, "is_private": 0,
+              "content": "El inconveniente quedó solucionado. Revisamos sus fichadas en la base "
+                         "de datos y desde el 24/7 no ficha.",
+              "date_creation": "2026-08-05 18:30:00"}
+tecs = TR.ids_tecnicos(CFG_EQUIPO)
+base = max((int(f["id"]) for f in [PEDIDO, RESPUESTA, RESOLUCION]
+            if int(f.get("users_id") or 0) in tecs), default=0)
+nuevos = [f for f in [PEDIDO, RESPUESTA, RESOLUCION]
+          if int(f["id"]) > base and int(f.get("users_id") or 0) not in tecs]
+ok(base == RESOLUCION["id"] and not nuevos,
+   "lo que escribe la técnica NO se toma como una respuesta del cliente", str(nuevos))
+sin_config = [f for f in [PEDIDO, RESPUESTA, RESOLUCION]
+              if int(f["id"]) > max((int(x["id"]) for x in [PEDIDO, RESPUESTA, RESOLUCION]
+                                     if int(x.get("users_id") or 0) in TR.TECNICOS), default=0)
+              and int(f.get("users_id") or 0) not in TR.TECNICOS]
+ok(any(f["id"] == RESOLUCION["id"] for f in sin_config),
+   "con el equipo fijo del código sí se la tomaba por cliente (el bug)",
+   str([f["id"] for f in sin_config]))
+ok(TR._ultimo_id_cliente([PEDIDO, RESPUESTA, RESOLUCION], tecs) == RESPUESTA["id"],
+   "la última vez que habló el CLIENTE sigue siendo su propio mensaje")
+
+print("\n=== 7 · La solución queda a nombre de quien la resolvió ===")
+# Si la carga ITHOS —o peor, el usuario administrador— el ticket dice que resolvió alguien que no
+# resolvió. Con el token del técnico configurado, la solución queda con SU usuario.
+CFG_TOKENS = dict(CFG_EQUIPO, glpi_lzaltron_token="tok-laura", glpi_bsierra_token="tok-brian")
+usados = []
+
+
+class SesionFalsa:
+    def __init__(self, token):
+        self.token = token
+
+    def request(self, path, metodo="GET", data=None, **k):
+        if path == "/ITILSolution" and metodo == "POST":
+            usados.append((self.token, (data or {}).get("input", {}).get("content", "")))
+        return {}
+
+    def abrir(self):
+        pass
+
+    def cerrar(self):
+        pass
+
+
+G_orig = TR.G.sesion
+TR.G.sesion = lambda cfg, token=None: SesionFalsa(token)
+tri = TR.Triage.__new__(TR.Triage)
+tri.cfg_glpi = CFG_TOKENS
+tri.cli = SesionFalsa("tok-ithos")
+try:
+    tri.marcar_resuelto(662, "El inconveniente quedó solucionado. Revisamos las fichadas…",
+                        autor=LAURA)
+    ok(usados and usados[0][0] == "tok-laura",
+       "la solución la carga LAURA con su propio usuario", str(usados[:1])[:70])
+    ok(usados and "Revisamos las fichadas" in usados[0][1],
+       "y el texto es el procedimiento que ella escribió, no una frase genérica")
+    usados.clear()
+    tri.marcar_resuelto(663, "listo", autor=8)      # Alejandro no tiene token configurado
+    ok(usados and usados[0][0] == "tok-ithos",
+       "si el técnico no tiene token, la carga ITHOS como siempre", str(usados[:1])[:60])
+finally:
+    TR.G.sesion = G_orig
+
 print("\n" + "=" * 78)
 if FALLAS:
     print(f"FALLARON {len(FALLAS)}: " + "; ".join(FALLAS))
