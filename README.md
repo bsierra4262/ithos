@@ -370,9 +370,10 @@ se le asigna también a él, al mismo tiempo y con el mismo criterio, hasta que 
 
 Ese mismo conjunto es el que separa, en el ciclo de vida, un comentario del equipo de una respuesta
 del cliente: un técnico que no esté cargado se lee como si fuera el cliente y su resolución no cierra
-nada. Y si se configura el **token de cada técnico**, cuando alguien resuelve por comentario la
-**solución se documenta con su usuario y con su procedimiento** —no a nombre de ITHOS ni del
-administrador—, y acto seguido se le informa al cliente para que confirme.
+nada. Cuando alguien resuelve por comentario, la resolución es **su comentario, con sus palabras**:
+el ticket pasa a resuelto y se le informa al cliente para que confirme, sin que ITHOS escriba además
+una solución propia ni le pida documentar lo que ya documentó. Si en algún camino hay que dejar una
+solución formal, se carga **con el usuario del técnico** (su token), no con el de ITHOS.
 
 Por chat o por voz se puede pedir: cerrar, reabrir, poner en espera, posponer con fecha y hora, responder
 al cliente, categorizar, fijar SLA, cambiar prioridad, escalar, asignar, crear, buscar, leer un ticket

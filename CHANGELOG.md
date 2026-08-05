@@ -142,11 +142,14 @@ y el versionado, [SemVer](https://semver.org/lang/es/).
   resolvió un ticket a las 18:30, ITHOS lo tomó como «el cliente respondió fuera de horario» y lo
   dejó **En espera** hasta el día siguiente, en vez de marcarlo resuelto y pedirle la confirmación
   al cliente. Ahora el ciclo usa el equipo de la config, igual que el triage.
-- **La solución quedaba a nombre de quien no resolvió.** Cuando un técnico resuelve por comentario,
-  la solución se documenta ahora **con su usuario** (si tiene su token configurado) y **con su
-  procedimiento** —el texto que escribió, que es lo que alimenta la base de conocimiento— en vez de
-  una frase genérica a nombre de ITHOS. Y acto seguido se le informa al cliente para que confirme:
-  como el técnico ya explicó cómo lo resolvió, no se le pide además que lo documente.
+- **La resolución del técnico se duplicaba, y a nombre de otro.** Cuando alguien resolvía por
+  comentario, ITHOS escribía además su propia «solución» —genérica y a nombre de ITHOS o del
+  administrador—, así que el ticket mostraba la explicación dos veces y atribuida a quien no
+  resolvió. Ahora la resolución es **el comentario del técnico, con sus palabras**: el ticket sólo
+  pasa a **Resuelto** y acto seguido se le informa al cliente para que confirme. Como el técnico ya
+  explicó cómo lo resolvió, tampoco se le pide que lo documente. Si el ticket se cierra por otra vía
+  y sí hay que documentar una solución, se carga **con el usuario del técnico** (token
+  `glpi_<login>_token`), no con el de ITHOS.
 - **Pedía un legajo que ya estaba en el ticket.** El asunto se carga como «00084 Zuker Sebastián»: el
   número **es** el legajo aunque no diga la palabra. ITHOS leía sólo la descripción, no lo veía, y dejaba
   el ticket **En espera** pidiéndole al cliente un dato que ya había escrito. Ahora el legajo se reconoce

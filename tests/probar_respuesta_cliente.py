@@ -231,9 +231,10 @@ ok(any(f["id"] == RESOLUCION["id"] for f in sin_config),
 ok(TR._ultimo_id_cliente([PEDIDO, RESPUESTA, RESOLUCION], tecs) == RESPUESTA["id"],
    "la última vez que habló el CLIENTE sigue siendo su propio mensaje")
 
-print("\n=== 7 · La solución queda a nombre de quien la resolvió ===")
-# Si la carga ITHOS —o peor, el usuario administrador— el ticket dice que resolvió alguien que no
-# resolvió. Con el token del técnico configurado, la solución queda con SU usuario.
+print("\n=== 7 · La resolución es la del técnico, no una que escriba ITHOS ===")
+# Cuando el técnico resuelve por comentario, su explicación YA está en el ticket: copiarla como
+# "solución" la deja repetida. Sólo se pasa a Resuelto y se le pide confirmación al cliente.
+# Y si alguna vez SÍ se documenta una solución, queda a nombre de quien resolvió (no de admin).
 CFG_TOKENS = dict(CFG_EQUIPO, glpi_lzaltron_token="tok-laura", glpi_bsierra_token="tok-brian")
 usados = []
 
@@ -270,6 +271,10 @@ try:
     tri.marcar_resuelto(663, "listo", autor=8)      # Alejandro no tiene token configurado
     ok(usados and usados[0][0] == "tok-ithos",
        "si el técnico no tiene token, la carga ITHOS como siempre", str(usados[:1])[:60])
+    usados.clear()
+    tri.marcar_resuelto(664)                        # el caso del ciclo: sin texto
+    ok(not usados,
+       "sin texto NO se escribe ninguna solución: la del técnico ya está en el ticket")
 finally:
     TR.G.sesion = G_orig
 

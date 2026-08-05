@@ -355,10 +355,12 @@ Es lo que separa un comentario del equipo de una respuesta del cliente, así que
 esté cargado se lee como si fuera el cliente: su resolución no cierra nada y el ticket queda
 esperando una respuesta que ya llegó.
 
-Si además se configura el **token de cada técnico** (`glpi_<login>_token`), lo que ITHOS documenta
-por él queda **con su usuario**: cuando alguien resuelve por comentario, la **solución se carga a su
-nombre y con su procedimiento**, no a nombre de ITHOS ni del administrador. El historial dice quién
-resolvió de verdad. Sin token configurado, la carga ITHOS como siempre.
+Cuando un técnico **resuelve por comentario**, la resolución es **su comentario, con sus palabras**:
+el ticket pasa a Resuelto y se le informa al cliente para que confirme, sin que ITHOS escriba
+además una "solución" propia —que quedaría repetida y atribuida a quien no resolvió— ni le pida al
+técnico que documente lo que ya documentó. Si en algún camino sí hay que dejar una solución formal
+y el técnico tiene su **token** configurado (`glpi_<login>_token`), se carga **con su usuario**, no
+con el de ITHOS ni el del administrador: el historial dice quién resolvió de verdad.
 
 **Formación acompañada.** Un técnico nuevo aprende haciendo. Si en su ficha se indica un
 `responsable`, el ticket que le toca a esa persona se le asigna **también a él, al mismo tiempo y

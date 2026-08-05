@@ -407,9 +407,25 @@ class Triage:
             return None
 
     def marcar_resuelto(self, tid, solucion="", autor=None):
-        """Pasa el ticket a RESUELTO (status 5) documentando la SOLUCIÓN. Si se indica el `autor`
-        —el técnico que lo resolvió— y tiene su token configurado, la solución se carga CON SU
-        USUARIO, así el ticket dice quién resolvió de verdad. Si no, la carga ITHOS como antes."""
+        """Pasa el ticket a RESUELTO (status 5).
+
+        SIN texto de solución sólo cambia el estado: cuando el técnico resolvió por comentario, su
+        explicación YA está en el ticket y volver a escribirla la deja repetida. La resolución que
+        se lee es la de él, con sus palabras, no una redactada por ITHOS.
+
+        CON texto se documenta como solución formal y, si se indica el `autor` —el técnico que
+        resolvió— y tiene su token configurado, se carga CON SU USUARIO: el ticket dice quién
+        resolvió de verdad, no ITHOS ni el administrador."""
+        if not solucion:
+            try:
+                self.cli.abrir()
+                self.cli.request(f"/Ticket/{tid}", "PUT", {"input": {"status": 5}})
+                return True
+            except Exception as e:  # noqa: BLE001
+                log.warning("Triage: no pude marcar resuelto #%s: %s", tid, e)
+                return False
+            finally:
+                self.cli.cerrar()
         propia = self._sesion_de(autor)
         if propia is not None:
             try:
@@ -1049,12 +1065,11 @@ def gestionar_ciclo(cliente, triage, entidad, estado):
                 st["ultimo_tec_fu"] = int(ult["id"])
                 cont = re.sub(r"<[^>]+>", " ", str(ult.get("content", ""))).strip()
                 if triage.tecnico_resolvio(cont):
-                    # La SOLUCIÓN es lo que escribió el técnico —ahí está el procedimiento, que es
-                    # lo que alimenta la base de conocimiento— y se carga CON SU USUARIO, para que
-                    # el ticket diga quién resolvió. Después, UNA sola confirmación al cliente.
-                    if triage.marcar_resuelto(t["id"], cont,
-                                              autor=int(ult.get("users_id") or 0)) \
-                            and triage.pedir_confirmacion(t["id"]):
+                    # La resolución es EL COMENTARIO DEL TÉCNICO, con sus palabras: ya está en el
+                    # ticket, así que sólo se pasa a RESUELTO (no se copia ni se redacta otra) y se
+                    # le pide UNA confirmación al cliente. Si no contesta, el ciclo se la recuerda
+                    # una vez por día hábil hasta que responda.
+                    if triage.marcar_resuelto(t["id"]) and triage.pedir_confirmacion(t["id"]):
                         st["confirm_pedido"] = True
                         anunciar(
                             t["id"],
