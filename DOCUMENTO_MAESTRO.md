@@ -336,7 +336,9 @@ intuición, y aplica:
   asignado a mano, **respeta esa asignación**.
 - **Primera respuesta profesional**, saludando **al solicitante** por su nombre (quien abrió el ticket, no
   la persona mencionada en el texto). Si falta un dato indispensable (p. ej. el legajo) lo pide; si el dato
-  ya está en el ticket, **no lo pide**. Se despide **una sola vez**.
+  ya está en el ticket, **no lo pide**: el legajo suele venir en el **asunto** sin decir la palabra
+  «legajo» («00084 Zuker Sebastián»), y aun así se reconoce y el ticket avanza. Se despide **una sola vez**.
+  Se despide **una sola vez**: si el modelo ya cerró con su firma, no se le agrega otra.
 - **Fuera del horario de atención**: el ticket queda **En espera** y se reabre solo al comenzar la jornada.
   El cliente **no se entera** del corte (sólo ve la respuesta profesional); el equipo lo ve por nota interna.
 - **Nunca re-triagea**: una vez que ITHOS pasó, no vuelve a categorizar ni pisa cambios manuales.

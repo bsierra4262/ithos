@@ -137,6 +137,13 @@ y el versionado, [SemVer](https://semver.org/lang/es/).
   el SLA por calendario y horario de atención (Lun–Vie 09–18).
 
 ### Fixed
+- **Pedía un legajo que ya estaba en el ticket.** El asunto se carga como «00084 Zuker Sebastián»: el
+  número **es** el legajo aunque no diga la palabra. ITHOS leía sólo la descripción, no lo veía, y dejaba
+  el ticket **En espera** pidiéndole al cliente un dato que ya había escrito. Ahora el legajo se reconoce
+  también en el asunto —con o sin la palabra «legajo»—, el ticket **avanza** y la respuesta lo nombra en
+  vez de pedirlo. Si de verdad falta, se sigue pidiendo como siempre.
+- **La primera respuesta firmaba dos veces.** Cuando el modelo cerraba con su propia firma («Gracias,
+  Soporte ITH») y el sistema le agregaba el cierre de espera, el cliente leía «Soporte ITH» repetido.
 - **El SLA corría de noche y los fines de semana.** Cuando el cliente respondía fuera del horario de
   atención el ticket pasaba a **En curso** igual, así que el reloj del SLA corría sábado y domingo
   contra un equipo que no estaba trabajando y el lunes el ticket ya nacía vencido. Ahora, si la

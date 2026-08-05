@@ -61,9 +61,17 @@ PRIORIDAD, según el alcance (no según el tono ni las mayúsculas del texto):
 DATOS DEL AFECTADO (Nombre y Apellido + Número de Legajo): se piden SÓLO cuando hay
 UNA persona afectada a la que identificar.
 
+⛔ EL LEGAJO CASI SIEMPRE VIENE EN EL ASUNTO, aunque no diga la palabra "legajo".
+El asunto se escribe "<legajo> <apellido y nombre>": en «00084 Zuker Sebastián» el
+legajo ES 00084, y en «Legajo 01347 Rojas, Natalia» es 01347. Si el asunto empieza con
+un número, ESE es el legajo y YA LO TENÉS: no lo pidas. Pedir un dato que está a la
+vista en el ticket es el peor error que podés cometer: deja el ticket parado esperando
+algo que el cliente ya escribió. LEÉ EL ASUNTO antes de decidir que falta algo.
+
 REGLAS FIJAS (cumplilas SIEMPRE, sin excepción):
-- alcance="individual" y el texto NO trae el NÚMERO de legajo (un número, no sólo el
-  nombre) -> necesita_info=true. Si trae el número -> necesita_info=false.
+- alcance="individual" y NI el asunto NI la descripción traen el NÚMERO de legajo (un
+  número, no sólo el nombre) -> necesita_info=true. Si el número está en cualquiera de
+  los dos -> necesita_info=false.
 - alcance distinto de "individual" -> necesita_info=false SIEMPRE. No hay una persona
   a la que pedirle el legajo.
 - La prioridad sale de la tabla de arriba, no del texto.
@@ -166,6 +174,23 @@ _RE_SERVICIO_SEDE = re.compile(
     r"falla\s+general|se\s+cay[oó]\s+(?:todo|el\s+sistema)", re.I)
 # Hay UNA persona identificada: el ticket sí es de alguien en concreto.
 _RE_PERSONA = re.compile(r"legajo\s*n?[°º:.\s-]*\d{2,}|\bleg\.?\s*\d{2,}", re.I)
+# El legajo escrito con todas las letras ("Legajo 01347", "leg. 5808").
+_RE_LEGAJO_EXPLICITO = re.compile(r"legajo\s*n?[°º:.\s-]*(\d{2,})|\bleg\.?\s*(\d{2,})", re.I)
+# El asunto arranca con el legajo y sigue el nombre ("00084 Zuker Sebastián"): así los carga el
+# cliente y NO escribe la palabra "legajo". El número igual está: pedirlo es pedir lo que ya tenemos.
+_RE_LEGAJO_ASUNTO = re.compile(r"^\s*(\d{3,6})\s*[-–.]?\s+[^\W\d_]", re.UNICODE)
+
+
+def legajo_en_texto(asunto, descripcion=""):
+    """El número de legajo que YA está en el ticket, o None. Mira el asunto y la descripción."""
+    m = _RE_LEGAJO_ASUNTO.match(str(asunto or ""))
+    if m:
+        return m.group(1)
+    for texto in (asunto, descripcion):
+        m = _RE_LEGAJO_EXPLICITO.search(str(texto or ""))
+        if m:
+            return m.group(1) or m.group(2)
+    return None
 # La respuesta está pidiendo identificar a un afectado que en este ticket no existe.
 _RE_PIDE_DATOS_PERSONA = re.compile(
     r"legajo|nombre\s+y\s+apellido|persona\s+afectada|agente\s+afectad", re.I)
@@ -185,6 +210,14 @@ MARCA_COORDINAR = "coordinar la visita"
 # Respuesta cuando el equipo se cayó y hay que ir al lugar. Las instalaciones las hicimos nosotros:
 # no se pregunta dónde está, si tiene energía ni si hay otro lector —eso ya lo sabemos y lo vemos al
 # llegar—. Lo único que hace falta del cliente es CUÁNDO podemos pasar.
+def respuesta_con_legajo(legajo):
+    """Acuse cuando el dato YA estaba en el ticket: se avisa que se está trabajando, sin pedir
+    nada. Nombrar el legajo deja claro que lo leímos y que no hace falta que lo repitan."""
+    return (f"recibimos el ticket. Con el legajo {legajo} tenemos lo necesario para revisarlo, "
+            "así que ya lo estamos trabajando: verificamos el caso del agente y les confirmamos "
+            "apenas tengamos el resultado. No hace falta que nos manden nada más.")
+
+
 RESPUESTA_SERVICIO_CAIDO = (
     "recibimos el aviso y lo tomamos como una falla del servicio: mientras esté así no puede "
     "fichar nadie en esa ubicación, por lo que el ticket queda con prioridad alta y a cargo del "
@@ -244,6 +277,18 @@ def coherente(a, asunto="", descripcion=""):
         a["necesita_info"] = False
         hechas.append("no se pide legajo ni se deja en espera: lo que falla es el servicio, "
                       "no el fichaje de una persona")
+
+    # El dato que iba a pedir YA ESTÁ en el ticket. Pasa cuando el legajo viene en el ASUNTO sin
+    # la palabra "legajo" («00084 Zuker Sebastián»): el modelo lee la descripción, no lo ve, y deja
+    # el ticket EN ESPERA pidiendo algo que el cliente ya escribió.
+    legajo = legajo_en_texto(asunto, descripcion)
+    if alcance == "individual" and a.get("necesita_info") and legajo:
+        a["necesita_info"] = False
+        hechas.append(f"el legajo ({legajo}) ya estaba en el ticket: no se pide y el ticket avanza")
+        if _RE_PIDE_DATOS_PERSONA.search(a.get("primera_respuesta") or ""):
+            a["primera_respuesta"] = respuesta_con_legajo(legajo)
+        if _RE_PIDE_DATOS_PERSONA.search(a.get("nota_tecnico") or ""):
+            a["nota_tecnico"] = ""
 
     piso = _PISO_PRIORIDAD[alcance]
     prio = a.get("prioridad") if a.get("prioridad") in _PRIORIDAD_ORDEN else piso

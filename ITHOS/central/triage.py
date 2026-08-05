@@ -693,6 +693,12 @@ _RE_DESPEDIDA_ESPERA = re.compile(
     r"(?:respuesta|confirmaci[oó]n|respuesta\s+o\s+confirmaci[oó]n)\s*\.?"
     r"(?:\s*(?:atentamente\s*,?\s*)?(?:soporte\s+ith|saludos)\s*\.?)?\s*$",
     re.I)
+# La firma del final ("Gracias, Soporte ITH", "Saludos, Soporte ITH", o el "Soporte ITH" solo).
+# El cierre que agregamos ya termina firmado, así que sin sacar esto el cliente lee la firma DOS
+# veces seguidas — que es exactamente lo que estaba pasando.
+_RE_FIRMA_FINAL = re.compile(
+    r"\s*(?:(?:muchas\s+)?gracias|saludos(?:\s+cordiales)?|atentamente|"
+    r"desde\s+ya\s+(?:muchas\s+)?gracias)?\s*[,.;]?\s*(?:soporte\s+ith)\s*\.?\s*$", re.I)
 
 
 def _con_cierre_espera(texto):
@@ -703,6 +709,7 @@ def _con_cierre_espera(texto):
     if _MARCA_ESPERA_CLIENTE in t.lower():
         return t
     t = _RE_DESPEDIDA_ESPERA.sub("", t).strip()      # sacamos la despedida propia del modelo
+    t = _RE_FIRMA_FINAL.sub("", t).strip()           # y su firma: el cierre ya trae la nuestra
     return (t + _CIERRE_ESPERA).strip()
 
 

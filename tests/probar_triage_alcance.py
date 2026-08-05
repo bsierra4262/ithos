@@ -152,6 +152,38 @@ sin_dato, _ = cerebro.coherente({"categoria": "TERMINALES", "prioridad": "Baja",
                                  "responsable": "bsierra", "necesita_info": True})
 ok(sin_dato["alcance"] == "individual", "sin alcance declarado se asume el caso más conservador")
 
+print("\n=== 3.1 · El legajo que YA está en el ticket no se pide ===")
+# Caso real (#662): el asunto es «00084 Zuker Sebastián» — el legajo está ahí aunque no diga la
+# palabra "legajo". ITHOS lo pidió igual y dejó el ticket EN ESPERA por un dato que ya tenía.
+ok(cerebro.legajo_en_texto("00084 Zuker Sebastián", "no puede fichar hace días") == "00084",
+   "el asunto «00084 Zuker Sebastián» ya trae el legajo")
+ok(cerebro.legajo_en_texto("Legajo 01347 Rojas, Natalia", "") == "01347",
+   "y el que lo dice con todas las letras, también")
+ok(cerebro.legajo_en_texto("Fichadas sin figurar", "tenemos problemas con el proceso") is None,
+   "un ticket sin legajo sigue sin tenerlo (no se inventa)")
+ok(cerebro.legajo_en_texto("EL FICHAJE DE ZARATE DEJO DE FUNCIONAR", "está apagado") is None,
+   "y un equipo caído tampoco tiene legajo")
+
+con_legajo, corr_l = cerebro.coherente(
+    {"alcance": "individual", "categoria": "TERMINALES", "prioridad": "Baja",
+     "responsable": "bsierra", "necesita_info": True,
+     "primera_respuesta": "¿Podrías proporcionarme su número de legajo? Gracias, Soporte ITH",
+     "nota_tecnico": "Se solicita el legajo del afectado."},
+    "00084 Zuker Sebastián", "la persona detallada en el título no puede fichar hace días")
+ok(con_legajo["necesita_info"] is False,
+   "el ticket NO queda en espera: el dato ya estaba", str(corr_l))
+ok("00084" in con_legajo["primera_respuesta"]
+   and "legajo?" not in con_legajo["primera_respuesta"],
+   "y la respuesta lo nombra en vez de pedirlo", con_legajo["primera_respuesta"][:80])
+ok(not con_legajo["nota_tecnico"], "la nota que decía 'se solicita el legajo' se descarta")
+
+sin_legajo, _ = cerebro.coherente(
+    {"alcance": "individual", "categoria": "TERMINALES", "prioridad": "Baja",
+     "responsable": "bsierra", "necesita_info": True,
+     "primera_respuesta": "¿Me pasás el legajo?"}, "Sin acceso", "Juan no puede fichar")
+ok(sin_legajo["necesita_info"] is True,
+   "si de verdad falta el legajo, se sigue pidiendo como siempre")
+
 print("\n=== 4 · La respuesta se despide UNA sola vez ===")
 doble = ("Hola Facundo, para poder ayudarte, ¿podrías indicarme el legajo? "
          "Quedo a la espera de tu respuesta. Soporte ITH")
@@ -161,6 +193,9 @@ ok(TR._MARCA_ESPERA_CLIENTE in uno.lower(),
    "y conserva el marcador que el ciclo necesita para recordar")
 ok(TR._con_cierre_espera("Hola. Necesito el legajo.").lower().count("a la espera de") == 1,
    "si el modelo no se despide, el cierre se agrega igual")
+firmado = TR._con_cierre_espera("Hola Facundo, necesito el dato. Gracias, Soporte ITH")
+ok(firmado.lower().count("soporte ith") == 1,
+   "y tampoco firma dos veces cuando el modelo ya firmó", firmado[-60:])
 
 print("\n=== 5 · El triage completo, de punta a punta ===")
 

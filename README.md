@@ -312,7 +312,9 @@ flowchart TD
 En el **primer triage** ITHOS lee el ticket completo —asunto, descripción y seguimientos—, lo compara con
 los casos parecidos ya trabajados de ese cliente, corrige la carga si vino mal, fija categoría, prioridad
 y SLA/OLA, asigna, y responde saludando a **quien abrió el ticket** por su nombre (y despidiéndose una
-sola vez). Pide un dato sólo si de verdad falta. Si el ticket entró fuera del horario de atención queda en
+sola vez). Pide un dato sólo si de verdad falta: el legajo suele venir en el **asunto** sin la palabra
+«legajo» («00084 Zuker Sebastián») y aun así lo reconoce, así que el ticket nunca queda esperando algo que
+el cliente ya escribió. Si el ticket entró fuera del horario de atención queda en
 espera y se reabre solo al comenzar la jornada, sin que el cliente se entere del corte. Una vez que pasó,
 **respeta la intervención manual**: no vuelve a categorizar ni pisa una reasignación.
 
