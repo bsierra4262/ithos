@@ -184,6 +184,30 @@ sin_legajo, _ = cerebro.coherente(
 ok(sin_legajo["necesita_info"] is True,
    "si de verdad falta el legajo, se sigue pidiendo como siempre")
 
+# Caso real (#667, «Legajo 08473 Barboza Daiana»): el modelo marcó necesita_info=false —bien, el
+# legajo estaba— pero IGUAL escribió "confirmame el número de legajo". El ticket quedó EN CURSO
+# pidiendo algo que ya tenía, con el SLA corriendo y nadie a quien esperar.
+igual_pidio, corr_p = cerebro.coherente(
+    {"alcance": "individual", "categoria": "TERMINALES", "prioridad": "Baja",
+     "responsable": "bsierra", "necesita_info": False,
+     "primera_respuesta": "Necesito que me confirmes el número de legajo de Daiana. Soporte ITH"},
+    "Legajo 08473 Barboza Daiana", "El agente detallado en el título no puede fichar.")
+ok("08473" in igual_pidio["primera_respuesta"]
+   and "confirmes el número de legajo" not in igual_pidio["primera_respuesta"],
+   "aunque el modelo NO diga que falta el dato, si la respuesta lo pide y el dato está, se reemplaza",
+   str(corr_p))
+
+# La otra cara: si de verdad le pedimos algo al cliente, el ticket NO puede quedar en curso con el
+# SLA corriendo contra nosotros mientras la pelota es de él.
+pide_sin_esperar, corr_e = cerebro.coherente(
+    {"alcance": "individual", "categoria": "TERMINALES", "prioridad": "Baja",
+     "responsable": "bsierra", "necesita_info": False,
+     "primera_respuesta": "¿Me pasás el número de legajo del agente?"},
+    "No puede fichar", "Un agente no puede fichar")
+ok(pide_sin_esperar["necesita_info"] is True,
+   "si la respuesta pide un dato que NO está, el ticket queda EN ESPERA y el SLA se pausa",
+   str(corr_e))
+
 print("\n=== 4 · La respuesta se despide UNA sola vez ===")
 doble = ("Hola Facundo, para poder ayudarte, ¿podrías indicarme el legajo? "
          "Quedo a la espera de tu respuesta. Soporte ITH")

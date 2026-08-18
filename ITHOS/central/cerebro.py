@@ -278,17 +278,30 @@ def coherente(a, asunto="", descripcion=""):
         hechas.append("no se pide legajo ni se deja en espera: lo que falla es el servicio, "
                       "no el fichaje de una persona")
 
-    # El dato que iba a pedir YA ESTÁ en el ticket. Pasa cuando el legajo viene en el ASUNTO sin
-    # la palabra "legajo" («00084 Zuker Sebastián»): el modelo lee la descripción, no lo ve, y deja
-    # el ticket EN ESPERA pidiendo algo que el cliente ya escribió.
+    # ---------------------------------------------------------------- el dato pedido vs. el estado
+    # Dos caras del mismo error, y las dos se vieron en producción:
+    #   a) PEDIR algo que el ticket YA TRAE (el legajo, que suele venir en el asunto). El modelo a
+    #      veces marca necesita_info=false —correcto— pero igual escribe "pasame el legajo": el
+    #      cliente lee un pedido que nadie va a contestar. Por eso NO se mira necesita_info acá: si
+    #      el dato está y la respuesta lo pide, la respuesta se reemplaza.
+    #   b) PEDIR algo de verdad y NO dejar el ticket esperando. Si le pedimos un dato al cliente, el
+    #      ticket tiene que quedar EN ESPERA: con el SLA corriendo contra nosotros mientras la pelota
+    #      es del cliente, el ticket nace vencido.
     legajo = legajo_en_texto(asunto, descripcion)
-    if alcance == "individual" and a.get("necesita_info") and legajo:
+    pide_datos = bool(_RE_PIDE_DATOS_PERSONA.search(a.get("primera_respuesta") or ""))
+    if alcance == "individual" and legajo and (pide_datos or a.get("necesita_info")):
         a["necesita_info"] = False
         hechas.append(f"el legajo ({legajo}) ya estaba en el ticket: no se pide y el ticket avanza")
-        if _RE_PIDE_DATOS_PERSONA.search(a.get("primera_respuesta") or ""):
+        if pide_datos:
             a["primera_respuesta"] = respuesta_con_legajo(legajo)
+            pide_datos = False
         if _RE_PIDE_DATOS_PERSONA.search(a.get("nota_tecnico") or ""):
             a["nota_tecnico"] = ""
+    elif alcance == "individual" and pide_datos and not a.get("necesita_info"):
+        # Le estamos pidiendo un dato que NO está: el ticket espera al cliente y el SLA se pausa.
+        a["necesita_info"] = True
+        hechas.append("la respuesta le pide un dato al cliente, así que el ticket queda EN ESPERA "
+                      "y el SLA no corre mientras la pelota es de él")
 
     piso = _PISO_PRIORIDAD[alcance]
     prio = a.get("prioridad") if a.get("prioridad") in _PRIORIDAD_ORDEN else piso
