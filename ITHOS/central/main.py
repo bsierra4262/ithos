@@ -231,37 +231,6 @@ async def wa_desvincular(request: Request):
     return WL.desvincular(sesion)
 
 
-@app.post("/webhook/mercadopago/{api_key}")
-async def wa_mp(api_key: str, request: Request):
-    """Webhook de MercadoPago (suscripciones): MP avisa cuando cambia la suscripción o entra un
-    pago recurrente. Valida la firma x-signature, consulta el recurso y persiste el estado del
-    cliente (así se actualiza SOLO, sin poll). Devuelve 200 para que MP no reintente."""
-    from fastapi.responses import JSONResponse
-    from comun import facturacion as F
-    conf = registro.validar(api_key)
-    if not conf:
-        return JSONResponse({"ok": False}, status_code=200)   # cliente desconocido: no reintentar
-    fact = conf.get("facturacion") or {}
-    qp = dict(request.query_params)
-    try:
-        body = await request.json()
-    except Exception:  # noqa: BLE001
-        body = {}
-    tipo = qp.get("type") or qp.get("topic") or body.get("type") or body.get("topic") or ""
-    data_id = (qp.get("data.id") or qp.get("id")
-               or str((body.get("data") or {}).get("id") or body.get("id") or ""))
-    # Firma (HMAC-SHA256) con la clave secreta del webhook del cliente. Si es inválida, 401.
-    if not F.validar_firma(fact.get("mp_webhook_secret", ""),
-                           request.headers.get("x-signature", ""),
-                           request.headers.get("x-request-id", ""),
-                           qp.get("data.id") or data_id):
-        return JSONResponse({"ok": False, "motivo": "firma inválida"}, status_code=401)
-    datos = F.procesar_notificacion(fact, tipo, data_id)
-    if datos:
-        F.guardar_estado(conf.get("nombre", ""), datos)
-        log.info("[MP webhook] %s (%s) -> %s", conf.get("nombre"), tipo,
-                 datos.get("estado") or datos.get("ultimo_pago_estado"))
-    return {"ok": True}
 
 
 @app.websocket("/ws")
@@ -412,47 +381,11 @@ async def ws(websocket: WebSocket):
             except Exception:  # noqa: BLE001
                 pass
 
-        # SUSCRIPCIÓN: si el cliente está SUSPENDIDO por falta de pago, TODO queda CONGELADO
-        # (IA + ITHOS sin acceso) hasta que renueve. Lee el estado persistido (webhook/checker).
-        from comun import facturacion as F
-        fact = {**(conf.get("facturacion") or {}), **F.cargar_estado(cliente)}
-        _suspendido = F.suspendido(fact)
-        if _suspendido:
-            log.warning("Cliente %s SUSPENDIDO por falta de pago: servicio congelado.", cliente)
-            if wa:
-                try:
-                    wa.enviar(F.texto_aviso_pago(cliente, fact, F.link_pago(fact, cliente),
-                                                 suspender=True), tipo=AV.SISTEMA)
-                except Exception:  # noqa: BLE001
-                    pass
-
-        # COBRANZA: revisa 1 vez por día el ciclo de pago; si vence, manda el link por los canales
-        # del cliente (email incluido); tras los días hábiles de gracia, lo SUSPENDE (congela); si
-        # paga, se reactiva solo. Corre mientras el agente está conectado.
-        async def _cobranza():
-            while True:
-                try:
-                    f = {**(conf.get("facturacion") or {}), **F.cargar_estado(cliente)}
-                    accion, cambios = F.evaluar(f)
-                    if cambios:
-                        F.guardar_estado(cliente, cambios)
-                    if accion in ("avisar", "suspender") and wa:
-                        link = F.link_pago({**f, **cambios}, cliente)
-                        wa.enviar(F.texto_aviso_pago(
-                            cliente, f, link, suspender=(accion == "suspender"),
-                            dias_rest=None if accion == "suspender" else F.dias_gracia_restantes(f)),
-                            tipo=AV.SISTEMA)
-                except Exception as e:  # noqa: BLE001
-                    log.warning("Cobranza %s: %s", cliente, e)
-                await asyncio.sleep(24 * 3600)
-        if (conf.get("facturacion") or {}).get("enabled") and not fact.get("propietario"):
-            tareas_extra.append(asyncio.create_task(_cobranza()))
-
         # IA + gestor de cuota del cliente (compartidos por triage y asistente).
         gestor = ia_texto = asistente = None
         ia = conf.get("ia")
         gl = conf.get("integrador_glpi")
-        if ia and not _suspendido:
+        if ia:
             gestor = Cuota.GestorCuota(
                 cliente, limite_diario=ia.get("limite_diario", 250),
                 avisar_en=ia.get("avisar_en", 15),
@@ -540,7 +473,7 @@ async def ws(websocket: WebSocket):
                     # tarjeta del tablero del equipo; si el mensaje no es sobre tareas, sigue el
                     # asistente normal. El trigger "ithos" ya lo aplicó el handler del grupo.
                     _planka = None
-                    if conf.get("planka") and ia_texto and not _suspendido:
+                    if conf.get("planka") and ia_texto:
                         try:
                             import planka_integrador as _PKI
                             _planka = _PKI.PlankaIntegrador(
@@ -591,7 +524,7 @@ async def ws(websocket: WebSocket):
                         log.info("Planka integrador ARRANCADO para %s.", cliente)
 
         # Integrador GLPI + triage (lado central).
-        if gl and not _suspendido and gl.get("ubicacion", "central") == "central":
+        if gl and gl.get("ubicacion", "central") == "central":
             tri = None
             if gl.get("glpi_ithos_token") and ia:
                 import triage as T
@@ -611,12 +544,12 @@ async def ws(websocket: WebSocket):
                                         nombre_cliente=cliente))
 
         # Reportes proactivos (diario/semanal/mensual) por los canales del cliente.
-        if conf.get("reportes", {}).get("enabled") and gl and not _suspendido:
+        if conf.get("reportes", {}).get("enabled") and gl:
             import reportes_programados as RP
             tareas_extra.append(asyncio.create_task(RP.vigilar_reportes(conf, wa)))
 
         # Proactivo: alerta de SLA por vencer (por cliente, por sus canales). OFF por defecto.
-        if conf.get("proactivo", {}).get("sla_enabled") and not _suspendido:
+        if conf.get("proactivo", {}).get("sla_enabled"):
             import proactivo as PRO
             tareas_extra.append(asyncio.create_task(PRO.vigilar_sla(conf, wa)))
 
@@ -630,7 +563,7 @@ async def ws(websocket: WebSocket):
 
         # Anomalías de acceso por horario (por cliente). OFF por defecto; solo si el
         # sistema de acceso hace control horario (HikCentral/BioStar2, autoconfig por API).
-        if conf.get("anomalias", {}).get("enabled") and not _suspendido:
+        if conf.get("anomalias", {}).get("enabled"):
             import anomalias as ANO
             tareas_extra.append(asyncio.create_task(ANO.vigilar_anomalias(conf, wa)))
 
@@ -646,7 +579,7 @@ async def ws(websocket: WebSocket):
                 await asyncio.to_thread(lambda: wa.enviar(texto_inicio, tipo=AV.SISTEMA))
             except Exception:  # noqa: BLE001
                 pass
-        if wa and not _suspendido:
+        if wa:
             tareas_extra.append(asyncio.create_task(_aviso_inicio()))
 
         # Reactivador de tickets POSPUESTOS: pasa a EN CURSO los que llegaron a su día/hora.
@@ -659,8 +592,6 @@ async def ws(websocket: WebSocket):
         while True:
             msg = json.loads(await websocket.receive_text())
             if msg.get("tipo") != P.EVENTO:
-                continue
-            if _suspendido:          # suscripción suspendida: TODO congelado, no se procesa nada
                 continue
             evento, datos = msg.get("evento"), msg.get("datos", {})
             # "ITHOS, ..." (voz por micrófono) o audio de WhatsApp:

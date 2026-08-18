@@ -201,13 +201,9 @@ if n_hint >= 5:
 else:
     fail("faltan hints explicativos en el alta", f"({n_hint})")
 
-# C2) Facturación (MercadoPago) SOLO para superadmin: gate ${admin? ... } antes del bloque.
-m = re.search(r"admin\?\s*`<div class=sec><span>Facturaci", ui)
-if m:
-    ok("Facturación/MercadoPago gateada a superadmin (no la ve el cliente)")
-else:
-    fail("Facturación NO está gateada a superadmin en el alta/portal")
-# y el alta/portal llaman formHTML con admin=false
+# C2) El formulario distingue AUDIENCIA: el superadmin lo abre con admin=true y el alta/portal del
+# cliente con admin=false, así lo que es interno nunca se le muestra al cliente. (El bloque de
+# Facturación, que era el único gateado, salió del alcance junto con el cobro de suscripciones.)
 if "formHTML({},false)" in ui and "formHTML(C,false)" in ui and "formHTML(c,true)" in ui:
     ok("formHTML: superadmin=true, alta/portal=false (coherencia por audiencia)")
 else:
@@ -326,71 +322,9 @@ else:
     fail("consulta_voz podría contarse doble", f"main={main_reg} conv={conv_reg}")
 
 
-print("\n" + "=" * 58)
-print("  F) FACTURACIÓN / WEBHOOK MERCADOPAGO (oficial)")
-print("=" * 58)
-fac_src = leer(os.path.join(APP, "comun", "facturacion.py"))
-main_fac = leer(os.path.join(APP, "central", "main.py"))
-panel_fac = leer(os.path.join(APP, "central", "panel.py"))
-ui_fac = leer(os.path.join(APP, "central", "panel_ui.py"))
-
-# F1) Webhook con validación de firma HMAC (doc oficial)
-if "/webhook/mercadopago/" in main_fac and "def validar_firma" in fac_src and "hmac" in fac_src:
-    ok("webhook MP con validación de firma HMAC-SHA256 (doc oficial)")
-else:
-    fail("falta el webhook MP o la validación de firma")
-
-# F2) Firma: valida bien y rechaza mal (test funcional real)
-try:
-    import importlib
-    from comun import facturacion as _F
-    importlib.reload(_F)
-    import hmac as _h, hashlib as _hh
-    sec, ts, did, rid = "s3cr3t", "1700000000", "12345", "req-1"
-    man = f"id:{did};request-id:{rid};ts:{ts};"
-    v1 = _h.new(sec.encode(), man.encode(), _hh.sha256).hexdigest()
-    okf = (_F.validar_firma(sec, f"ts={ts},v1={v1}", rid, did)
-           and not _F.validar_firma(sec, f"ts={ts},v1=bad", rid, did)
-           and _F.validar_firma("", "x", rid, did))
-    if okf:
-        ok("validar_firma: acepta la válida, rechaza la falsa, omite sin secret")
-    else:
-        fail("validar_firma no valida correctamente")
-    # F3) Gross-up: netea el precio tras la comisión
-    d = _F.desglose_precio({"monto_usd": 20, "comision_pct": 6.29, "moneda": "ARS"})
-    neto = d["bruto_usd"] * (1 - 6.29 / 100)
-    d0 = _F.desglose_precio({"monto_usd": 20, "comision_pct": 0})
-    if abs(neto - 20) < 0.02 and d0["bruto_usd"] == 20:
-        ok("gross-up de comisión: infla el precio y netea el monto deseado", f"bruto={d['bruto_usd']}")
-    else:
-        fail("gross-up incorrecto", str(d))
-except Exception as e:  # noqa: BLE001
-    fail("no se pudo verificar firma/gross-up", repr(e))
-
-# F4) Estado instantáneo (webhook persiste; no llama a MP si ya hay estado)
-if "cargar_estado" in panel_fac and 'persistido.get("estado")' in panel_fac:
-    ok("ver_facturacion es instantáneo (usa el estado del webhook, sin poll)")
-else:
-    fail("ver_facturacion no aprovecha el estado persistido")
-
-# F5) Email de facturación: viene del form (contacto) con fallback, y MP confirma el real
-if 'fact["email"] = fact.get("email") or c.get("email"' in panel_fac and 'también se usa para la facturación' in ui_fac:
-    ok("email de facturación tomado del alta (contacto) con fallback")
-else:
-    fail("no se toma el email de contacto para facturar")
-if '"payer_email": d.get("payer_email")' in fac_src:
-    ok("email REAL del pagador se toma de MercadoPago (oficial)")
-else:
-    fail("no se captura el payer_email real de MP")
-
-# F6) Panel simple: token, comisión, email, Probar/Consultar. SIN campos de URL/webhook (no se usan).
-faltan = [x for x in ("f_fac_tok", "f_fac_com", "f_fac_email", "probarSuscripcion", "consultarEstadoFac") if x not in ui_fac]
-sobran = [x for x in ("f_fac_back", "f_fac_wsecret") if x in ui_fac]   # no deben estar (declutter)
-if not faltan and not sobran:
-    ok("panel de facturación simple (token/comisión/email/probar/estado), sin URL ni webhook UI")
-else:
-    fail("panel de facturación mal", f"faltan={faltan} sobran={sobran}")
-
+# [retirado] FACTURACIÓN / MercadoPago: el cobro de suscripciones es del modelo SaaS y salió
+# del alcance mientras ITHOS es la automatización interna de INTELLIHELP. Con él se fue la
+# SUSPENSIÓN por falta de pago. Todo quedó congelado en la rama `saas`.
 
 print("\n" + "=" * 58)
 print("  G) SIN REPETICIONES (ITHOS no contesta 2 veces lo mismo)")
@@ -1542,34 +1476,8 @@ except Exception as e:  # noqa: BLE001
     fail("no se pudo verificar el requisito cero-jarvis", repr(e))
 
 
-# H38) SUSCRIPCIÓN — dunning + gracia + SUSPENSIÓN que congela (pedido de Brian). Si el cliente no paga:
-#   se le manda el link por sus canales; tras 7 días HÁBILES de gracia se SUSPENDE (IA+ITHOS congelados)
-#   hasta renovar; si paga, se reactiva solo. El propietario NUNCA se cobra/suspende.
-try:
-    import time as _t38
-    from comun import facturacion as _F38
-    _D = 86400
-    aldia = _F38.evaluar({"enabled": True, "estado": "authorized"})[0] == "ok"
-    an, cn = _F38.evaluar({"enabled": True, "estado": "paused"})
-    avisa = an == "avisar" and "impago_desde" in cn
-    gracia = _F38.evaluar({"enabled": True, "estado": "paused", "impago_desde": _t38.time() - 3 * _D})[0] == "avisar"
-    asu, csu = _F38.evaluar({"enabled": True, "estado": "paused", "impago_desde": _t38.time() - 12 * _D})
-    suspende = asu == "suspender" and csu.get("suspendido") is True
-    ar, cr = _F38.evaluar({"enabled": True, "estado": "authorized", "suspendido": True,
-                           "impago_desde": _t38.time() - 12 * _D})
-    reactiva = ar == "ok" and cr.get("suspendido") is False
-    duenio = (_F38.evaluar({"enabled": True, "propietario": True, "estado": "paused"})[0] == "ok"
-              and not _F38.suspendido({"suspendido": True, "propietario": True}))
-    hab = _F38._dias_habiles(_t38.time() - 7 * _D, _t38.time()) == 5
-    msrc = leer(os.path.join(APP, "central", "main.py"))
-    freeze = "_suspendido = F.suspendido(fact)" in msrc and "if _suspendido:" in msrc and "_cobranza" in msrc
-    if aldia and avisa and gracia and suspende and reactiva and duenio and hab and freeze:
-        ok("suscripción: dunning por canales + 7 días hábiles de gracia + SUSPENSIÓN que congela IA/ITHOS + reactivación al pagar (propietario nunca)")
-    else:
-        fail("el ciclo de suscripción/freeze no está completo",
-             f"aldia={aldia} avisa={avisa} gracia={gracia} susp={suspende} react={reactiva} duenio={duenio} hab={hab} freeze={freeze}")
-except Exception as e:  # noqa: BLE001
-    fail("no se pudo verificar el ciclo de suscripción/suspensión", repr(e))
+# H38) [retirado] El ciclo de cobranza (dunning, gracia y suspensión) salió del alcance junto
+#      con la facturación. Congelado en la rama `saas`.
 
 
 # H39) SEGURIDAD DEL GESTOR (producción): enlace de alta de UN SOLO USO consumido ATÓMICAMENTE al

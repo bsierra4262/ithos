@@ -435,7 +435,6 @@ def _armar_cliente(b, api_key):
         "reportes": b.get("reportes", {}) or {},        # reportes proactivos por cliente
         "proactivo": b.get("proactivo", {}) or {},      # alerta SLA por vencer (por cliente)
         "anomalias": b.get("anomalias", {}) or {},      # anomalías de horario (OFF por defecto)
-        "facturacion": b.get("facturacion", {}) or {},  # suscripción SaaS por cliente
         # Wiki Outline para la base de conocimiento (si el cliente la cargó en el alta/portal). Solo
         # se guarda con valores reales (url/token) -> la KB puede importar de ahí sin re-cargarla.
         "kb_outline": {k: v for k, v in (b.get("kb_outline") or {}).items() if v},
@@ -656,25 +655,6 @@ def ver_metricas(api_key: str):
     return M.resumen(c["nombre"])
 
 
-@app.get("/api/probar_suscripcion/{api_key}")
-def probar_suscripcion(api_key: str):
-    """Genera una suscripción de PRUEBA en MercadoPago (preapproval) con el Access Token
-    guardado del cliente y devuelve el link de pago (init_point). Solo superadmin lo usa."""
-    c = _cliente_por_key(api_key)
-    if not c:
-        return JSONResponse({"error": "cliente no encontrado"}, status_code=404)
-    fact = dict(c.get("facturacion") or {})
-    if not fact.get("mp_access_token"):
-        return {"error": "Falta el Access token de MercadoPago. Cargalo arriba y tocá Guardar empresa primero."}
-    fact["email"] = fact.get("email") or c.get("email", "")   # por defecto, el email de contacto
-    if not fact["email"]:
-        return {"error": "Falta el email del pagador (poné el Email de contacto de la empresa)."}
-    from comun import facturacion as F
-    r = F.crear_suscripcion(fact, c.get("nombre", ""))
-    if r.get("id"):     # persistir el preapproval_id para poder consultar el estado después
-        F.guardar_estado(c.get("nombre", ""), {"preapproval_id": r["id"],
-                                               "estado": r.get("estado", "pending")})
-    return r
 
 
 @app.get("/api/sla/{api_key}")
@@ -713,38 +693,8 @@ def config_agente(api_key: str):
 
 
 # --------------------------------------------------------------- alta/edición
-@app.post("/api/suscripcion/{api_key}")
-def crear_suscripcion(api_key: str):
-    """Genera el link de pago (MercadoPago) para la suscripción del cliente."""
-    c = _cliente_por_key(api_key)
-    if not c:
-        return JSONResponse({"error": "cliente no encontrado"}, status_code=404)
-    from comun import facturacion as F
-    fact = dict(c.get("facturacion") or {})
-    fact["email"] = fact.get("email") or c.get("email", "")   # por defecto, el email de contacto
-    r = F.crear_suscripcion(fact, c.get("nombre", ""))
-    if r.get("id"):                       # guardar el preapproval_id en el cliente
-        data = _cargar()
-        for cc in data["clientes"]:
-            if cc.get("api_key") == api_key:
-                cc.setdefault("facturacion", {})["preapproval_id"] = r["id"]
-                cc["facturacion"]["estado"] = r.get("estado", "pending")
-        _guardar(data)
-    return r
 
 
-@app.get("/api/facturacion/{api_key}")
-def ver_facturacion(api_key: str):
-    c = _cliente_por_key(api_key)
-    if not c:
-        return JSONResponse({"error": "cliente no encontrado"}, status_code=404)
-    from comun import facturacion as F
-    # INSTANTÁNEO: si el webhook ya dejó el estado, lo devolvemos sin llamar a MP (0 latencia).
-    # Solo si no hay estado persistido consultamos en vivo (fallback).
-    persistido = F.cargar_estado(c.get("nombre", ""))
-    if persistido.get("estado"):
-        return persistido
-    return F.estado_suscripcion(c.get("facturacion") or {})
 
 
 @app.get("/api/reporte_ahora/{api_key}")

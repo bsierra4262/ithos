@@ -65,7 +65,7 @@ function formHTML(c,admin){
  let sec2=Object.entries(CATS.ia).map(([k,v])=>`<option value="${k}" ${k===secProv?'selected':''}>${v.label}</option>`).join('');
  let terProv=(ia.terciario&&ia.terciario.proveedor)||'';
  let sec3=Object.entries(CATS.ia).map(([k,v])=>`<option value="${k}" ${k===terProv?'selected':''}>${v.label}</option>`).join('');
- let vm=ia.voz_motor||'charon'; let rp=c.reportes||{}; let fa=c.facturacion||{};
+ let vm=ia.voz_motor||'charon'; let rp=c.reportes||{};
  let pr=c.proactivo||{}; let an=c.anomalias||{};
  return `<div class=form id=jform>
    <div class="f full"><label>Nombre de la empresa</label><input id=f_nombre value="${esc(c.nombre)}" placeholder="INTELLIHELP S.A."></div>
@@ -147,40 +147,7 @@ function formHTML(c,admin){
    <div class="f full hint">Las <b>anomalías de horario</b> vienen apagadas y solo aplican a sistemas con control horario (HikCentral / BioStar 2), que toman su config por API sola (IVMS no aplica). La base de conocimiento se arma sola, por empresa, y es privada.</div>
    <div class="f full"><button class="btn sm" type=button onclick="regenKB()" ${c.api_key?'':'disabled'}>Regenerar base de conocimiento ahora</button></div>
    </div>
-
-   ${admin?`<div class=sec><span>Facturación (SaaS · MercadoPago)</span></div>
-   <div class=f><div class=chk style="margin-top:22px"><input type=checkbox id=f_fac_prop ${fa.propietario?'checked':''}><span>Empresa DUEÑA (no se cobra nunca)</span></div></div>
-   <div class=f><div class=chk style="margin-top:22px"><input type=checkbox id=f_fac_en ${fa.enabled?'checked':''}><span>Cobrar suscripción</span></div></div>
-   <div class=f><label>Plan</label><input id=f_fac_plan value="${esc(fa.plan||'Mensual')}"></div>
-   <div class=f><label>Precio NETO en USD (lo que querés recibir)</label><input id=f_fac_monto type=number value="${fa.monto_usd||fa.monto||0}"></div>
-   <div class=f><label>Comisión de MercadoPago (%) — se suma al precio</label><input id=f_fac_com type=number step="0.01" value="${fa.comision_pct!=null?fa.comision_pct:6.29}"></div>
-   <div class="f full hint">ITHOS <b>infla el precio</b> para que, después de la comisión de MP, te quede el neto. Ej: neto USD 20 + comisión 6,29% → se cobra ≈ USD 21,34 (en pesos al dólar BNA). Poné tu <b>comisión real</b> (MP → <i>Costos y cuotas</i> / Simulador). La comisión <b>no se puede evitar</b>, pero se reduce eligiendo acreditar el dinero en más días.</div>
-   <div class=f><label>Email del pagador (opcional)</label><input id=f_fac_email type=email value="${esc(fa.email)}" placeholder="por defecto: el Email de contacto"></div>
-   <div class="f full"><label>Access token de MercadoPago</label><input id=f_fac_tok type=password value="${esc(fa.mp_access_token)}" placeholder="TEST-... (prueba)  ·  APP_USR-... (producción)"></div>
-   <div class="f full hint">ITHOS cobra con <b>suscripción recurrente</b> de MercadoPago (<b>/preapproval</b>): <b>solo necesita el Access Token</b>. Con <b>TEST-…</b> probás sin plata real; con <b>APP_USR-…</b> cobrás de verdad. <b>No hace falta ninguna URL pública ni configuración extra</b> (ni para producción): el pago se hace en la página de MercadoPago y el estado lo ves con <b>Consultar estado</b>.</div>
-   <div class="f full"><button class="btn sm gold" type=button onclick="probarSuscripcion()" ${c.api_key?'':'disabled'}>💳 Probar suscripción (generar link)</button>
-     <button class="btn sm ghost" type=button onclick="consultarEstadoFac()" ${c.api_key?'':'disabled'}>🔄 Consultar estado</button>
-     <div id=fac_msg class=hint style="margin-top:8px"></div></div>`:''}
  </div>`;
-}
-async function probarSuscripcion(){
- let k=($('#f_key')||{}).value;
- if(!k){toast('Guardá la empresa primero');return;}
- let msg=document.getElementById('fac_msg'); if(msg) msg.textContent='Generando link de pago…';
- try{let d=await (await fetch('/api/probar_suscripcion/'+encodeURIComponent(k))).json();
-  if(d.error){if(msg)msg.innerHTML='<span style="color:var(--danger)">No se pudo: '+esc(d.error)+'</span>';return;}
-  if(msg)msg.innerHTML='✅ Suscripción creada — se cobra <b>$'+esc(d.monto_ars)+' ARS</b> (≈ USD '+esc(d.monto_usd_bruto)+' con '+esc(d.comision_pct)+'% de comisión) para netear <b>USD '+esc(d.monto_usd)+'</b> · dólar BNA '+esc(d.cotizacion_bna)+'. Link de pago:<br><a class=link target=_blank href="'+esc(d.init_point)+'">'+esc(d.init_point)+'</a>';
-  toast('Link de pago generado');
- }catch(e){if(msg)msg.textContent='No se pudo generar el link';}
-}
-async function consultarEstadoFac(){
- let k=($('#f_key')||{}).value;
- if(!k){toast('Guardá la empresa primero');return;}
- let msg=document.getElementById('fac_msg'); if(msg) msg.textContent='Consultando estado en MercadoPago…';
- try{let d=await (await fetch('/api/facturacion/'+encodeURIComponent(k))).json();
-  let est=d.estado||d.status||'sin datos';
-  if(msg)msg.innerHTML='Estado de la suscripción: <b>'+esc(est)+'</b>'+(d.proximo_cobro?(' · próximo cobro '+esc(d.proximo_cobro)):'')+(d.monto?(' · monto $'+esc(d.monto)):'')+(d.actualizado?(' · actualizado '+esc(d.actualizado)):'');
- }catch(e){if(msg)msg.textContent='No se pudo consultar el estado';}
 }
 function camposInteg(){renderCampos('#integCampos','integradores',$('#f_integ').value,'ic_',window._icfg||{})}
 function camposTickets(){
@@ -346,7 +313,6 @@ function initForm(c){
  window._iaVals=(c&&c.ia)||{}; window._iaSec=(c&&c.ia&&c.ia.secundario)||{}; window._iaTer=(c&&c.ia&&c.ia.terciario)||{};
  window._canales=JSON.parse(JSON.stringify((c&&c.notificaciones)||[]));
  window._terminales=JSON.parse(JSON.stringify((c&&c.terminales)||[]));   // reglas de terminales
- window._facPrev=(c&&c.facturacion)||{};   // facturación (solo superadmin) -> preservar en alta/portal
  window._kbOutline=(c&&c.kb_outline)||{};   // Outline: valores guardados si los hay
  camposInteg();camposTickets();camposIAp();camposIAs();camposIAt();renderCanales();repFrec();
  renderTerminales();loadDescubiertas();
@@ -380,7 +346,7 @@ function collectForm(){
    tickets:tickets, notificaciones:notis, terminales:terms,
    kb_outline:{url:(($('#kb_ol_url')||{}).value||'').trim(), token:(($('#kb_ol_tok')||{}).value||'').trim()},
    wa_session:window._waSesion||'',   // sesión de WhatsApp vinculada (se preserva; no perder el QR)
-   reportes:colReportes(), proactivo:colProactivo(), anomalias:colAnomalias(), facturacion:colFacturacion()};
+   reportes:colReportes(), proactivo:colProactivo(), anomalias:colAnomalias()};
 }
 function colReportes(){
  let frec=$('#f_rep_frec').value, r={enabled:$('#f_rep_en').checked,frecuencia:frec,hora:($('#f_rep_hora')||{}).value||'09:00'};
@@ -398,16 +364,6 @@ function regenKB(){let k=($('#f_key')||{}).value;if(!k){toast('Guardá la empres
  toast('Regenerando base de conocimiento…');
  fetch('/api/kb_generar/'+encodeURIComponent(k)).then(r=>r.json()).then(d=>{
   toast(d.ok?('Base lista: '+d.casos+' casos resueltos'):('Error: '+(d.error||'')));}).catch(e=>toast('Error KB'));}
-function colFacturacion(){
- // Facturación es SOLO del superadmin. En el alta/portal del cliente NO se muestra: se PRESERVA
- // lo que ya tenía (no se pisa con vacío), así el cliente nunca configura ni borra su facturación.
- let prev=window._facPrev||{};
- if(!document.getElementById('f_fac_prop')) return prev;
- // ...prev preserva lo que setea el webhook/suscripción (preapproval_id, estado) al guardar el form.
- return {...prev, propietario:$('#f_fac_prop').checked,enabled:$('#f_fac_en').checked,
- plan:($('#f_fac_plan')||{}).value||'Mensual',monto_usd:+($('#f_fac_monto')||{}).value||0,moneda:'ARS',
- comision_pct:+($('#f_fac_com')||{}).value||0,
- email:($('#f_fac_email')||{}).value||'',mp_access_token:($('#f_fac_tok')||{}).value||''}}
 function canalVals(cn){let o={};(CATS.canales[cn.tipo].campos||[]).forEach(f=>{if(cn[f.k]!=null&&cn[f.k]!=='')o[f.k]=cn[f.k]});return o}
 
 function toast(m){let t=$('#toast');if(!t)return;t.textContent=m;t.style.display='block';clearTimeout(t._);t._=setTimeout(()=>t.style.display='none',2600)}
