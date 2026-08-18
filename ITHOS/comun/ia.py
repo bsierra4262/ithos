@@ -687,10 +687,13 @@ class CerebrasIA(_OpenAICompat):
     """Cerebras (api.cerebras.ai) — ultrarrápido, compatible OpenAI (usa 'max_completion_tokens').
     Voz: Charon. Key en cloud.cerebras.ai.
 
-    OJO con lo GRATIS: cambia. En agosto de 2026 la cuenta de INTELLIHELP pasó a responder
-    `402 payment_required` en TODOS los modelos (la clave sigue siendo válida: listar modelos
-    devuelve 200), y el catálogo quedó en gpt-oss-120b y gemma-4-31b. Si vuelve a andar es
-    habilitando el billing en la cuenta; el código no necesita ningún cambio."""
+    OJO: acá lo GRATIS es un SALDO, no una cuota que se renueva. El "Free Trial" son 5 dólares de
+    crédito que además VENCEN a los 30 días; los límites que muestra la consola (2.400 pedidos y
+    1.000.000 de tokens por día) son el tope de VELOCIDAD de ese tier, no una franquicia diaria.
+    Agotado o vencido el crédito, la API corta con `402 payment_required` en TODOS los modelos —da
+    igual cuál se elija, los dos descuentan del mismo saldo— aunque la clave siga siendo válida
+    (listar modelos devuelve 200). Se destraba comprando crédito en la consola; el código no
+    necesita ningún cambio. Le pasó a la cuenta de INTELLIHELP en agosto de 2026."""
     URL = "https://api.cerebras.ai/v1/chat/completions"
     PROV = "cerebras"
     DEFECTO = "gpt-oss-120b"
