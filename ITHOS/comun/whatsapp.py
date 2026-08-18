@@ -1,18 +1,16 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Notificador de WhatsApp (por cliente). Dos modos, elegibles por config:
+Canal de WhatsApp (por cliente). Automatiza WhatsApp Web con el número propio (neonize) y manda a
+GRUPOS, cada uno con su ÁMBITO: qué avisos recibe y qué se puede consultar ahí (comun/ambitos.py).
 
-  tipo="oficial" (DEFAULT para clientes): WhatsApp Business Cloud API de Meta.
-      Manda a NÚMEROS individuales (no grupos). Config:
-      {"tipo":"oficial","phone_number_id":"...","access_token":"...",
-       "destinatarios":["5491111111111", ...]}
+Config:
+  {"tipo":"whatsapp_no_oficial", "session":"wa_session.sqlite3",
+   "grupos":[{"grupo":"ITHOS_SOPORTE","ambito":"soporte"}, ...]}
+Se vincula una vez por QR (comun/whatsapp_link.py) y la sesión queda guardada.
 
-  tipo="no_oficial" (uso interno): automatiza WhatsApp Web con tu número (neonize).
-      Manda a un GRUPO. Config: {"tipo":"no_oficial","grupo":"SOPORTE_ALERTAS",
-      "session":"wa_session.sqlite3"}. Vincular una vez (QR).
-
-Ambos exponen enviar(texto) -> bool. crear_whatsapp(cfg) devuelve el que corresponda.
+Expone enviar(texto, tipo=None), enviar_mencion(...) y enviar_documento(...).
+crear_whatsapp(cfg) devuelve el canal listo.
 """
 
 import os
@@ -71,16 +69,6 @@ def formato_wa(texto):
     return t.strip()
 
 
-def formato_plano(texto):
-    """Para Email: mantiene las viñetas legibles (•) pero saca los símbolos de
-    *negrita*/_cursiva_/~tachado~ (el correo plano no los renderiza)."""
-    t = formato_wa(texto or "")           # -> viñetas • y *negrita*
-    t = re.sub(r"\*(.+?)\*", r"\1", t)     # sacar negrita
-    t = re.sub(r"_(.+?)_", r"\1", t)       # sacar cursiva
-    t = re.sub(r"~(.+?)~", r"\1", t)       # sacar tachado
-    return t.strip()
-
-
 def con_prefijo(texto):
     t = formato_wa(texto or "")
     return t if t.startswith(PREFIJO_ITHOS) else PREFIJO_ITHOS + t
@@ -115,124 +103,6 @@ def _numero_remitente(src):
         if es_tel:
             return num
     return ""
-
-
-def _multipart_media(campos, archivo):
-    """multipart/form-data para subir media a la Cloud API de Meta. archivo=(campo, nombre, mime, bytes)."""
-    import uuid
-    b = "----ithoswa" + uuid.uuid4().hex
-    out = b""
-    for k, v in campos.items():
-        out += (f"--{b}\r\nContent-Disposition: form-data; name=\"{k}\"\r\n\r\n{v}\r\n").encode()
-    campo, nombre, mime, datos = archivo
-    out += (f"--{b}\r\nContent-Disposition: form-data; name=\"{campo}\"; filename=\"{nombre}\"\r\n"
-            f"Content-Type: {mime}\r\n\r\n").encode() + datos + f"\r\n--{b}--\r\n".encode()
-    return b, out
-
-
-class WhatsAppOficial:
-    """WhatsApp Business Cloud API (Meta). Manda a números individuales. Respeta el FORMATO del
-    cliente ('texto' | 'audio' | 'ambos'): texto y/o NOTA DE VOZ. La nota de voz sigue la doc
-    oficial: se sube el audio con POST /{phone_id}/media y se envía un mensaje type=audio con el
-    media id. Doc: https://developers.facebook.com/docs/whatsapp/cloud-api/reference/media y
-    .../messages (audio messages)."""
-
-    def __init__(self, cfg):
-        self.phone_id = cfg.get("phone_number_id", "")
-        self.token = cfg.get("access_token", "")
-        self.destinatarios = cfg.get("destinatarios", [])
-        self.version = cfg.get("api_version", "v20.0")
-        self.respuesta = (cfg.get("respuesta") or "ambos").lower()   # 'texto' | 'audio' | 'ambos'
-        self.tts = None      # callable(texto)->bytes de audio (opcional); si no, voz_tts (edge mp3)
-
-    def enviar(self, texto):
-        ok = False
-        if self.respuesta in ("texto", "ambos"):
-            ok = self._enviar_texto(texto) or ok
-        if self.respuesta in ("audio", "ambos"):
-            self._mandar_voz(texto)          # nota de voz en segundo plano (sube media + type:audio)
-            ok = True
-        return ok
-
-    def enviar_mencion(self, texto, telefonos):
-        """La Cloud API manda a NÚMEROS (no hay grupos ni @menciones): el equivalente de mencionar al
-        TÉCNICO ASIGNADO es mandarle el aviso DIRECTO a su número. Si no se pudo (número no
-        configurado en Meta / fuera de la ventana de 24 h), cae al envío normal a los destinatarios
-        para que el aviso NO se pierda."""
-        nums = [re.sub(r"\D", "", str(t)) for t in (telefonos or []) if t]
-        if nums and self._enviar_texto(texto, destinatarios=nums):
-            return True
-        return self.enviar(texto)
-
-    def _enviar_texto(self, texto, destinatarios=None):
-        ok = False
-        for num in (destinatarios if destinatarios is not None else self.destinatarios):
-            payload = {"messaging_product": "whatsapp", "to": str(num),
-                       "type": "text", "text": {"body": con_prefijo(texto)}}
-            req = urllib.request.Request(
-                f"https://graph.facebook.com/{self.version}/{self.phone_id}/messages",
-                data=json.dumps(payload).encode("utf-8"),
-                headers={"Authorization": f"Bearer {self.token}",
-                         "Content-Type": "application/json"}, method="POST")
-            try:
-                urllib.request.urlopen(req, timeout=15)
-                ok = True
-            except Exception as e:  # noqa: BLE001
-                log.warning("WhatsApp oficial: no se pudo enviar a %s: %s", num, e)
-        return ok
-
-    def _mandar_voz(self, texto):
-        """Genera el audio (tts propio o voz_tts edge MP3), lo SUBE a Meta y manda un mensaje de
-        audio a cada destinatario. En SEGUNDO PLANO (no bloquea). Si algo falla y el formato es
-        'audio' puro, cae a texto para no dejar sin aviso."""
-        def _run(_t=texto):
-            try:
-                voz = self.tts(_t) if self.tts else None
-                if not voz:
-                    from comun import voz_tts
-                    voz = voz_tts.audio(_t, formato="mp3")     # audio/mpeg: formato soportado por Meta
-                media_id = self._subir_media(voz, "audio/mpeg", "ithos.mp3") if voz else None
-                if not media_id:
-                    if self.respuesta == "audio":
-                        self._enviar_texto(_t)
-                    return
-                for num in self.destinatarios:
-                    self._enviar_audio(num, media_id)
-            except Exception as e:  # noqa: BLE001
-                log.warning("WhatsApp oficial nota de voz: %s", e)
-        threading.Thread(target=_run, name="wa-of-voz", daemon=True).start()
-
-    def _subir_media(self, datos, mime, nombre):
-        """POST /{phone_id}/media -> media id (doc oficial). None si falla."""
-        try:
-            b, cuerpo = _multipart_media({"messaging_product": "whatsapp", "type": mime},
-                                         ("file", nombre, mime, datos))
-            req = urllib.request.Request(
-                f"https://graph.facebook.com/{self.version}/{self.phone_id}/media",
-                data=cuerpo, method="POST",
-                headers={"Authorization": f"Bearer {self.token}",
-                         "Content-Type": f"multipart/form-data; boundary={b}"})
-            with urllib.request.urlopen(req, timeout=40) as r:
-                return (json.loads(r.read().decode("utf-8") or "{}") or {}).get("id")
-        except Exception as e:  # noqa: BLE001
-            log.warning("WhatsApp oficial: no se pudo subir el audio: %s", e)
-            return None
-
-    def _enviar_audio(self, num, media_id):
-        """POST /{phone_id}/messages con type=audio y el media id (doc oficial)."""
-        try:
-            payload = {"messaging_product": "whatsapp", "recipient_type": "individual",
-                       "to": str(num), "type": "audio", "audio": {"id": media_id}}
-            req = urllib.request.Request(
-                f"https://graph.facebook.com/{self.version}/{self.phone_id}/messages",
-                data=json.dumps(payload).encode("utf-8"), method="POST",
-                headers={"Authorization": f"Bearer {self.token}",
-                         "Content-Type": "application/json"})
-            urllib.request.urlopen(req, timeout=15)
-            return True
-        except Exception as e:  # noqa: BLE001
-            log.warning("WhatsApp oficial: no se pudo enviar el audio a %s: %s", num, e)
-            return False
 
 
 class WhatsAppNoOficial:
@@ -714,8 +584,9 @@ class WhatsAppNoOficial:
 
 
 def crear_whatsapp(cfg):
+    """El canal de WhatsApp del cliente. Hoy sólo el NO OFICIAL (neonize, con el número propio y
+    los grupos por ámbito). Si algún día hace falta la Cloud API de Meta, se agrega acá otra clase
+    con la misma interfaz (`enviar`, `enviar_mencion`, `enviar_documento`)."""
     if not cfg or not cfg.get("enabled"):
         return None
-    if (cfg.get("tipo") or "oficial").lower() == "no_oficial":
-        return WhatsAppNoOficial(cfg)
-    return WhatsAppOficial(cfg)
+    return WhatsAppNoOficial(cfg)

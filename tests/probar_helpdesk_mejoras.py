@@ -410,22 +410,9 @@ def nivel3_mencion():
     ok(con.menciones and con.menciones[0][1] == ["5491151629038"],
        "WhatsApp recibe la @mención con el teléfono del asignado")
     ok(sin.textos == ["⚠️ SLA en riesgo #900"],
-       "los canales sin menciones (Telegram/email/Teams) reciben igual el aviso")
+       "un canal sin @menciones recibe igual el aviso (nunca se pierde)")
     notif2 = N.Notificadores([CanalConMencion()])
     ok(notif2.enviar_mencion("aviso", []) is True, "sin teléfonos: envío normal (no se pierde)")
-
-    # -- WhatsApp OFICIAL (Cloud API): no hay grupos, así que el aviso va DIRECTO al asignado --
-    of = WA.WhatsAppOficial({"phone_number_id": "1", "access_token": "t", "respuesta": "texto",
-                             "destinatarios": ["5491111111111"]})
-    enviados = []
-
-    def _falso(texto, destinatarios=None):
-        enviados.append(list(destinatarios) if destinatarios is not None else ["(default)"])
-        return True
-
-    of._enviar_texto = _falso
-    of.enviar_mencion("aviso", ["5491151629038"])
-    ok(enviados == [["5491151629038"]], "WhatsApp oficial le manda el aviso al número del asignado")
 
     # -- alerta de SLA: un aviso por técnico, @mencionándolo; los sin asignar van aparte --
     riesgo = [{"id": 1, "asunto": "Molinete", "faltan_horas": 1.5, "vencido": False, "asignados": [7]},

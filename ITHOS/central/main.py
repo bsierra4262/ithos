@@ -48,7 +48,6 @@ except Exception:  # noqa: BLE001
     pass
 registro = Registro()
 conexiones = {}
-canales_webhook = {}     # phone_number_id -> WhatsAppOficialConversacional (entrante Meta)
 
 
 def _dir_datos():
@@ -230,34 +229,6 @@ async def wa_desvincular(request: Request):
     if not sesion:
         return JSONResponse({"ok": False, "error": "falta la sesión"}, status_code=400)
     return WL.desvincular(sesion)
-
-
-@app.get("/webhook/whatsapp")
-def wa_verificar(request: Request):
-    """Handshake del webhook de WhatsApp Cloud API (Meta). Verifica cualquier cliente."""
-    from fastapi.responses import PlainTextResponse
-    p = dict(request.query_params)
-    for who in canales_webhook.values():
-        ch = who.verificar(p)
-        if ch is not None:
-            return PlainTextResponse(ch)
-    return PlainTextResponse("token inválido", status_code=403)
-
-
-@app.post("/webhook/whatsapp")
-async def wa_entrante(request: Request):
-    """Mensaje ENTRANTE de WhatsApp oficial (Meta). Enruta al cliente por phone_number_id."""
-    body = await request.json()
-    try:
-        entry = (body.get("entry") or [{}])[0]
-        value = ((entry.get("changes") or [{}])[0]).get("value", {})
-        pid = str((value.get("metadata") or {}).get("phone_number_id", ""))
-        who = canales_webhook.get(pid) or next(iter(canales_webhook.values()), None)
-        if who:
-            await asyncio.to_thread(who.procesar, body)
-    except Exception as e:  # noqa: BLE001
-        log.warning("Webhook WhatsApp entrante: %s", e)
-    return {"ok": True}
 
 
 @app.post("/webhook/mercadopago/{api_key}")
@@ -526,15 +497,6 @@ async def ws(websocket: WebSocket):
                     except Exception:  # noqa: BLE001
                         pass
                 if not os.environ.get("ITHOS_DEMO"):     # en demo los canales los maneja la demo
-                    try:
-                        from comun import canales as CANALES
-                        g = CANALES.GestorCanales(conf, asistente, hablar=_voz).iniciar()
-                        who = g.webhooks.get("whatsapp_oficial")
-                        if who and who.cfg.get("phone_number_id"):
-                            canales_webhook[str(who.cfg["phone_number_id"])] = who
-                    except Exception as e:  # noqa: BLE001
-                        log.warning("Canales conversacionales %s: %s", cliente, e)
-
                     # WhatsApp NO-OFICIAL conversacional: engancha el asistente para que RESPONDA los
                     # mensajes/audios del grupo (antes SOLO posteaba tickets/reportes) y ENTRENE la voz
                     # del dueño (voz-id). Esto solo estaba en la demo -> en producción no contestaba.

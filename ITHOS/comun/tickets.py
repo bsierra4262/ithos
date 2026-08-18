@@ -959,12 +959,12 @@ def acompanan_a(cli_cfg, login_o_id):
 
 
 def adaptador(cli_cfg):
-    """Devuelve el adaptador del sistema de tickets del cliente. GLPI nativo; los demás
-    (Zendesk/Jira/Freshservice/osTicket) por sus clientes REALES en tickets_otros.py,
-    que implementan la MISMA interfaz común."""
+    """Devuelve el adaptador del sistema de tickets del cliente.
+
+    Hoy el único sistema implementado es GLPI. Todo lo que hace ITHOS habla con la INTERFAZ COMÚN
+    de este módulo, no con GLPI directamente, así que sumar otro sistema (Zendesk, Jira,
+    Freshservice, osTicket…) es escribir un adaptador con estos mismos métodos y devolverlo acá:
+    el resto del software no se entera. Mientras tanto, un tipo desconocido devuelve el adaptador
+    NULO, que responde "no disponible" en vez de romper."""
     tipo = ((cli_cfg.get("tickets") or {}).get("tipo")) or "glpi"
-    if tipo == "glpi":
-        return _GLPI(cli_cfg)
-    from comun import tickets_otros as TO
-    cli = TO.crear_cliente_tickets(cli_cfg.get("tickets") or {})
-    return cli or _Nulo(tipo)
+    return _GLPI(cli_cfg) if tipo == "glpi" else _Nulo(tipo)

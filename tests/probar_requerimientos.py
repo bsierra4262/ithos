@@ -770,78 +770,32 @@ except Exception as e:  # noqa: BLE001
 #     demás canales configurados por el cliente. Así los avisos van por TODOS los canales.
 try:
     from comun import notificadores as _NT9
-    cli9 = {"notificaciones": [
-        {"tipo": "whatsapp_no_oficial", "enabled": True},
-        {"tipo": "telegram", "enabled": True, "bot_token": "x", "chat_ids": [1]},
-        {"tipo": "email", "enabled": True, "usuario": "a@b.c", "destinatarios": ["d@e.f"]}]}
+    cli9 = {"notificaciones": [{"tipo": "whatsapp_no_oficial", "enabled": True}]}
 
     class _WAfake:
-        def enviar(self, t): return True
+        def enviar(self, t, tipo=None): return True
     waf = _WAfake()
     n9 = _NT9.crear_notificadores(cli9, wa_compartido=waf)
     tipos = [type(c).__name__ for c in n9.canales]
     dup_wa = sum(1 for c in n9.canales if type(c).__name__.startswith("WhatsApp"))
-    if waf in n9.canales and dup_wa == 0 and "Telegram" in tipos and "Email" in tipos:
-        ok(f"notificadores: reusa el WhatsApp compartido + suma canales ({tipos})")
+    # La ESTRUCTURA multicanal sigue: Notificadores agrupa N canales y reparte a todos. Hoy el
+    # cliente usa uno solo (WhatsApp); sumar otro es agregar una clase con enviar().
+    n9b = _NT9.Notificadores([waf, _WAfake()])
+    if waf in n9.canales and dup_wa == 0 and len(n9.canales) == 1 and n9b.enviar("hola"):
+        ok(f"notificadores: reusa el WhatsApp compartido sin duplicar sesión y sigue "
+           f"soportando VARIOS canales ({tipos})")
     else:
-        fail("notificadores no reusa el WhatsApp compartido o no suma canales", str(tipos))
+        fail("notificadores no reusa el WhatsApp compartido o perdió el soporte multicanal",
+             str(tipos))
 except Exception as e:  # noqa: BLE001
     fail("no se pudo verificar la reutilización del WhatsApp compartido", repr(e))
 
 
-# H10) WhatsApp OFICIAL (Meta) también respeta el formato y arma la nota de voz: sube media +
-#      envía type:audio. No se prueba contra Meta en vivo; se valida el ruteo por formato + la lógica.
-try:
-    import time as _t10
-    from comun import whatsapp as _WA10
-
-    def _of(fmt):
-        calls = {"texto": 0, "audio": 0, "media": 0}
-        w = _WA10.WhatsAppOficial.__new__(_WA10.WhatsAppOficial)
-        w.phone_id, w.token, w.destinatarios, w.version = "P", "T", ["549111"], "v20.0"
-        w.respuesta, w.tts = fmt, (lambda x: b"VOICE")
-        w._enviar_texto = lambda t: (calls.__setitem__("texto", calls["texto"] + 1) or True)
-        w._subir_media = lambda d, m, n: (calls.__setitem__("media", calls["media"] + 1) or "MID")
-        w._enviar_audio = lambda num, mid: (calls.__setitem__("audio", calls["audio"] + 1) or True)
-        w.enviar("Aviso oficial")
-        for _ in range(100):
-            if fmt == "texto" or calls["audio"]:
-                break
-            _t10.sleep(0.02)
-        return calls
-    a = _of("texto")
-    b = _of("audio")
-    c = _of("ambos")
-    if (a["texto"] == 1 and a["audio"] == 0 and b["texto"] == 0 and b["audio"] == 1 and
-            b["media"] == 1 and c["texto"] == 1 and c["audio"] == 1):
-        ok("WhatsApp OFICIAL respeta formato y arma la nota de voz (sube media + type:audio)")
-    else:
-        fail("WhatsApp oficial no rutea texto/audio por formato", f"texto={a} audio={b} ambos={c}")
-except Exception as e:  # noqa: BLE001
-    fail("no se pudo verificar el audio de WhatsApp oficial", repr(e))
+# H10) [retirado] La Cloud API de Meta (WhatsApp oficial) salió del alcance: INTELLIHELP usa
+#      el canal no oficial con su propio número. La implementación quedó en la rama `saas`.
 
 
-# H13) Telegram respeta el formato del cliente: 'texto'->texto, 'audio'->nota de voz (sendVoice),
-#      'ambos'->texto + nota de voz. Default 'texto' (no sorprende a quien ya lo usa por texto).
-try:
-    from comun import notificadores as _NT13
-
-    def _tg(fmt):
-        calls = {"texto": 0, "voz": 0}
-        t = _NT13.Telegram({"bot_token": "x", "chat_ids": [1], "respuesta": fmt})
-        t._enviar_texto = lambda txt: (calls.__setitem__("texto", calls["texto"] + 1) or True)
-        t._enviar_voz = lambda txt: calls.__setitem__("voz", calls["voz"] + 1)
-        t.enviar("Aviso")
-        return calls
-    a = _tg("texto")
-    b = _tg("audio")
-    c = _tg("ambos")
-    if a == {"texto": 1, "voz": 0} and b == {"texto": 0, "voz": 1} and c == {"texto": 1, "voz": 1}:
-        ok("Telegram respeta formato: texto / audio (nota de voz sendVoice) / ambos")
-    else:
-        fail("Telegram no rutea texto/voz por formato", f"texto={a} audio={b} ambos={c}")
-except Exception as e:  # noqa: BLE001
-    fail("no se pudo verificar el formato de Telegram", repr(e))
+# H13) [retirado] Telegram salió del alcance (queda WhatsApp). Congelado en la rama `saas`.
 
 
 # H11) CADENA DE IA: usa UNA sola IA por consulta y SOLO pasa a la siguiente si la actual FALLA/se
@@ -1964,14 +1918,21 @@ try:
     parlante = any(c.get("accion") == "decir" for c in g45["decir"])
     canal = len(g45["wa"]) >= 1 and "PC no prende" in " ".join(g45["wa"])
 
-    # respuesta texto/audio/ambos en el notificador de WhatsApp (oficial): patch de los envíos.
+    # respuesta texto/audio/ambos en el canal de WhatsApp: patch de los envíos.
     from comun import whatsapp as _WA45
     def _mk(resp):
-        w = _WA45.WhatsAppOficial({"phone_number_id": "1", "access_token": "t",
-                                   "destinatarios": ["123"], "respuesta": resp})
+        w = _WA45.WhatsAppNoOficial.__new__(_WA45.WhatsAppNoOficial)
+        w.grupos = [{"grupo": "G", "ambito": "todo", "jid": "jid:G"}]
+        w.respuesta = resp
         reg = {"txt": 0, "voz": 0}
-        w._enviar_texto = lambda t: reg.__setitem__("txt", reg["txt"] + 1) or True
-        w._mandar_voz = lambda t: reg.__setitem__("voz", reg["voz"] + 1)
+
+        class _L:
+            @staticmethod
+            def is_set(): return True
+        w._listo = _L()
+        w.client = type("C", (), {"send_message": staticmethod(
+            lambda jid, t: reg.__setitem__("txt", reg["txt"] + 1))})()
+        w._mandar_voz = lambda jid, t: reg.__setitem__("voz", reg["voz"] + 1)
         w.enviar("hola")
         return reg
     r_txt, r_aud, r_amb = _mk("texto"), _mk("audio"), _mk("ambos")
@@ -2296,11 +2257,13 @@ try:
     grace = "stop_grace_period" in comp
     vivo = ('datos.get("device") if evento == P.EV_ACCESO' in m53
             and "_terminales_vistas.get(cliente" in m53)         # auto-descubrimiento en vivo
-    # TODAS las marcas mandan device + es_fallo (no solo IVMS)
+    # El integrador manda 'device' + 'es_fallo': es lo que le permite al Gestor clasificar la
+    # terminal (entrada/salida/sala) y descubrirla sola. Es el CONTRATO que tiene que cumplir
+    # cualquier integrador que se agregue después (HikCentral, BioStar 2, ZKTeco, Honeywell).
     marcas_ok = True
-    for _mk in ("hikcentral", "biostar2", "zkteco", "honeywell"):
+    for _mk in ("ivms",):
         _t = leer(os.path.join(APP, "agente", f"integrador_{_mk}.py"))
-        if '"device": device' not in _t or '"es_fallo": tipo == "alerta"' not in _t:
+        if '"device": device' not in _t or '"es_fallo":' not in _t:
             marcas_ok = False
     if mant and grace and vivo and marcas_ok:
         ok("aviso de mantenimiento: el Gestor avisa 'mantenimiento' al detenerse y 'disponible' al "
@@ -2337,14 +2300,23 @@ try:
     ag_rep = ("estado_agente" in ag54 and "_escribir_estado_local" in ag54
               and "_microfono_ok" in ag54 and "_integrador_ok" in ag54)
     gui_ok = "def _salud(" in gui54 and "setSalud" in gui54
-    # funcional: WhatsApp inactivo si no está _listo; activo si _listo + grupo
+    # funcional: WhatsApp INACTIVO si la sesión no está lista; ACTIVO si está lista y con grupos
+    # resueltos (no alcanza con estar configurado).
     sys.path.insert(0, APP)
     import importlib as _il2
     _N = _il2.import_module("comun.notificadores")
-    tg = _N.Telegram({"bot_token": "x", "chat_ids": ["1"]})
-    tg0 = _N.Telegram({"bot_token": "", "chat_ids": []})
-    func54 = (_N.estado_canal(tg)["activo"] and not _N.estado_canal(tg0)["activo"]
-              and _N.Notificadores([tg]).hay_activo() and not _N.Notificadores([tg0]).hay_activo())
+    _W54 = _il2.import_module("comun.whatsapp")
+
+    def _wa54(listo, grupos):
+        w = _W54.WhatsAppNoOficial.__new__(_W54.WhatsAppNoOficial)
+        w.grupos = grupos
+        w._listo = type("L", (), {"is_set": staticmethod(lambda: listo)})()
+        return w
+    vivo54 = _wa54(True, [{"grupo": "ITHOS_SOPORTE", "ambito": "soporte", "jid": "j"}])
+    muerto54 = _wa54(False, [{"grupo": "ITHOS_SOPORTE", "ambito": "soporte", "jid": None}])
+    func54 = (_N.estado_canal(vivo54)["activo"] and not _N.estado_canal(muerto54)["activo"]
+              and _N.Notificadores([vivo54]).hay_activo()
+              and not _N.Notificadores([muerto54]).hay_activo())
     if all((canal_estado, proto54, central54, panel54, ui54, ag_rep, gui_ok, func54)):
         ok("sistema de estado: el gestor reporta activo/inactivo de CADA canal (WhatsApp real, no solo "
            "configurado) + micrófono/integrador/voz del agente; se ve en panel (portal + tarjeta) y en la "

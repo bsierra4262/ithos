@@ -6,7 +6,7 @@ acceso local). Se conecta al GESTOR (el cerebro, que hosteamos) por WebSocket co
 EVENTOS locales (fichajes) y EJECUTA los COMANDOS que le manda el gestor (voz ITHOS). No tiene lógica
 pesada: toda la inteligencia vive en el gestor. Solo sale hacia afuera (el cliente no abre puertos).
 
-Config: agente/config.json. Integrador de acceso elegible: ivms | hikcentral | biostar2.
+Config: agente/config.json. Integrador de acceso: ivms (el que usa INTELLIHELP).
 Correr:  python agente.py            # se conecta y queda escuchando
          python agente.py --demo     # además manda un fichaje de prueba
 """
@@ -333,17 +333,11 @@ class Agente:
             asyncio.run_coroutine_threadsafe(
                 ws.send(json.dumps({"tipo": "evento", **ev})), loop)
 
+        # Un integrador nuevo (HikCentral, BioStar 2, ZKTeco, Honeywell…) es un módulo con la misma
+        # interfaz que integrador_ivms: se agrega acá y el resto del agente no cambia.
         try:
             if tipo == "ivms":
                 import integrador_ivms as mod
-            elif tipo == "hikcentral":
-                import integrador_hikcentral as mod
-            elif tipo == "biostar2":
-                import integrador_biostar2 as mod
-            elif tipo == "zkteco":
-                import integrador_zkteco as mod
-            elif tipo == "honeywell":
-                import integrador_honeywell as mod
             else:
                 log.warning("Integrador desconocido: %s", tipo)
                 return
