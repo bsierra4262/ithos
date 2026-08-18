@@ -33,12 +33,14 @@ def pendientes_triage(recientes):
 async def vigilar(cfg_glpi, enviar_comando, triage=None, wa=None, stop=None,
                   nombre_cliente="cliente"):
     from comun import metricas
-    entidad = int(cfg_glpi["entity_id"])
+    # TODAS las entidades del cliente, no sólo la principal: un cliente tiene una entidad por área
+    # (mesa de ayuda, soporte técnico, infraestructura) y los tickets entran por cualquiera de ellas.
+    entidad = G.entidades_de(cfg_glpi)
     intervalo = cfg_glpi.get("poll_interval", 10)
     cliente = G.GLPIClient(cfg_glpi)
     seg_estado = {}
     anunciados = set()          # tickets ya anunciados (para no repetir el aviso de llegada)
-    log.info("GLPI integrador iniciado (entidad %s, cada %ss, triage=%s).",
+    log.info("GLPI integrador iniciado (entidades %s, cada %ss, triage=%s).",
              entidad, intervalo, triage is not None)
 
     async def decir(texto, cachear=False):

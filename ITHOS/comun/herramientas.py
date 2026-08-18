@@ -31,7 +31,7 @@ def herramientas_glpi(cfg_glpi, entidad):
         cli = G.GLPIClient(cfg_glpi)
         cli.abrir()
         try:
-            ts = G.de_entidad(cli.tickets_recientes(40), entidad)
+            ts = G.de_entidad(cli.tickets_recientes(40), G.entidades_de(cfg_glpi))
         finally:
             cli.cerrar()
         abiertos = [t for t in ts if int(t.get("status", 0)) in (1, 2, 4)]

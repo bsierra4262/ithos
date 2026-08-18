@@ -301,6 +301,16 @@ flowchart TD
     C -.->|"SLA por vencer o vencido"| SLA["Alerta al asignado<br/>(@mención, en horario)"]
 ```
 
+**El cliente son todas sus áreas.** En la mesa de ayuda un cliente aparece una vez por área (mesa de
+ayuda, soporte técnico, infraestructura, compras) y sus tickets entran por cualquiera de ellas. ITHOS
+resuelve ese conjunto leyendo la mesa de ayuda, sin listas escritas a mano, y lo usa en todo: el
+vigilante, el ciclo de vida, el asistente y los reportes (se puede acotar con `entidades: [12, 13]`).
+Cada área tiene además sus propias categorías y sus propios SLA, con identificadores distintos, así
+que el triage usa el catálogo **del área del ticket**; si esa área todavía no tiene catálogo, el
+ticket queda sin categoría y sin SLA —mejor vacío que equivocado— pero se asigna y se contesta igual.
+Mirar una sola área costó caro una vez: un aviso de unas terminales desenergizadas quedó siete días
+en Nuevo sin que nadie lo viera.
+
 En el **primer triage** ITHOS lee el ticket completo —asunto, descripción y seguimientos—, lo compara con
 los casos parecidos ya trabajados de ese cliente, corrige la carga si vino mal, fija categoría, prioridad
 y SLA/OLA, asigna, y responde saludando a **quien abrió el ticket** por su nombre (y despidiéndose una

@@ -30,6 +30,10 @@ import cerebro                      # noqa: E402
 
 log = logging.getLogger("triage")
 
+# Las categorías y los SLA se leen de GLPI POR ENTIDAD (`G.catalogo_entidad`): cada área del cliente
+# tiene los suyos, con ids distintos —'TERMINALES' es la 13 en la mesa de ayuda de SRT y la 55 en
+# soporte técnico—, y ponerle a un ticket el id de otra entidad es cargarlo mal. Estos valores son el
+# ÚLTIMO recurso, sólo por si GLPI no contesta cuando hay que clasificar.
 CATEGORIAS = {"MOLINETES": 11, "TERMINALES": 13, "HIK-CENTRAL": 12, "INTERFACE": 15}
 NIVEL_SLA = {
     "LEVE":      {"slas_id_tto": 1, "slas_id_ttr": 6, "olas_id_tto": 1, "olas_id_ttr": 2},
@@ -72,6 +76,12 @@ _saludo_solicitante = G.saludo_solicitante
 
 
 class Triage:
+    @property
+    def ent(self):
+        """La entidad PRINCIPAL del cliente. Sale siempre de la config, así vale también para un
+        Triage armado a mano (los tests) sin depender de que alguien la haya seteado."""
+        return int((self.cfg_glpi or {}).get("entity_id", 0) or 0)
+
     def __init__(self, cfg_glpi, cfg_ia, gestor=None):
         self.cfg_glpi = cfg_glpi
         self.cli = G.GLPIClient(cfg_glpi, token=cfg_glpi["glpi_ithos_token"])
@@ -181,12 +191,27 @@ class Triage:
         try:
             self.cli.abrir()
             campos = {"urgency": num, "impact": num, "priority": num}
-            cat = CATEGORIAS.get(a.get("categoria"))
+            # La categoría y el SLA son los DE LA ENTIDAD DEL TICKET: cada área del cliente tiene los
+            # suyos, con ids propios. Antes se usaban siempre los de la entidad principal, así que un
+            # ticket de otra área quedaba mal categorizado y sin SLA.
+            ent_ticket = int(ticket.get("entities_id", self.ent) or self.ent)
+            catalogo = G.catalogo_entidad(self.cfg_glpi, ent_ticket)
+            # Los valores fijos son de la entidad PRINCIPAL: sirven de red sólo ahí. En otra
+            # entidad, antes que ponerle el id de una categoría o un SLA ajenos —cargarlo mal—,
+            # se deja sin poner y el ticket igual entra al circuito (asignado y contestado).
+            propio = ent_ticket == self.ent
+            cat = catalogo["categorias"].get(str(a.get("categoria") or "").upper()) \
+                or (CATEGORIAS.get(a.get("categoria")) if propio else None)
             # 1er triage: CATEGORIZA SIEMPRE (aunque venga mal cargado con otra categoría). El respeto a
             # la categoría manual es AGUAS ARRIBA (si ITHOS ya lo triageó, ni entra acá).
             if cat:
                 campos["itilcategories_id"] = cat
-            campos.update(NIVEL_SLA[nivel])
+            sla = catalogo["sla"].get(nivel) or (NIVEL_SLA[nivel] if propio else None)
+            if sla:
+                campos.update(sla)
+            else:
+                log.warning("Triage #%s: la entidad %s no tiene SLA cargado — el ticket se atiende "
+                            "igual, pero sin reloj de SLA.", tid, ent_ticket)
             self.cli.request(f"/Ticket/{tid}", "PUT", {"input": campos})
             # ASIGNACIÓN: ITHOS siempre. El responsable AUTOMÁTICO (bsierra/jayala) SOLO si NO hay ya un
             # técnico HUMANO asignado a mano -> se respeta una reasignación manual previa.

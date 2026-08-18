@@ -349,7 +349,24 @@ intuición, y aplica:
   El cliente **no se entera** del corte (sólo ve la respuesta profesional); el equipo lo ve por nota interna.
 - **Nunca re-triagea**: una vez que ITHOS pasó, no vuelve a categorizar ni pisa cambios manuales.
 
-#### 5.1.0 El equipo sale de la configuración
+#### 5.1.0 El cliente son TODAS sus áreas
+
+Un cliente no es una entidad sola: en la mesa de ayuda aparece **una vez por área** (mesa de ayuda,
+soporte técnico, infraestructura, compras), y sus tickets entran por cualquiera de ellas. ITHOS
+resuelve el conjunto **leyendo la mesa de ayuda**, sin listas escritas a mano, y lo usa en todo: el
+vigilante, el ciclo de vida, el asistente y los reportes. El cliente puede acotarlo con
+`entidades: [12, 13]`.
+
+Cada área tiene además **sus propias categorías y sus propios SLA**, con identificadores distintos:
+la categoría «TERMINALES» no es la misma en soporte técnico que en la mesa de ayuda. Por eso el
+triage usa el catálogo **del área del ticket**; ponerle el de al lado sería cargarlo mal. Si un área
+todavía no tiene catálogo cargado, el ticket queda sin categoría y sin SLA —mejor vacío que
+equivocado— pero **igual se asigna y se contesta**.
+
+> Mirar una sola área costó caro una vez: un aviso de que unas terminales estaban desenergizadas
+> quedó siete días en Nuevo, sin que nadie lo viera.
+
+#### 5.1.0.1 El equipo sale de la configuración
 
 Los técnicos del cliente se declaran en `tecnicos` (nombre, id/login del sistema de tickets y
 teléfonos). Con eso ITHOS lo reconoce como técnico —sus comentarios pueden resolver un ticket—, se

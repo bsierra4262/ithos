@@ -83,7 +83,7 @@ def codigo_idioma(idioma):
 # OpenRouter da acceso por UNA API a casi todos los modelos del mundo (incluye ':free').
 _MODELOS = {
     "gemini":     {"free": "gemini-2.5-flash-lite",                    "pago": "gemini-2.5-flash"},
-    "groq":       {"free": "llama-3.3-70b-versatile",                  "pago": "llama-3.3-70b-versatile"},
+    "groq":       {"free": "openai/gpt-oss-120b",                      "pago": "openai/gpt-oss-120b"},
     "cerebras":   {"free": "gpt-oss-120b",                             "pago": "gpt-oss-120b"},
     "mistral":    {"free": "mistral-small-latest",                     "pago": "mistral-medium-latest"},
     "cohere":     {"free": "command-r",                                "pago": "command-r-plus"},
@@ -100,10 +100,30 @@ _MODELOS = {
 # Estos no tienen cuota gratis real por API: se tratan como PAGO (modelo cost-effective).
 _SIEMPRE_PAGO = {"openai", "chatgpt", "claude", "grok"}
 
-# Modelos de Gemini a los que ITHOS se corre cuando el que está usando se queda sin cuota del
-# día. Van del más barato en cuota al más capaz: se agota uno y sigue con el otro, sin cambiar
-# de proveedor todavía. Cada uno tiene su PROPIO límite diario gratuito.
+# ESCALERA DE MODELOS por proveedor: a cuáles se corre ITHOS cuando el que está usando no sirve,
+# ANTES de cambiar de proveedor. Dos motivos reales, los dos vistos en producción:
+#   · se agotó la cuota del DÍA de ese modelo (la cuota gratis se cuenta por modelo), y
+#   · el proveedor RETIRÓ el modelo (Groq dio de baja los Llama y quedó respondiendo 404).
+# Van del más económico al más capaz.
 _ESCALERA_GEMINI = ["gemini-2.5-flash-lite", "gemini-2.5-flash", "gemini-3-flash-preview"]
+_ESCALERAS = {
+    "gemini": _ESCALERA_GEMINI,
+    "groq": ["openai/gpt-oss-120b", "openai/gpt-oss-20b", "qwen/qwen3.6-27b"],
+    "cerebras": ["gpt-oss-120b", "gpt-oss-20b"],
+}
+
+
+def escalera_de(proveedor, modelo):
+    """Los modelos a probar para ese proveedor, empezando por el elegido."""
+    resto = _ESCALERAS.get((proveedor or "").lower(), [])
+    return [modelo] + [m for m in resto if m != modelo]
+
+
+def _modelo_retirado(msg):
+    """True si el proveedor dice que ese modelo ya no existe (lo dio de baja)."""
+    m = str(msg).lower()
+    return ("model_not_found" in m or "does not exist" in m
+            or "is not found for api version" in m or "model_decommissioned" in m)
 
 
 def es_pago(cfg):
@@ -572,6 +592,7 @@ class _OpenAICompat(ProveedorIA):
         self.api_key = cfg.get(f"{self.PROV}_api_key") or os.environ.get(
             f"{self.PROV.upper()}_API_KEY", "")
         self.modelo = elegir_modelo(cfg, self.PROV, self.DEFECTO)
+        self._escalera = escalera_de(self.PROV, self.modelo)
         self._gem = GeminiIA(cfg)
 
     # UA de navegador: Cerebras/otros están detrás de Cloudflare y bloquean el UA de Python.
@@ -581,8 +602,9 @@ class _OpenAICompat(ProveedorIA):
 
     def chat(self, system, prompt, json_out=True, max_tokens=None):
         import json
+        import urllib.error
         import urllib.request
-        payload = {"model": self.modelo, "messages": [
+        payload = {"messages": [
             {"role": "system", "content": system}, {"role": "user", "content": prompt}]}
         if json_out:
             payload["temperature"] = 0.2
@@ -594,12 +616,27 @@ class _OpenAICompat(ProveedorIA):
             # alcanza para una respuesta detallada cuando la piden).
             payload["temperature"] = 0.1
             payload[self.MAX_KEY] = max_tokens or 1600
-        req = urllib.request.Request(
-            self.URL, data=json.dumps(payload).encode(),
-            headers={"Content-Type": "application/json", "User-Agent": self._UA,
-                     "Authorization": f"Bearer {self.api_key}", **self._EXTRA})
-        with urllib.request.urlopen(req, timeout=60) as r:
-            return json.load(r)["choices"][0]["message"]["content"]
+        # Si el proveedor dio de baja el modelo, se sigue con el siguiente de su escalera en vez de
+        # dejar al cliente sin IA (pasó de verdad: Groq retiró los Llama y todo devolvía 404).
+        for modelo in self._escalera:
+            req = urllib.request.Request(
+                self.URL, data=json.dumps({**payload, "model": modelo}).encode(),
+                headers={"Content-Type": "application/json", "User-Agent": self._UA,
+                         "Authorization": f"Bearer {self.api_key}", **self._EXTRA})
+            try:
+                with urllib.request.urlopen(req, timeout=60) as r:
+                    if modelo != self.modelo:
+                        log.info("%s: '%s' ya no está; sigo con '%s'.",
+                                 self.PROV, self.modelo, modelo)
+                        self.modelo = modelo          # no volver a probar el retirado
+                        self._escalera = escalera_de(self.PROV, modelo)
+                    return json.load(r)["choices"][0]["message"]["content"]
+            except urllib.error.HTTPError as e:
+                cuerpo = e.read().decode("utf-8", "replace")
+                if _modelo_retirado(cuerpo) and modelo != self._escalera[-1]:
+                    continue
+                raise RuntimeError(f"HTTP {e.code} {self.PROV}: {cuerpo[:300]}") from e
+        return ""
 
     def transcribir(self, audio_bytes, mime="audio/ogg", idioma=None):
         return self._gem.transcribir(audio_bytes, mime, idioma=idioma)
@@ -667,7 +704,8 @@ class GroqCloudIA(ProveedorIA):
 
     def __init__(self, cfg, gestor=None):
         self.api_key = cfg.get("groq_api_key") or os.environ.get("GROQ_API_KEY", "")
-        self.modelo = elegir_modelo(cfg, "groq", "llama-3.3-70b-versatile")
+        self.modelo = elegir_modelo(cfg, "groq", _ESCALERAS["groq"][0])
+        self._escalera = escalera_de("groq", self.modelo)
         self.idioma = cfg.get("idioma", "es-AR")
         self.gestor = gestor
         self._gem = GeminiIA(cfg)
@@ -694,34 +732,44 @@ class GroqCloudIA(ProveedorIA):
         import json
         import urllib.request
         import urllib.error
-        req = urllib.request.Request(
-            "https://api.groq.com/openai/v1/chat/completions",
-            data=json.dumps(payload).encode(),
-            headers={"Content-Type": "application/json", "User-Agent": self._UA,
-                     "Authorization": f"Bearer {self.api_key}"})
-        try:
-            with urllib.request.urlopen(req, timeout=timeout) as r:
-                self._cuota_headers(r)
-                return json.load(r)["choices"][0]["message"]["content"]
-        except urllib.error.HTTPError as e:  # noqa: BLE001
-            cuerpo = ""
+        # Si Groq dio de baja el modelo, se sigue con el siguiente de su escalera. Pasó de verdad:
+        # retiró los Llama y el triage quedó recibiendo 404 en cada ticket.
+        for modelo in self._escalera:
+            req = urllib.request.Request(
+                "https://api.groq.com/openai/v1/chat/completions",
+                data=json.dumps({**payload, "model": modelo}).encode(),
+                headers={"Content-Type": "application/json", "User-Agent": self._UA,
+                         "Authorization": f"Bearer {self.api_key}"})
             try:
-                cuerpo = e.read().decode("utf-8", "ignore")
-            except Exception:  # noqa: BLE001
-                pass
-            if e.code == 429 and self.gestor:
+                with urllib.request.urlopen(req, timeout=timeout) as r:
+                    self._cuota_headers(r)
+                    if modelo != self.modelo:
+                        log.info("Groq: '%s' ya no está; sigo con '%s'.", self.modelo, modelo)
+                        self.modelo = modelo          # no volver a probar el retirado
+                        self._escalera = escalera_de("groq", modelo)
+                    return json.load(r)["choices"][0]["message"]["content"]
+            except urllib.error.HTTPError as e:  # noqa: BLE001
+                cuerpo = ""
                 try:
-                    self.gestor.agotada_groq(retry_after=_a_float(e.headers.get("retry-after")))
+                    cuerpo = e.read().decode("utf-8", "ignore")
                 except Exception:  # noqa: BLE001
                     pass
-            # Re-lanzar con el CUERPO (trae 'requests per day' vs 'per minute') para clasificar bien.
-            raise RuntimeError(f"HTTP {e.code} Groq: {cuerpo or e.reason}") from e
+                if _modelo_retirado(cuerpo) and modelo != self._escalera[-1]:
+                    continue
+                if e.code == 429 and self.gestor:
+                    try:
+                        self.gestor.agotada_groq(retry_after=_a_float(e.headers.get("retry-after")))
+                    except Exception:  # noqa: BLE001
+                        pass
+                # Re-lanzar con el CUERPO ('requests per day' vs 'per minute') para clasificar bien.
+                raise RuntimeError(f"HTTP {e.code} Groq: {cuerpo or e.reason}") from e
+        return ""
 
     def chat(self, system, prompt, json_out=True, max_tokens=None):
         # Groq (OpenAI-compat) exige la palabra "json" en los mensajes si se pide json_object.
         if json_out and "json" not in (system + prompt).lower():
             prompt = prompt + "\n\nRespondé SOLO en formato JSON válido."
-        payload = {"model": self.modelo, "messages": [
+        payload = {"messages": [           # el modelo lo pone `_pedir` (puede bajar por la escalera)
             {"role": "system", "content": system}, {"role": "user", "content": prompt}]}
         if json_out:
             payload["temperature"] = 0.2

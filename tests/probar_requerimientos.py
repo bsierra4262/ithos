@@ -818,6 +818,70 @@ except Exception as e:  # noqa: BLE001
     fail("no se pudo verificar la escalera de modelos de Gemini", repr(e))
 
 
+# H87) EL CLIENTE SON TODAS SUS ÁREAS (bug real y grave, #666 "Terminal EP": Sistemas de SRT avisó que
+#   las terminales de un entrepiso estaban desenergizadas y el ticket quedó SIETE DÍAS en Nuevo, sin
+#   asignar, sin primera respuesta y sin SLA. En GLPI el mismo cliente tiene una entidad POR ÁREA
+#   -mesa de ayuda, soporte técnico, infraestructura- e ITHOS miraba una sola: lo que entraba por otra
+#   área no lo veía nadie. Y cada área tiene SUS categorías y SUS SLA, con ids distintos).
+try:
+    from comun import glpi as _G87
+    # a) el filtro acepta UNA entidad (como siempre) o TODAS las del cliente
+    _ts87 = [{"id": 1, "entities_id": 12}, {"id": 2, "entities_id": 13}, {"id": 3, "entities_id": 19}]
+    una = [t["id"] for t in _G87.de_entidad(_ts87, 12)]
+    varias = [t["id"] for t in _G87.de_entidad(_ts87, [12, 13])]
+    # b) el catálogo se lee POR ENTIDAD, y el triage usa el de la entidad del ticket
+    tri87 = leer_tickets()
+    por_entidad = ("catalogo_entidad" in tri87 and "entities_id" in tri87
+                   and "G.catalogo_entidad(self.cfg_glpi, ent_ticket)" in tri87)
+    # c) en un área sin catálogo propio NO se le pone el id de otra entidad
+    sin_heredar = "if propio else None" in tri87
+    # d) el vigilante, el ciclo, los reportes y el asistente miran TODAS las áreas
+    fuentes = {n: leer(os.path.join(APP, *p)) for n, p in (
+        ("vigilante", ("central", "integrador_glpi.py")),
+        ("reportes", ("central", "reportes.py")),
+        ("itil", ("comun", "reportes_itil.py")),
+        ("tickets", ("comun", "tickets.py")),
+        ("asistente", ("comun", "herramientas.py")))}
+    todos = [n for n, s in fuentes.items() if "entidades_de" in s]
+    if (una == [1] and varias == [1, 2] and por_entidad and sin_heredar
+            and len(todos) == len(fuentes)):
+        ok("el cliente son TODAS sus áreas: un ticket que entra por soporte técnico o "
+           "infraestructura se ve, se asigna y se contesta, con la categoría y el SLA DE SU área "
+           "(y si esa área no tiene catálogo propio, no se le pone el de la de al lado)")
+    else:
+        fail("un ticket que entra por otra área del cliente queda sin atender",
+             f"una={una} varias={varias} por_entidad={por_entidad} sin_heredar={sin_heredar} "
+             f"miran_todas={todos}")
+except Exception as e:  # noqa: BLE001
+    fail("no se pudo verificar el circuito por áreas del cliente", repr(e))
+
+
+# H88) MODELO RETIRADO POR EL PROVEEDOR (bug real: Groq dio de baja los Llama y el triage empezó a
+#   recibir 404 en cada ticket; el modelo estaba escrito en el código). Igual que con la cuota, se
+#   sigue con el modelo siguiente del MISMO proveedor antes de cambiar de proveedor.
+try:
+    from comun import ia as _IA88
+    detecta = all(_IA88._modelo_retirado(m) for m in (
+        '{"error":{"code":"model_not_found"}}',
+        "The model `llama-3.3-70b-versatile` does not exist or you do not have access to it.",
+        "models/gemini-x is not found for API version v1beta"))
+    no_falsos = not _IA88._modelo_retirado("rate limit exceeded")
+    esc = _IA88.escalera_de("groq", "openai/gpt-oss-120b")
+    arranca = esc[0] == "openai/gpt-oss-120b" and len(esc) >= 2
+    # el que elige 'auto' para Groq tiene que EXISTIR hoy (no un Llama dado de baja)
+    vigente = "llama" not in _IA88._MODELOS["groq"]["free"].lower()
+    baja_solo = "_modelo_retirado(cuerpo)" in leer(os.path.join(APP, "comun", "ia.py"))
+    if detecta and no_falsos and arranca and vigente and baja_solo:
+        ok("si el proveedor da de baja el modelo, ITHOS sigue con el siguiente del mismo proveedor "
+           "en vez de dejar al cliente sin IA")
+    else:
+        fail("un modelo dado de baja deja el triage sin IA",
+             f"detecta={detecta} no_falsos={no_falsos} arranca={arranca} vigente={vigente} "
+             f"baja_solo={baja_solo}")
+except Exception as e:  # noqa: BLE001
+    fail("no se pudo verificar la escalera ante un modelo retirado", repr(e))
+
+
 # H12) AVISO DE CAMBIO DE IA: al agotarse una IA, avisa al canal del cliente "sigo con la siguiente"
 #      (para los motores que no son Gemini/Groq, que ya los anuncia el GestorCuota). Con dedup.
 try:

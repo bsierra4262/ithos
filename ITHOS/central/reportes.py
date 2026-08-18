@@ -29,8 +29,11 @@ def _fecha(s):
 def generar(cfg_glpi, entidad, n=None):
     # n=None (default) -> TODOS los tickets reales del cliente (sin límite). Si se pasa un n, se
     # usa la muestra reciente (para usos rápidos puntuales).
+    # Todas las áreas del cliente: si el reporte mirara una sola entidad, los tickets que entran
+    # por soporte técnico o infraestructura no contarían y el total no sería el real.
     tickets = G.de_entidad(
-        G.tickets_todos_cache(cfg_glpi) if not n else G.tickets_cache(cfg_glpi, n), entidad)
+        G.tickets_todos_cache(cfg_glpi) if not n else G.tickets_cache(cfg_glpi, n),
+        G.entidades_de(cfg_glpi))
     por_estado, por_cat, por_prio = {}, {}, {}
     total = len(tickets)
     cumplidos = incumplidos = medidos = 0

@@ -148,6 +148,20 @@ y el versionado, [SemVer](https://semver.org/lang/es/).
   el SLA por calendario y horario de atención (Lun–Vie 09–18).
 
 ### Fixed
+- **Los tickets que entraban por otra área del cliente no los veía nadie.** En GLPI un mismo cliente
+  tiene **una entidad por área** —mesa de ayuda, soporte técnico, infraestructura— e ITHOS miraba una
+  sola: todo lo que entraba por las otras quedaba fuera del circuito. Un aviso de Sistemas por unas
+  terminales desenergizadas estuvo **siete días en Nuevo**, sin asignar, sin primera respuesta y sin
+  SLA. Ahora el cliente son **todas sus entidades** (se resuelven leyendo GLPI, sin escribir nada a
+  mano; se pueden fijar con `entidades: [12, 13]`), y eso vale para el vigilante, el ciclo de vida,
+  el asistente y los reportes. Además, cada área tiene **sus propias categorías y sus propios SLA**,
+  con ids distintos: el triage ahora usa el catálogo **de la entidad del ticket** en vez de los ids
+  fijos de la entidad principal, que era cargar el ticket mal. Si un área no tiene catálogo cargado,
+  se deja sin categoría y sin SLA —mejor vacío que equivocado— pero el ticket **se asigna y se
+  contesta igual**.
+- **Un modelo dado de baja por el proveedor dejaba el triage sin IA.** Groq retiró los Llama y todas
+  las consultas empezaron a devolver «el modelo no existe». Igual que con la cuota, ahora ITHOS sigue
+  con el **modelo siguiente del mismo proveedor** antes de cambiar de proveedor.
 - **El triage se quedaba sin IA y dejaba de clasificar tickets.** La cuota gratuita de Gemini es por
   **modelo y por día**, y la de `gemini-2.5-flash-lite` —el que elegía «auto» por ser el más eficiente—
   quedó en **20 pedidos por día**: se agotaba con 20 tickets. ITHOS saltaba de **proveedor** aunque

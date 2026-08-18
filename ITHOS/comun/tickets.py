@@ -160,8 +160,9 @@ class _GLPI:
         return self._c(self.tok_admin)
 
     def _ent(self, ts):
+        """Los tickets del cliente en TODAS sus áreas (una entidad por área), no sólo la principal."""
         from comun import glpi as G
-        return G.de_entidad(ts, self.ent)
+        return G.de_entidad(ts, G.entidades_de(self.gl))
 
     def abiertos(self):
         c = self._c()

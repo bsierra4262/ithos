@@ -7,9 +7,12 @@ Se usa desde el integrador, corra en el central o en el agente.
 
 import re
 import json
+import logging
 import threading
 import urllib.request
 import urllib.error
+
+log = logging.getLogger("glpi")
 
 
 class GLPIClient:
@@ -145,8 +148,91 @@ def sesion(cfg, token=None):
 
 
 def de_entidad(tickets, entidad):
+    """Los tickets del cliente. `entidad` puede ser UNA entidad o VARIAS.
+
+    Un mismo cliente suele tener una entidad por ÁREA (mesa de ayuda, soporte técnico,
+    infraestructura). Mirar una sola dejaba fuera del circuito a los tickets que entran por las
+    otras: nadie los veía, no se asignaban y no se les contestaba (caso real: un ticket de
+    'Terminales desenergizadas' abierto por Sistemas quedó 7 días en Nuevo)."""
+    ents = {int(entidad)} if isinstance(entidad, (int, float, str)) else {int(e) for e in entidad}
     return [t for t in tickets if isinstance(t, dict)
-            and int(t.get("entities_id", -1)) == entidad]
+            and int(t.get("entities_id", -1)) in ents]
+
+
+# --------------------------------------------------------- entidades del cliente (todas sus áreas)
+_ENTCACHE = {}
+
+
+def entidades_de(cfg, ttl=600):
+    """TODAS las entidades del cliente, no sólo la principal.
+
+    En GLPI el mismo cliente aparece una vez por área (`ITH > SISTEMAS > MESA DE AYUDA > SRT`,
+    `... > SOPORTE TECNICO > SRT`, `... > INFRAESTRUCTURA > SRT`): entidades distintas con el MISMO
+    nombre. Se resuelven leyendo GLPI —nada hardcodeado—, así vale igual para cualquier cliente.
+    El cliente puede fijarlas a mano con `entidades: [12, 13]` si quiere acotarlo."""
+    import time
+    principal = int(cfg.get("entity_id", 0) or 0)
+    fijas = cfg.get("entidades")
+    if fijas:
+        return sorted({principal} | {int(e) for e in fijas})
+    key = (cfg.get("glpi_url"), principal)
+    ent = _ENTCACHE.get(key)
+    if ent and time.time() - ent[0] < ttl:
+        return ent[1]
+    ids = [principal]
+    try:
+        cli = sesion(cfg, cfg.get("glpi_superadmin_token") or cfg.get("glpi_user_token"))
+        nombre = (cli.request(f"/Entity/{principal}") or {}).get("name")
+        if nombre:
+            ids = sorted({int(e["id"]) for e in (cli.request("/Entity?range=0-500") or [])
+                          if e.get("name") == nombre} | {principal})
+    except Exception as e:  # noqa: BLE001
+        log.warning("No pude resolver las entidades del cliente (uso sólo la %s): %s", principal, e)
+    _ENTCACHE[key] = (time.time(), ids)
+    return ids
+
+
+# ------------------------------------------- catálogo de CADA entidad (categorías y SLA propios)
+_CATCACHE = {}
+
+
+def catalogo_entidad(cfg, entidad, ttl=600):
+    """Las categorías y los SLA/OLA que EXISTEN en esa entidad, por nombre.
+
+    Cada entidad tiene los suyos, con ids distintos: la categoría 'TERMINALES' es la 13 en la mesa
+    de ayuda de SRT y la 55 en soporte técnico. Ponerle a un ticket el id de otra entidad es cargarlo
+    mal. Devuelve:
+        {"categorias": {"TERMINALES": 55, ...},
+         "sla": {"LEVE": {"slas_id_tto": 8, "slas_id_ttr": 7, "olas_id_tto": …}, ...}}
+    """
+    import time
+    entidad = int(entidad)
+    key = (cfg.get("glpi_url"), entidad)
+    ent = _CATCACHE.get(key)
+    if ent and time.time() - ent[0] < ttl:
+        return ent[1]
+    cat = {"categorias": {}, "sla": {}}
+    try:
+        cli = sesion(cfg, cfg.get("glpi_superadmin_token") or cfg.get("glpi_user_token"))
+        for c in (cli.request("/ITILCategory?range=0-500") or []):
+            if int(c.get("entities_id", -1)) == entidad and c.get("completename"):
+                cat["categorias"][str(c["completename"]).upper()] = int(c["id"])
+        # SLA (compromiso con el cliente) y OLA (interno). type=1 es tiempo de PRIMERA RESPUESTA
+        # (TTO) y type=0, tiempo de RESOLUCIÓN (TTR); el nivel está en el nombre.
+        for recurso, campo in (("SLA", "slas_id"), ("OLA", "olas_id")):
+            for s in (cli.request(f"/{recurso}?range=0-500") or []):
+                if int(s.get("entities_id", -1)) != entidad:
+                    continue
+                nombre = str(s.get("name") or "").upper()
+                for nivel in ("MUY GRAVE", "GRAVE", "LEVE"):
+                    if nivel in nombre:
+                        sufijo = "tto" if int(s.get("type", 0)) == 1 else "ttr"
+                        cat["sla"].setdefault(nivel, {})[f"{campo}_{sufijo}"] = int(s["id"])
+                        break
+    except Exception as e:  # noqa: BLE001
+        log.warning("No pude leer el catálogo de la entidad %s: %s", entidad, e)
+    _CATCACHE[key] = (time.time(), cat)
+    return cat
 
 
 # Caché CORTO de la lista de tickets: el SLA, el reporte ITIL y el panorama la pedían cada uno

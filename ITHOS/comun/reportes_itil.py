@@ -238,7 +238,8 @@ def _calcular_con(cfg_glpi, c_ithos, c_lect, entidad, periodo, zona, n, con_tecn
                   desde, hasta, etiqueta, ithos_id):
     # SIN límite: TODOS los tickets (paginados, con caché corto) y recién después se filtra por el
     # período. Así los rangos (diario/semanal/mensual/total) cuentan de verdad, aunque haya miles.
-    tickets = G.de_entidad(G.tickets_todos_cache(cfg_glpi), entidad)
+    # Todas las áreas del cliente (una entidad por área): los KPIs son del cliente, no de un área.
+    tickets = G.de_entidad(G.tickets_todos_cache(cfg_glpi), G.entidades_de(cfg_glpi))
     catmap = _cat_map_cache(cfg_glpi, c_lect)
 
     creados = resueltos = cerrados = 0
