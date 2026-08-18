@@ -497,7 +497,7 @@ dólar oficial del BNA; INTELLIHELP es dueño y NO se cobra.
     req/día vs 250; Groq 70b estable para el JSON) compensado con prompts profesionales; en PAGO
     (key propia/ilimitada) el más CAPAZ. Config 'modelo_texto':'auto' lo elige solo.
 22. SELECCIÓN DE MODELO para TODOS los proveedores con API (ia._MODELOS + elegir_modelo):
-    Gemini, Groq, Mistral, Cohere, OpenRouter, DeepSeek, Ollama local, OpenAI, Claude, Grok.
+    Gemini, Groq, Cerebras, Mistral, OpenRouter, DeepSeek, Ollama local, OpenAI, Claude, Grok.
     GRATIS = el de MÁS cuota/velocidad; PAGO = el más capaz pero COST-EFFECTIVE (NO el flagship
     carísimo: Gemini flash no pro, OpenAI gpt-4o-mini no gpt-4o, Claude sonnet no opus). Se
     agregaron proveedores OpenRouter (una API → casi todos los modelos del mundo, con ':free')
@@ -509,7 +509,7 @@ dólar oficial del BNA; INTELLIHELP es dueño y NO se cobra.
     tiene que saber ni seleccionar nada. Sin gastar tokens cuando se puede: OpenRouter se
     consulta por /auth/key (is_free_tier); OpenAI/Claude/Grok/DeepSeek no tienen tier gratis
     (pago); si el modelo free y pago son el mismo (Groq), no detecta; lo no detectable barato
-    (Gemini/Mistral/Cohere/local) asume GRATIS y usa el modelo eficiente (gasta lo mínimo, anda
+    (Gemini/Mistral/local) asume GRATIS y usa el modelo eficiente (gasta lo mínimo, anda
     igual en free o pago). Cachea 24 h (~/.ithos/planes_ia.json). Se detecta POR PROVEEDOR: la
     secundaria ya NO hereda el 'pago' de la primaria (se juzga por su propia key). El check
     'Forzar plan pago' del panel es un override opcional; por defecto es todo automático.

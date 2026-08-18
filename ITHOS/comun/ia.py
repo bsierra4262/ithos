@@ -86,7 +86,6 @@ _MODELOS = {
     "groq":       {"free": "openai/gpt-oss-120b",                      "pago": "openai/gpt-oss-120b"},
     "cerebras":   {"free": "gpt-oss-120b",                             "pago": "gpt-oss-120b"},
     "mistral":    {"free": "mistral-small-latest",                     "pago": "mistral-medium-latest"},
-    "cohere":     {"free": "command-r",                                "pago": "command-r-plus"},
     "openrouter": {"free": "meta-llama/llama-3.3-70b-instruct:free",   "pago": "openai/gpt-4o-mini"},
     "deepseek":   {"free": "deepseek-chat",                            "pago": "deepseek-chat"},
     "local":      {"free": "qwen2.5:14b",                              "pago": "qwen2.5:14b"},
@@ -181,7 +180,7 @@ def detectar_plan(proveedor, cfg):
       · OpenAI/Claude/Grok/DeepSeek: no tienen tier gratis por API -> pago.
       · si el modelo free y el pago son el MISMO -> no hace falta detectar (free).
       · OpenRouter: se consulta /auth/key (is_free_tier) — gratis, sin tokens.
-      · el resto (Gemini/Mistral/Cohere/local): no hay forma barata/fiable de saberlo ->
+      · el resto (Gemini/Mistral/Cerebras/local): no hay forma barata/fiable de saberlo ->
         'free' (usamos el modelo EFICIENTE; gasta lo mínimo y funciona igual en free o pago)."""
     import time
     cfg = cfg or {}

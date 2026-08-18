@@ -43,7 +43,7 @@ _DIAS = ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domin
 # Nombres lindos por proveedor (para reportar la cadena REAL del cliente sin inventar).
 NOMBRE_IA = {
     "gemini": "Gemini", "groq": "Groq", "cerebras": "Cerebras", "mistral": "Mistral",
-    "cohere": "Cohere", "openrouter": "OpenRouter", "deepseek": "DeepSeek", "local": "IA local",
+    "openrouter": "OpenRouter", "deepseek": "DeepSeek", "local": "IA local",
     "deepseek_local": "DeepSeek local", "openai": "OpenAI", "chatgpt": "ChatGPT",
     "claude": "Claude", "grok": "Grok",
 }
