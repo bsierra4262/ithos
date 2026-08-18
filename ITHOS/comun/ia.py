@@ -684,10 +684,13 @@ class DeepSeekLocalIA(_OpenAICompat):
 
 
 class CerebrasIA(_OpenAICompat):
-    """Cerebras (api.cerebras.ai) — el FREE con LÍMITES MÁS ALTOS (verificado por API):
-    ~1.000.000 tokens/día, ~30.000 tokens/minuto, 2400 req/día, y ULTRARRÁPIDO. Corre modelos
-    grandes (gpt-oss-120b, zai-glm-4.7, gemma-4-31b). Ideal como IA gratis que casi no se agota.
-    Compatible OpenAI (usa 'max_completion_tokens'). Voz: Charon. Key gratis en cloud.cerebras.ai."""
+    """Cerebras (api.cerebras.ai) — ultrarrápido, compatible OpenAI (usa 'max_completion_tokens').
+    Voz: Charon. Key en cloud.cerebras.ai.
+
+    OJO con lo GRATIS: cambia. En agosto de 2026 la cuenta de INTELLIHELP pasó a responder
+    `402 payment_required` en TODOS los modelos (la clave sigue siendo válida: listar modelos
+    devuelve 200), y el catálogo quedó en gpt-oss-120b y gemma-4-31b. Si vuelve a andar es
+    habilitando el billing en la cuenta; el código no necesita ningún cambio."""
     URL = "https://api.cerebras.ai/v1/chat/completions"
     PROV = "cerebras"
     DEFECTO = "gpt-oss-120b"
