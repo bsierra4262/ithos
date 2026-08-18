@@ -85,7 +85,7 @@ _MODELOS = {
     "gemini":     {"free": "gemini-2.5-flash-lite",                    "pago": "gemini-2.5-flash"},
     "groq":       {"free": "openai/gpt-oss-120b",                      "pago": "openai/gpt-oss-120b"},
     "cerebras":   {"free": "gpt-oss-120b",                             "pago": "gpt-oss-120b"},
-    "mistral":    {"free": "mistral-small-4-0-26-03",                  "pago": "mistral-medium-3-5-26-04"},
+    "mistral":    {"free": "mistral-small-latest",                     "pago": "mistral-medium-latest"},
     "openrouter": {"free": "meta-llama/llama-3.3-70b-instruct:free",   "pago": "openai/gpt-4o-mini"},
     "deepseek":   {"free": "deepseek-chat",                            "pago": "deepseek-chat"},
     "local":      {"free": "qwen2.5:14b",                              "pago": "qwen2.5:14b"},
@@ -109,7 +109,7 @@ _ESCALERAS = {
     "gemini": _ESCALERA_GEMINI,
     "groq": ["openai/gpt-oss-120b", "openai/gpt-oss-20b", "qwen/qwen3.6-27b"],
     "cerebras": ["gpt-oss-120b", "gemma-4-31b"],
-    "mistral": ["mistral-small-4-0-26-03", "ministral-3-8b-25-12", "ministral-3-3b-25-12"],
+    "mistral": ["mistral-small-latest", "ministral-8b-latest", "ministral-3b-latest"],
 }
 
 
@@ -663,8 +663,12 @@ class MistralIA(_OpenAICompat):
 
     Su plan gratis son 10 dólares de crédito POR MES, que se renuevan —a diferencia del de
     Cerebras, que eran 5 una sola vez y vencían—. Igual es crédito: si se agota, la cadena sigue
-    con el proveedor siguiente. Los nombres de modelo llevan fecha y Mistral RETIRA los viejos
-    (`mistral-small-latest` ya no existe), por eso van con escalera como los demás."""
+    con el proveedor siguiente.
+
+    Los modelos se piden por su alias `-latest`, que Mistral va moviendo a la versión vigente: así
+    una versión con fecha que se retire no nos deja tirados. Los nombres se verificaron contra la
+    API en vivo (`/v1/models`), NO contra la documentación: la doc listaba nombres que la API no
+    reconoce."""
     URL = "https://api.mistral.ai/v1/chat/completions"
     PROV = "mistral"
     DEFECTO = "mistral-small-latest"
