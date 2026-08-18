@@ -158,7 +158,8 @@ y el versionado, [SemVer](https://semver.org/lang/es/).
   con ids distintos: el triage ahora usa el catálogo **de la entidad del ticket** en vez de los ids
   fijos de la entidad principal, que era cargar el ticket mal. Si un área no tiene catálogo cargado,
   se deja sin categoría y sin SLA —mejor vacío que equivocado— pero el ticket **se asigna y se
-  contesta igual**.
+  contesta igual**. Va con esto que la sesión de GLPI abra con **todas las entidades activas**:
+  GLPI activa una sola y el resto responde «sin permiso» aunque el permiso esté.
 - **Un modelo dado de baja por el proveedor dejaba el triage sin IA.** Groq retiró los Llama y todas
   las consultas empezaron a devolver «el modelo no existe». Igual que con la cuota, ahora ITHOS sigue
   con el **modelo siguiente del mismo proveedor** antes de cambiar de proveedor.

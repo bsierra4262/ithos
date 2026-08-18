@@ -148,6 +148,34 @@ try:
     ok(G.entidades_de({**CFG, "entidades": [12, 13]}) == [12, 13],
        "el cliente puede fijarlas a mano si quiere acotarlo")
 
+    print("\n=== 1.b · La sesión abre con TODAS las entidades activas ===")
+    # GLPI abre la sesión con UNA sola entidad activa y todo lo demás responde 403, aunque el
+    # usuario tenga permiso. Y el pedido va envuelto en `input`: sin el envoltorio contesta
+    # `false` y deja la sesión acotada, sin ningún error visible (fue exactamente lo que pasó).
+    class _Sesion(_GLPIFalso):
+        # Hereda de GLPIClient lo de abrir la sesión; sólo finge las respuestas de la mesa de ayuda.
+        _activar_entidades = G.GLPIClient._activar_entidades
+
+        def __init__(self):
+            super().__init__()
+            self.activadas = None
+
+        def request(self, path, method=None, data=None, **k):
+            if path == "/initSession":
+                return {"session_token": "s"}
+            if path == "/changeActiveEntities":
+                self.activadas = (data or {}).get("input", {}).get("entities_id")
+                return bool(self.activadas)
+            return super().request(path, method, data, **k)
+
+    ses = _Sesion()
+    G.GLPIClient.abrir(ses)
+    ok(ses.activadas == "all",
+       "al abrir la sesión se activan TODAS las entidades del usuario, envueltas en `input`",
+       repr(ses.activadas))
+    ok("/changeActiveEntities" in ses.pedidos or ses.activadas is not None,
+       "y se pide en cada apertura, no una sola vez")
+
     print("\n=== 2 · Un ticket que entra por otra área SE VE ===")
     _limpiar_cache()
     mios = G.de_entidad(TICKETS, G.entidades_de(CFG))

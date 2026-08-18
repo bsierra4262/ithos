@@ -79,7 +79,24 @@ class GLPIClient:
     def abrir(self):
         self.session = None
         self.session = self.request("/initSession", _reintento_sesion=False)["session_token"]
+        self._activar_entidades()
         return self
+
+    def _activar_entidades(self):
+        """Deja ACTIVAS todas las entidades sobre las que el usuario tiene permiso.
+
+        GLPI abre la sesión con UNA sola entidad activa (la de por defecto) y todo lo demás
+        responde 403, aunque el usuario tenga permiso. Como un cliente tiene una entidad por área
+        —mesa de ayuda, soporte técnico, infraestructura—, sin esto los tickets de las otras áreas
+        no se ven ni se pueden tocar. Si la mesa de ayuda no soporta el pedido, se sigue igual que
+        antes: es una mejora de alcance, nunca un motivo para no abrir la sesión."""
+        try:
+            # OJO: va envuelto en `input`. Sin el envoltorio GLPI contesta `false` y deja la
+            # sesión con una sola entidad activa, sin ningún error visible.
+            self.request("/changeActiveEntities", "POST",
+                         {"input": {"entities_id": "all"}}, _reintento_sesion=False)
+        except Exception as e:  # noqa: BLE001
+            log.debug("No pude activar todas las entidades de la sesión: %s", e)
 
     def cerrar(self):
         # Las sesiones del POOL NO se matan (se reutilizan): así el patrón 'finally: cerrar()'

@@ -835,6 +835,12 @@ try:
                    and "G.catalogo_entidad(self.cfg_glpi, ent_ticket)" in tri87)
     # c) en un área sin catálogo propio NO se le pone el id de otra entidad
     sin_heredar = "if propio else None" in tri87
+    # c.2) la sesión de GLPI abre con TODAS las entidades del usuario activas. GLPI activa UNA sola
+    #      y el resto responde 403 aunque haya permiso; y el pedido va envuelto en `input` (sin el
+    #      envoltorio contesta `false` y deja la sesión acotada, sin ningún error visible).
+    glpi87 = leer(os.path.join(APP, "comun", "glpi.py"))
+    sesion_amplia = ('{"input": {"entities_id": "all"}}' in glpi87
+                     and "self._activar_entidades()" in glpi87)
     # d) el vigilante, el ciclo, los reportes y el asistente miran TODAS las áreas
     fuentes = {n: leer(os.path.join(APP, *p)) for n, p in (
         ("vigilante", ("central", "integrador_glpi.py")),
@@ -843,7 +849,7 @@ try:
         ("tickets", ("comun", "tickets.py")),
         ("asistente", ("comun", "herramientas.py")))}
     todos = [n for n, s in fuentes.items() if "entidades_de" in s]
-    if (una == [1] and varias == [1, 2] and por_entidad and sin_heredar
+    if (una == [1] and varias == [1, 2] and por_entidad and sin_heredar and sesion_amplia
             and len(todos) == len(fuentes)):
         ok("el cliente son TODAS sus áreas: un ticket que entra por soporte técnico o "
            "infraestructura se ve, se asigna y se contesta, con la categoría y el SLA DE SU área "
@@ -851,7 +857,7 @@ try:
     else:
         fail("un ticket que entra por otra área del cliente queda sin atender",
              f"una={una} varias={varias} por_entidad={por_entidad} sin_heredar={sin_heredar} "
-             f"miran_todas={todos}")
+             f"sesion_amplia={sesion_amplia} miran_todas={todos}")
 except Exception as e:  # noqa: BLE001
     fail("no se pudo verificar el circuito por áreas del cliente", repr(e))
 
