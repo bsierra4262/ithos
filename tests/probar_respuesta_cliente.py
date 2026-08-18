@@ -36,6 +36,7 @@ sys.path.insert(0, APP)
 sys.path.insert(0, os.path.join(APP, "central"))
 
 import triage as TR                    # noqa: E402
+import ciclo as CI                     # noqa: E402  (el ciclo de vida vive acá)
 from comun import horario as H         # noqa: E402
 
 FALLAS = []
@@ -123,17 +124,16 @@ AHORA = [None]          # el "ahora" que ve el ciclo en cada escenario
 def correr(status, fu, ahora):
     """Corre el ciclo sobre UN ticket y devuelve (triage_falso, anuncios)."""
     AHORA[0] = ahora
-    H_orig = TR.en_horario_atencion
-    A_orig, L_orig = TR._ahora_zona, TR._ahora_local
-    TR.en_horario_atencion = lambda cfg, a=None: H_orig(cfg, ahora)
-    TR._ahora_zona = lambda cfg, a=None: ahora
-    TR._ahora_local = lambda cfg, a=None: ahora.replace(tzinfo=None)
+    # El reloj se parchea en `ciclo`, que es donde corre gestionar_ciclo.
+    H_orig, L_orig = CI.en_horario_atencion, CI._ahora_local
+    CI.en_horario_atencion = lambda cfg, a=None: H_orig(cfg, ahora)
+    CI._ahora_local = lambda cfg, a=None: ahora.replace(tzinfo=None)
     tri = TriageFalso()
     ticket = {"id": 661, "status": status, "name": "Zárate", "entities_id": 12}
     try:
-        anuncios = TR.gestionar_ciclo(GLPIFalso(fu, [ticket]), tri, 12, {})
+        anuncios = CI.gestionar_ciclo(GLPIFalso(fu, [ticket]), tri, 12, {})
     finally:
-        TR.en_horario_atencion, TR._ahora_zona, TR._ahora_local = H_orig, A_orig, L_orig
+        CI.en_horario_atencion, CI._ahora_local = H_orig, L_orig
     return tri, anuncios
 
 
@@ -188,7 +188,7 @@ ok(not tri.avisos_tecnico,
 
 # El aviso ya quedó asentado en el ticket: tras un reinicio no se repite.
 YA_AVISADO = {"id": 102, "users_id": ITHOS, "is_private": 1,
-              "content": "Nota interna: " + TR._MARCA_SIN_ATENDER + ". Respondió el 31/07.",
+              "content": "Nota interna: " + CI._MARCA_SIN_ATENDER + ". Respondió el 31/07.",
               "date_creation": "2026-08-03 11:00:00"}
 tri, _ = correr(2, [PEDIDO, RESPUESTA, YA_AVISADO], datetime(2026, 8, 3, 15, 0))
 ok(not tri.avisos_tecnico,
@@ -228,7 +228,7 @@ sin_config = [f for f in [PEDIDO, RESPUESTA, RESOLUCION]
 ok(any(f["id"] == RESOLUCION["id"] for f in sin_config),
    "con el equipo fijo del código sí se la tomaba por cliente (el bug)",
    str([f["id"] for f in sin_config]))
-ok(TR._ultimo_id_cliente([PEDIDO, RESPUESTA, RESOLUCION], tecs) == RESPUESTA["id"],
+ok(CI._ultimo_id_cliente([PEDIDO, RESPUESTA, RESOLUCION], tecs) == RESPUESTA["id"],
    "la última vez que habló el CLIENTE sigue siendo su propio mensaje")
 
 print("\n=== 7 · La resolución es la del técnico, no una que escriba ITHOS ===")

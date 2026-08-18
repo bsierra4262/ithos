@@ -34,6 +34,7 @@ sys.path.insert(0, os.path.join(APP, "central"))
 sys.path.insert(0, os.path.join(APP, "agente"))
 
 import triage as T                          # noqa: E402
+import ciclo as CI                          # noqa: E402  (el ciclo de vida vive acá)
 import proactivo as PRO                     # noqa: E402
 from comun import wake as W                 # noqa: E402
 from comun import tickets as TK             # noqa: E402
@@ -245,19 +246,19 @@ def nivel2_espera_confirmacion():
     fu_pendiente = [_fu(1, 7, "Hay que coordinar la reubicación", ayer),
                     _fu(2, ITHOS_ID, PEDIDO_COORD, ayer)]
     fu_respondido = fu_pendiente + [_fu(3, 99, "Dale, el jueves a la mañana", datetime.now())]
-    ok(T._espera_pendiente(fu_pendiente) is not None,
+    ok(CI._espera_pendiente(fu_pendiente) is not None,
        "pendiente: ITHOS pidió confirmar y el cliente no contestó")
-    ok(T._espera_pendiente(fu_respondido) is None,
+    ok(CI._espera_pendiente(fu_respondido) is None,
        "NO pendiente: el cliente ya contestó después del pedido")
-    ok(T._espera_pendiente([_fu(1, 7, "Avance interno", ayer)]) is None,
+    ok(CI._espera_pendiente([_fu(1, 7, "Avance interno", ayer)]) is None,
        "NO pendiente: no hubo pedido de confirmación")
     # Los DOS motivos por los que un ticket espera al cliente (Brian: "lo mismo haga pero cuando el
     # cliente deba confirmar algún DATO FALTANTE o en este caso confirmación"):
     fu_datos = [_fu(1, ITHOS_ID, PRIMERA_RESPUESTA_CON_DATO, ayer)]      # 1ª respuesta: falta el legajo
-    esp = T._espera_pendiente(fu_datos)
+    esp = CI._espera_pendiente(fu_datos)
     ok(esp is not None and esp[2] == "datos",
        "pendiente por DATO FALTANTE (la 1ª respuesta pidió el legajo)", str(esp[2] if esp else None))
-    esp2 = T._espera_pendiente(fu_datos + [_fu(5, 8, "Coordinar la visita", ayer),
+    esp2 = CI._espera_pendiente(fu_datos + [_fu(5, 8, "Coordinar la visita", ayer),
                                            _fu(6, ITHOS_ID, PEDIDO_COORD, ayer)])
     ok(esp2 is not None and esp2[2] == "confirmacion",
        "un pedido POSTERIOR del técnico se detecta como CONFIRMACIÓN, no como datos",
@@ -270,7 +271,7 @@ def nivel2_espera_confirmacion():
     ok(T._con_cierre_espera(PEDIDO_COORD) == PEDIDO_COORD,
        "no se duplica el cierre si el texto ya lo trae")
     # Las notas INTERNAS (privadas) no cuentan como pedido al cliente: el cliente no las ve.
-    ok(T._espera_pendiente([{"id": 1, "users_id": ITHOS_ID, "content": PEDIDO_COORD,
+    ok(CI._espera_pendiente([{"id": 1, "users_id": ITHOS_ID, "content": PEDIDO_COORD,
                              "is_private": 1, "date_creation": ayer.strftime("%Y-%m-%d %H:%M:%S")}])
        is None, "una nota INTERNA no cuenta como pedido al cliente")
 

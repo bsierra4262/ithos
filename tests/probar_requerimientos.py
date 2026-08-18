@@ -70,6 +70,15 @@ def leer(ruta):
     except FileNotFoundError:
         return ""
 
+def leer_tickets(base=None):
+    """Todo el módulo de tickets del Gestor, como un solo texto: triage (primera pasada), ciclo
+    (vida del ticket), textos_ticket (lo que se escribe) y equipo (quién es el equipo)."""
+    base = base or os.path.join(APP, "central")
+    return "\n".join(leer(os.path.join(base, f)) for f in
+                     ("triage.py", "ciclo.py", "textos_ticket.py", "equipo.py"))
+
+
+
 
 def rel(ruta):
     return os.path.relpath(ruta, RAIZ)
@@ -357,7 +366,7 @@ except Exception as e:  # noqa: BLE001
 print("\n" + "=" * 58)
 print("  H) TICKETS: sin recordatorios falsos + lee el ticket (legajo)")
 print("=" * 58)
-tri_src = leer(os.path.join(APP, "central", "triage.py"))
+tri_src = leer_tickets()
 conv2 = leer(os.path.join(APP, "comun", "conversacion.py"))
 # H1) No se manda el recordatorio automático RECURRENTE "esperamos su respuesta" en EN ESPERA (status 4)
 #   —era falso/ruidoso—. (El followup ÚNICO cuando el TÉCNICO pide coordinar SÍ es legítimo: H77.)
@@ -2856,7 +2865,7 @@ except Exception as e:  # noqa: BLE001
 # H77) TICKETS: no re-categorizar / respetar asignación manual + técnico pide coordinar -> EN ESPERA +
 #   admin dice-y-hace (honestidad) + aviso WhatsApp + la voz NUNCA lee emojis (bugs reales de Brian).
 try:
-    tri_src = leer(os.path.join(APP, "central", "triage.py"))
+    tri_src = leer_tickets()
     conv_src = leer(os.path.join(APP, "comun", "conversacion.py"))
     loc_src = leer(os.path.join(APP, "comun", "locucion.py"))
     # (a) FUNCIONAL: procesar NO re-categoriza si ya hay categoría y NO re-asigna si ya hay técnico humano
@@ -3024,7 +3033,7 @@ except Exception as e:  # noqa: BLE001
 #   privados que el cliente NO ve). El cerebro genera `nota_tecnico`; el triage la postea como privada.
 try:
     cer80 = leer(os.path.join(APP, "central", "cerebro.py"))
-    tri80 = leer(os.path.join(APP, "central", "triage.py"))
+    tri80 = leer_tickets()
     prompt_ok = ("nota_tecnico" in cer80 and "PRIVADO" in cer80 and "NOTA INTERNA PARA TÉCNICOS" in cer80)
     postea_privado = ('"is_private": 1' in tri80 and 'a.get("nota_tecnico")' in tri80
                       and "SOLO técnicos" in tri80)
@@ -3058,7 +3067,7 @@ try:
               and _tri.en_horario_atencion(cfg81, _dt81(2026, 7, 25, 10, 0)) is False) # sábado -> fuera
     _p81 = _tri.proximo_inicio_horario(cfg81, _dt81(2026, 7, 24, 22, 0))               # viernes 22 -> lunes 09
     reabre = (_p81.weekday() == 0 and _p81.hour == 9)
-    tri81 = leer(os.path.join(_cen81, "triage.py"))
+    tri81 = leer_tickets(_cen81)
     main81 = leer(os.path.join(_cen81, "main.py"))
     agenda81 = leer(os.path.join(APP, "comun", "agenda.py"))
     logica = ("_agendar_reapertura_horario" in tri81 and "agenda.programar" in tri81
@@ -3083,7 +3092,7 @@ except Exception as e:  # noqa: BLE001
 #   documentada (p. ej. un técnico lo marcó resuelto a mano), ITHOS deja una nota PRIVADA (solo técnicos)
 #   sugiriendo documentarla. Una sola vez (marcador robusto a reinicios). El cliente NO la ve.
 try:
-    tri82 = leer(os.path.join(APP, "central", "triage.py"))
+    tri82 = leer_tickets()
     tiene = ("def nota_interna(self" in tri82 and '"is_private": 1' in tri82
              and "def explica_procedimiento(self" in tri82 and "def _texto_resolucion(" in tri82
              and "def _ya_pidio_procedimiento(" in tri82 and "_NOTA_PEDIR_PROCEDIMIENTO" in tri82
@@ -3179,14 +3188,14 @@ except Exception as e:  # noqa: BLE001
 print("\n  H85) DOCUMENTACIÓN al día: cada capacidad implementada, documentada y en su diagrama")
 CAPACIDADES = [
     {"que": "espera por el cliente (dato o confirmación) con recordatorio por día hábil",
-     "codigo": [("ITHOS/central/triage.py", "_espera_pendiente"),
+     "codigo": [("ITHOS/central/ciclo.py", "_espera_pendiente"),
                 ("ITHOS/central/triage.py", "recordar_espera")],
      "docs": {"DOCUMENTO_MAESTRO.md": ["una vez por día hábil"],
               "README.md": ["una vez por día hábil"],
               "CHANGELOG.md": ["recordatorio por día hábil"]},
      "diagrama": ["recordatorio por día hábil"]},
     {"que": "escalada al técnico asignado a los 5 días hábiles",
-     "codigo": [("ITHOS/central/triage.py", "_DIAS_HABILES_ESCALADA")],
+     "codigo": [("ITHOS/central/textos_ticket.py", "_DIAS_HABILES_ESCALADA")],
      "docs": {"DOCUMENTO_MAESTRO.md": ["5 días hábiles"], "README.md": ["cinco días hábiles"],
               "CHANGELOG.md": ["5 días hábiles"]},
      "diagrama": ["5 días hábiles"]},
@@ -3231,15 +3240,15 @@ CAPACIDADES = [
               "CHANGELOG.md": ["Un grupo de WhatsApp por tema"]}},
     {"que": "el SLA no corre fuera de horario y una respuesta del cliente nunca pasa desapercibida",
      "codigo": [("ITHOS/central/triage.py", "def esperar_hasta_horario"),
-                ("ITHOS/central/triage.py", "def avisar_tecnico_sin_atender"),
+                ("ITHOS/central/textos_ticket.py", "_MARCA_SIN_ATENDER"),
                 ("ITHOS/comun/horario.py", "def horas_habiles_entre")],
      "docs": {"DOCUMENTO_MAESTRO.md": ["El cliente responde", "Respuesta sin atender"],
               "README.md": ["se reabre solo al abrir la jornada"],
               "CHANGELOG.md": ["El SLA corría de noche"]}},
     {"que": "el equipo sale de la configuración y los que se forman trabajan acompañados",
      "codigo": [("ITHOS/comun/tickets.py", "def acompanan_a"),
-                ("ITHOS/central/triage.py", "def ids_humanos"),
-                ("ITHOS/central/triage.py", "tecs, humanos = ids_tecnicos(cfg), ids_humanos(cfg)"),
+                ("ITHOS/central/equipo.py", "def ids_humanos"),
+                ("ITHOS/central/ciclo.py", "tecs, humanos = ids_tecnicos(cfg), ids_humanos(cfg)"),
                 ("ITHOS/central/triage.py", "def _sesion_de")],
      "docs": {"DOCUMENTO_MAESTRO.md": ["El equipo sale de la configuración",
                                        "Formación acompañada"],
@@ -3254,7 +3263,7 @@ CAPACIDADES = [
     {"que": "no se pide un dato que ya está en el ticket (el legajo del asunto)",
      "codigo": [("ITHOS/central/cerebro.py", "def legajo_en_texto"),
                 ("ITHOS/central/cerebro.py", "def respuesta_con_legajo"),
-                ("ITHOS/central/triage.py", "_RE_FIRMA_FINAL")],
+                ("ITHOS/central/textos_ticket.py", "_RE_FIRMA_FINAL")],
      "docs": {"DOCUMENTO_MAESTRO.md": ["el legajo suele venir en el **asunto**"],
               "README.md": ["el legajo suele venir en el **asunto**"],
               "CHANGELOG.md": ["legajo que ya estaba en el ticket"]}},
@@ -3263,7 +3272,7 @@ CAPACIDADES = [
                 ("ITHOS/central/cerebro.py", "def alcance_por_texto"),
                 ("ITHOS/central/cerebro.py", "RESPUESTA_COORDINAR_VISITA"),
                 ("ITHOS/central/cerebro.py", "MARCA_COORDINAR"),
-                ("ITHOS/central/triage.py", "def _nota_alcance")],
+                ("ITHOS/central/textos_ticket.py", "def _nota_alcance")],
      "docs": {"DOCUMENTO_MAESTRO.md": ["El alcance manda", "no hay a quién pedirle un legajo",
                                        "lo único que se pide es coordinar la visita"],
               "README.md": ["alcance", "no hay a quién pedirle un legajo",
