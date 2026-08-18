@@ -30,7 +30,7 @@ y una posible mitigación. El reporte recibirá respuesta a la brevedad.
 
 ## Aislamiento entre inquilinos
 
-Cada empresa es un inquilino aislado: memoria, configuración, secretos y facturación propios.
+Cada empresa es un inquilino aislado: memoria, configuración y secretos propios.
 La autorización de las funciones sensibles es por **identidad** (número, correo o usuario),
 nunca por el canal de origen. Un cliente no puede acceder al contexto de otro.
 

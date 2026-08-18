@@ -90,16 +90,15 @@ Instala Docker (Linux), pide el dominio (configura el `Caddyfile`) y levanta 3 c
 Todo desde el **panel** (`http://IP-DEL-KVM2:8090/`), con un formulario profesional
 (sin tocar archivos). Cada empresa elige **su** configuración:
 
-- **Sistema de tickets:** GLPI, Zendesk, Freshservice, Jira o osTicket (los campos se adaptan).
-- **Canales de aviso** (uno o varios): WhatsApp (oficial/no-oficial), Telegram, Email, Teams o Slack.
-- **Sistema de control de acceso:** IVMS, HikCentral, BioStar 2, ZKTeco o Honeywell.
+- **Sistema de tickets:** GLPI (o ninguno, si todavía no tiene).
+- **Canal:** WhatsApp con el número propio, con sus grupos separados por ámbito (consultas, soporte, tareas, sistema).
+- **Sistema de control de acceso:** IVMS.
 - **IA:** su propia API key de Gemini, límites de cuota, idioma.
 
 Dos formas de alta:
 
 **A) Superadmin (vos):** `→ Nueva empresa`, completás el formulario y **Guardar**. Podés
-editar TODO de cualquier empresa después (incluso cambiar de IVMS a HikCentral, o de GLPI
-a Zendesk, en caliente).
+editar TODO de cualquier empresa después, en caliente.
 
 **B) Autoservicio (el cliente):** pasale `http://IP-DEL-KVM2:8090/alta`. Carga toda su
 config y **recibe al instante su `api_key`** y la **URL de su portal**.
@@ -199,25 +198,9 @@ Todo se configura en el **panel**, por empresa (multi-tenant, aislado):
 - **Reportes proactivos:** en el form del cliente, sección **Reportes** → activar, elegir
   *diario/semanal/mensual*, hora y día. ITHOS manda el resumen (tickets + SLA) por los
   canales del cliente, solo.
-- **Facturación (SaaS):** sección **Facturación**. El **precio se pone en USD** y se cobra
   en **pesos al dólar oficial del BNA** del día. Marcá *Empresa DUEÑA* para que **no se
   cobre** (es nuestro caso, INTELLIHELP).
 
-### Configurar MercadoPago (para cobrar a los clientes)
-1. [MercadoPago Developers](https://www.mercadopago.com.ar/developers/panel/app) → creá una app
-   (tipo *Suscripciones*) y copiá el **Access Token de producción** (`APP_USR-...`).
-2. En el panel, editá el cliente → **Facturación** → activá *Cobrar suscripción*, poné el
-   **precio NETO en USD**, la **comisión %** (tu tarifa real de MP → *Costos y cuotas*; hoy 6,29%
-   al instante) y pegá el **Access Token** (podés usar el nuestro para todos). El **email** sale
-   del alta del cliente.
-3. Guardá → **💳 Probar suscripción** genera el **link de pago** que le mandás al cliente; el
-   estado se ve con **🔄 Consultar estado**.
-4. **No hace falta URL pública ni webhook — tampoco en producción** (el pago es en la página de
-   MP; el estado se consulta). ITHOS **infla el precio (gross‑up)** para netear tu precio tras la
-   comisión.
-> **Para probar sin plata real:** usá el **Access Token de un VENDEDOR de prueba** + un **comprador
-> de prueba** (tarjeta titular **APRO**). Circuito completo en [INFORME_NICOLAS.md](INFORME_NICOLAS.md).
-> **Ya se probó end‑to‑end en sandbox (autorizado).**
 
 ## 📦 Portabilidad (rutas relativas)
 Todo el proyecto usa **rutas relativas** (resueltas respecto a cada archivo): podés

@@ -90,9 +90,8 @@ mantiene. Con `ITHOS_SIN_AVISO=1` se saltea el aviso de mantenimiento a los cana
 
 ## 6) Alta del primer cliente (INTELLIHELP)
 Desde el panel superadmin, **generá el enlace de alta temporal de un solo uso** y usalo para cargar la empresa (IA,
-tickets, canales, control de acceso y —si cobrás— Facturación con el token `APP_USR-…` real). El cliente **nunca**
+tickets, canal de WhatsApp y control de acceso.
 entra al Gestor: solo a su **dashboard** `/panel/<api_key>`.
-> Sacá el token de PRUEBA de MercadoPago que quede en `ITHOS/central/clientes.json` y poné el **real** cuando cobres.
 > INTELLIHELP queda como *propietario* (no se cobra).
 
 ## Modelo de acceso (seguridad)
@@ -106,7 +105,7 @@ entra al Gestor: solo a su **dashboard** `/panel/<api_key>`.
   del enlace tiene **Revocar** (deja de valer al instante).
 
 ## 🔐 Cifrado en reposo de los secretos (grado militar)
-Las claves de IA, tokens de GLPI, contraseñas de la DB de fichajes, token de MercadoPago y contraseñas de agente
+Las claves de IA, los tokens de GLPI, las contraseñas de la base de fichajes
 se guardan **cifradas con AES-256-GCM** en `clientes.json`. La **clave maestra** va en el `.env`
 (`ITHOS_MASTER_KEY`), **aparte de los datos**: si te roban el `clientes.json` o un backup **sin esa clave**, no
 descifran nada. Setup:
@@ -147,7 +146,6 @@ para que no quede nada. **Nunca** poner credenciales de un cliente real en un am
 - [ ] Cliente(s) cargados con credenciales **reales**; agente conectado (**Conectadas ≥ 1**).
 - [ ] Portero: instalado en **modo portero** (audio) + autologin; fichada de prueba → saluda **al instante**.
 - [ ] Prueba real: llega un ticket → ITHOS triagea/avisa; "ITHOS, estado de tickets" responde.
-- [ ] (Si cobra) **Facturación** con token `APP_USR-…` real → *Probar suscripción* genera link.
 - [ ] Baterías verdes en el server (`audit`…`audit5`).
 
 ## 🔁 Actualizar el Gestor (cada update / feature nueva)
