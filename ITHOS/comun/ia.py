@@ -85,7 +85,7 @@ _MODELOS = {
     "gemini":     {"free": "gemini-2.5-flash-lite",                    "pago": "gemini-2.5-flash"},
     "groq":       {"free": "openai/gpt-oss-120b",                      "pago": "openai/gpt-oss-120b"},
     "cerebras":   {"free": "gpt-oss-120b",                             "pago": "gpt-oss-120b"},
-    "mistral":    {"free": "mistral-small-latest",                     "pago": "mistral-medium-latest"},
+    "mistral":    {"free": "mistral-small-4-0-26-03",                  "pago": "mistral-medium-3-5-26-04"},
     "openrouter": {"free": "meta-llama/llama-3.3-70b-instruct:free",   "pago": "openai/gpt-4o-mini"},
     "deepseek":   {"free": "deepseek-chat",                            "pago": "deepseek-chat"},
     "local":      {"free": "qwen2.5:14b",                              "pago": "qwen2.5:14b"},
@@ -108,7 +108,8 @@ _ESCALERA_GEMINI = ["gemini-2.5-flash-lite", "gemini-2.5-flash", "gemini-3-flash
 _ESCALERAS = {
     "gemini": _ESCALERA_GEMINI,
     "groq": ["openai/gpt-oss-120b", "openai/gpt-oss-20b", "qwen/qwen3.6-27b"],
-    "cerebras": ["gpt-oss-120b", "gpt-oss-20b"],
+    "cerebras": ["gpt-oss-120b", "gemma-4-31b"],
+    "mistral": ["mistral-small-4-0-26-03", "ministral-3-8b-25-12", "ministral-3-3b-25-12"],
 }
 
 
@@ -658,7 +659,12 @@ class OpenRouterIA(_OpenAICompat):
 
 
 class MistralIA(_OpenAICompat):
-    """Mistral AI (La Plateforme) — tiene tier gratis. Compatible OpenAI. Voz: Charon."""
+    """Mistral AI (La Plateforme). Compatible OpenAI. Voz: Charon.
+
+    Su plan gratis son 10 dólares de crédito POR MES, que se renuevan —a diferencia del de
+    Cerebras, que eran 5 una sola vez y vencían—. Igual es crédito: si se agota, la cadena sigue
+    con el proveedor siguiente. Los nombres de modelo llevan fecha y Mistral RETIRA los viejos
+    (`mistral-small-latest` ya no existe), por eso van con escalera como los demás."""
     URL = "https://api.mistral.ai/v1/chat/completions"
     PROV = "mistral"
     DEFECTO = "mistral-small-latest"
