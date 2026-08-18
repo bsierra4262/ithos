@@ -7,6 +7,9 @@ y el versionado, [SemVer](https://semver.org/lang/es/).
 ## [Unreleased]
 
 ### Added
+- **Los grupos por tema se configuran desde el panel.** Hasta ahora los grupos de WhatsApp y su
+  ámbito había que escribirlos a mano en la configuración. La tarjeta del canal ahora deja agregar,
+  editar y quitar grupos, eligiendo de qué es cada uno de una lista con su explicación.
 - **Un grupo de WhatsApp por tema (ámbitos).** Un solo grupo para todo se volvía inservible: las alertas
   de tickets tapaban las tareas del equipo y quien sólo quería preguntar algo leía alertas todo el día.
   Ahora cada grupo declara su **ámbito**, que define **qué avisos recibe** y **sobre qué se consulta
@@ -127,6 +130,14 @@ y el versionado, [SemVer](https://semver.org/lang/es/).
   día siguiente.
 
 ### Changed
+- **Los dos archivos más grandes, partidos por tema.** `central/triage.py` (1.129 líneas) y
+  `comun/conversacion.py` (1.186) hacían demasiadas cosas a la vez y cada arreglo obligaba a leerlos
+  enteros. Ahora el triage vive en cuatro módulos —`triage.py` (clasificar el ticket nuevo),
+  `ciclo.py` (el ciclo de vida: esperas, recordatorios, escalada, reapertura), `equipo.py` (quién es
+  quién) y `textos_ticket.py` (todo lo que se le escribe a una persona)— y el asistente en dos:
+  `asistente.py` (el que conversa) y `herramientas.py` (qué puede leer y qué puede escribir sobre los
+  tickets). `triage.py` y `conversacion.py` siguen exportando lo mismo que antes, así que nada de lo
+  que los importaba cambió: **no hay cambio de comportamiento**, sólo de dónde vive cada cosa.
 - **Avisos de Planka más legibles.** El resumen diario y el seguimiento listan una tarea por
   línea, agrupadas por lista y con su contador, en lugar de una única línea con comas.
 - **Seguimiento acotado a lo activo.** El «¿cómo venís?» pregunta únicamente por Haciendo y
@@ -137,6 +148,22 @@ y el versionado, [SemVer](https://semver.org/lang/es/).
   el SLA por calendario y horario de atención (Lun–Vie 09–18).
 
 ### Fixed
+- **El triage se quedaba sin IA y dejaba de clasificar tickets.** La cuota gratuita de Gemini es por
+  **modelo y por día**, y la de `gemini-2.5-flash-lite` —el que elegía «auto» por ser el más eficiente—
+  quedó en **20 pedidos por día**: se agotaba con 20 tickets. ITHOS saltaba de **proveedor** aunque
+  `gemini-2.5-flash` todavía tuviera cuota del día, y si el proveedor siguiente estaba caído se quedaba
+  sin ninguna IA (el ticket no se clasificaba y el ciclo no cerraba nada). Ahora, agotado un modelo,
+  sigue con el **siguiente modelo de Gemini** y recién cambia de proveedor cuando se agotan todos; lo
+  agotado se libera solo al día siguiente. Vale igual para el texto y para transcribir audios.
+- **La voz no sonaba: el modelo guardado ya no genera audio.** La configuración de los clientes tenía
+  fijado `gemini-2.5-flash-native-audio-latest`, que es **conversacional** y devuelve 404 al pedirle
+  audio, y pisaba al TTS dedicado. Una configuración con un modelo que no es TTS ahora se corrige sola:
+  es preferible una voz que suena a una que no.
+- **El panel ofrecía sistemas que ya no existen.** Después del recorte, los desplegables seguían
+  listando Zendesk, Jira, Telegram, Teams, Slack, HikCentral y demás: elegirlos daba de alta un cliente
+  que **nunca iba a recibir nada**, sin ningún aviso. Ahora el catálogo lista exactamente lo que tiene
+  implementación (GLPI · WhatsApp con número propio · IVMS) y el test general lo verifica contra el
+  código, no contra una lista escrita a mano.
 - **Un técnico nuevo se leía como si fuera el cliente.** El ciclo de vida reconocía sólo a los
   técnicos escritos en el código, no a los de la configuración. Cuando alguien que entró al equipo
   resolvió un ticket a las 18:30, ITHOS lo tomó como «el cliente respondió fuera de horario» y lo

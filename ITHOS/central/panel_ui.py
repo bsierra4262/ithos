@@ -20,10 +20,36 @@ function tipoTicket(c){ if(c&&c.tickets&&c.tickets.tipo) return c.tickets.tipo;
  return 'ninguno'; }                                                    // alta nueva -> sin sistema por defecto
 function integName(t){return catLabel('integradores',t)}
 
+// Los grupos de WhatsApp por tema: filas de (nombre del grupo, de qué es).
+// Se guardan como [{grupo, ambito}] — la misma forma que lee el Gestor.
+function filaGrupo(pref,g,ops){
+ let sel=ops.map(o=>`<option value="${o[0]}" ${o[0]===(g.ambito||'')?'selected':''}>${esc(o[1])}</option>`).join('');
+ return `<div class=grupo-fila style="display:flex;gap:8px;margin-bottom:6px">
+   <input class="${pref}g-nombre" style="flex:1" value="${esc(g.grupo||'')}" placeholder="Nombre exacto del grupo">
+   <select class="${pref}g-ambito" style="flex:1.4">${sel}</select>
+   <button type=button class="btn sm ghost" onclick="this.parentNode.remove()" title="Quitar">✕</button></div>`;
+}
+function agregarGrupo(pref){
+ let host=$('#'+pref+'grupos'), ops=window['_ops_'+pref]||[];
+ host.insertAdjacentHTML('beforeend', filaGrupo(pref,{ambito:ops.length?ops[0][0]:''},ops));
+}
+function leerGrupos(pref){
+ let host=$('#'+pref+'grupos'); if(!host) return [];
+ return [...host.querySelectorAll('.grupo-fila')].map(f=>({
+   grupo:f.querySelector('.'+pref+'g-nombre').value.trim(),
+   ambito:f.querySelector('.'+pref+'g-ambito').value})).filter(g=>g.grupo);
+}
+
 // Render genérico de una lista de campos {k,l,t,ph} con ids `${pref}${k}`
 function campoInput(pref,f,val){
  let v = (f.t==='list' && Array.isArray(val)) ? val.join(', ') : (val==null?'':val);
  let ayuda = f.d ? `<div class="hint" style="margin:4px 0 0;font-size:12px">${esc(f.d)}</div>` : '';
+ if(f.t==='grupos'){
+   let ops=f.opciones||[]; window['_ops_'+pref]=ops;
+   let filas=(Array.isArray(val)?val:[]).map(g=>filaGrupo(pref,g||{},ops)).join('');
+   return `<div class=f><label>${f.l}</label><div id="${pref}${f.k}">${filas}</div>
+     <button type=button class="btn sm ghost" style="margin-top:4px" onclick="agregarGrupo('${pref}')">+ Agregar grupo</button>${ayuda}</div>`;
+ }
  if(f.t==='select'){
    let ops=(f.opciones||[]).map(o=>`<option ${String(o)===String(v)?'selected':''}>${o}</option>`).join('');
    return `<div class=f><label>${f.l}</label><select id="${pref}${f.k}">${ops}</select>${ayuda}</div>`;
@@ -37,7 +63,9 @@ function renderCampos(hostSel,cat,tipo,pref,vals){
 }
 function readCampos(cat,tipo,pref){
  let campos=(CATS[cat]&&CATS[cat][tipo]&&CATS[cat][tipo].campos)||[], out={};
- campos.forEach(f=>{let e=$('#'+pref+f.k); if(!e)return; let v=e.value;
+ campos.forEach(f=>{
+   if(f.t==='grupos'){let g=leerGrupos(pref); if(g.length)out[f.k]=g; return;}
+   let e=$('#'+pref+f.k); if(!e)return; let v=e.value;
    if(f.t==='number')out[f.k]=+v||0; else if(f.t==='list')out[f.k]=v.split(',').map(x=>x.trim()).filter(Boolean); else if(v)out[f.k]=v;});
  return out;
 }

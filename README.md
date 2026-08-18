@@ -176,7 +176,8 @@ agotarse y cuando el sistema cambia de proveedor.
 flowchart LR
     Q["Consulta<br/>(triage · asistente · reporte)"] --> P1{"Primaria<br/>con cuota?"}
     P1 -->|"sí"| R["Respuesta"]
-    P1 -->|"429 / sin cuota"| AV["Avisa por los canales:<br/>'cambio a la secundaria'"] --> P2{"Secundaria<br/>con cuota?"}
+    P1 -->|"sin cuota del día<br/>en ESE modelo"| ES["Sigue con el modelo siguiente<br/>del MISMO proveedor"] --> P1
+    P1 -->|"429 / sin ningún modelo"| AV["Avisa por los canales:<br/>'cambio a la secundaria'"] --> P2{"Secundaria<br/>con cuota?"}
     P2 -->|"sí"| R
     P2 -->|"no"| P3{"Terciaria<br/>con cuota?"}
     P3 -->|"sí"| R
@@ -188,6 +189,11 @@ Proveedores elegibles por cliente, cualquiera de ellos como primaria, secundaria
 Claude, OpenAI/ChatGPT, Grok, Groq, Cerebras, DeepSeek, Mistral, OpenRouter** y **local (Ollama o
 LM Studio)** para quien exige que ningún dato salga de su red. El modelo se elige solo según si la clave
 es gratuita o paga, sin que el cliente tenga que saber de modelos, y el consumo se registra por empresa.
+
+La cuota gratuita se cuenta **por modelo y por día**, y entre modelos del mismo proveedor cambia mucho:
+el más eficiente puede tener un límite diario chico que se agota con pocos tickets. Por eso, antes de
+cambiar de proveedor, ITHOS baja por los **modelos del proveedor actual** hasta encontrar uno con cuota
+del día. Lo agotado se libera solo cuando cambia el día.
 
 ## Voz y audio
 
@@ -521,7 +527,9 @@ versionan**: el repositorio incluye únicamente plantillas (`ITHOS/central/clien
 | --- | --- |
 | `ia.py` | Cadena multi-IA enchufable (Gemini, Claude, OpenAI, Grok, Groq, Cerebras, DeepSeek, Mistral, OpenRouter, local) + transcripción + voz Charon. Una IA por consulta, salto al agotarse. |
 | `cuota.py` | Consumo y cuota por cliente; avisa cuándo se agota y a qué hora se reinicia cada proveedor. |
-| `conversacion.py` | El asistente: panorama real antes de responder, acciones de escritura sobre el ticket, KB y memoria. Nunca escribe sin pedido explícito. |
+| `conversacion.py` | Puerta de entrada del asistente: re-exporta los dos módulos de abajo, así quien lo importaba sigue igual. |
+| `asistente.py` | El que conversa: arma el panorama real antes de responder, decide, responde y ejecuta; KB y memoria. |
+| `herramientas.py` | QUÉ puede hacer sobre los tickets: lo que puede LEER (estado, reportes, antecedentes) y lo que puede ESCRIBIR (cerrar, responder, asignar). Nunca escribe sin pedido explícito. |
 | `conocimiento.py` | Contexto técnico propietario + autorización por identidad (los números del dueño) y clave de admin por micrófono. |
 | `wake.py` | La llamada "Hey ITHOS" (texto y micrófono) — única fuente de verdad de la activación. |
 | `horario.py` | Horario de atención y días hábiles del cliente: puerta de todo lo que sale hacia afuera. |
@@ -546,7 +554,10 @@ versionan**: el repositorio incluye únicamente plantillas (`ITHOS/central/clien
 | --- | --- |
 | `main.py` | FastAPI + WebSocket: autentica al agente por empresa, le manda su config (voz/integrador) y arranca por cliente el integrador de tickets, Planka, reportes, proactivo y KB. |
 | `registro.py` | Registro multi-cliente desde `clientes.json` (descifra secretos y normaliza nombres de config). |
-| `triage.py` | Triage y **ciclo de vida** del ticket: clasifica/asigna/responde, esperas por el cliente con recordatorio diario y escalada, notas internas privadas, reapertura fuera de horario. |
+| `triage.py` | Triage del ticket nuevo: clasifica, asigna, contesta y deja la nota interna privada al técnico. |
+| `ciclo.py` | **Ciclo de vida** del ticket: esperas por el cliente con recordatorio diario y escalada, avisos de cada respuesta, pausa del SLA fuera de horario y reapertura silenciosa. |
+| `equipo.py` | Quién es quién: los técnicos del cliente, sus ids y a quién le toca cada cosa. |
+| `textos_ticket.py` | Todo lo que se le escribe a una persona (cliente o técnico), en un solo lugar y en castellano claro. |
 | `cerebro.py` | El prompt de clasificación (categoría, prioridad, responsable, 1ª respuesta, nota interna). |
 | `integrador_glpi.py` | Vigilante de tickets: detecta nuevos, dispara el triage y empuja los avisos (voz + canales con @mención). |
 | `proactivo.py` | Alerta de SLA en riesgo/vencido, agrupada por técnico asignado y dentro del horario de atención. |

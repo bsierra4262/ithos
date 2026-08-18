@@ -15,6 +15,9 @@ Métodos:
 """
 
 import os
+import logging
+
+log = logging.getLogger("ia")
 
 # Instrucción para que la voz sea ITHOS, literal, en el idioma del cliente.
 _ACENTOS = {
@@ -25,6 +28,19 @@ _ACENTOS = {
     "fr": "en FRANÇAIS",
     "it": "in ITALIANO",
 }
+
+
+# La voz sale del TTS DEDICADO de Gemini: lee el texto VERBATIM, palabra por palabra.
+# El modelo 'native-audio' es CONVERSACIONAL —no genera audio por `generateContent`, así que
+# hoy devuelve 404— y además interpretaba el texto y se comía nombres. Una config vieja que lo
+# tenga guardado se corrige sola acá: es preferible una voz que suena a una que no.
+VOZ_MODELO = "gemini-2.5-flash-preview-tts"
+
+
+def modelo_voz(cfg):
+    """El modelo de voz del cliente, siempre que sea un TTS de verdad."""
+    m = str((cfg or {}).get("modelo_voz") or "").strip()
+    return m if m.endswith("-tts") or "-tts-" in m else VOZ_MODELO
 
 
 def _sys_voz(idioma="es-AR"):
@@ -83,6 +99,11 @@ _MODELOS = {
 }
 # Estos no tienen cuota gratis real por API: se tratan como PAGO (modelo cost-effective).
 _SIEMPRE_PAGO = {"openai", "chatgpt", "claude", "grok"}
+
+# Modelos de Gemini a los que ITHOS se corre cuando el que está usando se queda sin cuota del
+# día. Van del más barato en cuota al más capaz: se agota uno y sigue con el otro, sin cambiar
+# de proveedor todavía. Cada uno tiene su PROPIO límite diario gratuito.
+_ESCALERA_GEMINI = ["gemini-2.5-flash-lite", "gemini-2.5-flash", "gemini-3-flash-preview"]
 
 
 def es_pago(cfg):
@@ -204,7 +225,7 @@ class GeminiIA(ProveedorIA):
         # 'native-audio' (conversacional, con 'thinking') que INTERPRETABA el texto y SE COMÍA palabras
         # -nombres- (bug real: 'Bienvenido, Noemi' -> decía 'Bienvenido a...' sin 'Noemi'). El TTS
         # dedicado lo lee tal cual. Verificado con Vosk: mantiene el nombre.
-        self.modelo_voz = cfg.get("modelo_voz", "gemini-2.5-flash-preview-tts")
+        self.modelo_voz = modelo_voz(cfg)
         self.voz = cfg.get("voz", "Charon")
         self.idioma = cfg.get("idioma", "es-AR")
         self.gestor = gestor          # GestorCuota (avisa cuando se agota la gratuita)
@@ -212,12 +233,40 @@ class GeminiIA(ProveedorIA):
         # Si hay una IA de respaldo (MultiIA), fallar RÁPIDO ante 429 (no reintentar
         # con esperas largas): así el respaldo (Groq) toma el control al instante.
         self.sin_reintento_429 = False
+        # ESCALERA DE MODELOS. La cuota gratis de Gemini es POR MODELO Y POR DÍA, y son muy
+        # distintas entre sí (flash-lite quedó en 20 pedidos por día: se agota con 20 tickets).
+        # Antes, agotado el modelo elegido, ITHOS saltaba de proveedor aunque OTRO modelo de
+        # Gemini todavía tuviera cuota del día. Ahora baja por esta escalera primero, y recién
+        # cuando se agotan TODOS pasa a la IA siguiente de la cadena.
+        self._escalera = [self.modelo_texto] + [m for m in _ESCALERA_GEMINI
+                                                if m != self.modelo_texto]
+        self._agotados = {}           # modelo -> día en que se quedó sin cuota (se libera solo)
 
     def _cliente(self):
         if self._cli is None:
             from google import genai
             self._cli = genai.Client(api_key=self.api_key)
         return self._cli
+
+    def _modelo_vigente(self):
+        """El primer modelo de la escalera que todavía tiene cuota HOY. La cuota gratuita se
+        renueva por día, así que un modelo agotado ayer vuelve a estar disponible solo."""
+        import datetime
+        hoy = datetime.date.today().isoformat()
+        for m in self._escalera:
+            if self._agotados.get(m) != hoy:
+                return m
+        return self._escalera[0]
+
+    def _marcar_agotado(self, modelo):
+        """Anota que ese modelo se quedó sin cuota hoy. True si queda otro para seguir."""
+        import datetime
+        self._agotados[modelo] = datetime.date.today().isoformat()
+        siguiente = self._modelo_vigente()
+        if self._agotados.get(siguiente) == self._agotados[modelo]:
+            return False                              # no queda ninguno con cuota hoy
+        log.info("Gemini: '%s' sin cuota diaria -> sigo con '%s'.", modelo, siguiente)
+        return True
 
     def chat(self, system, prompt, json_out=True, max_tokens=None):
         import re
@@ -234,7 +283,7 @@ class GeminiIA(ProveedorIA):
         for intento in range(5):
             try:
                 r = self._cliente().models.generate_content(
-                    model=self.modelo_texto, contents=prompt, config=conf)
+                    model=self._modelo_vigente(), contents=prompt, config=conf)
                 if self.gestor:
                     self.gestor.registrar_gemini()   # cuenta el uso; avisa si quedan pocos
                 return r.text
@@ -246,8 +295,11 @@ class GeminiIA(ProveedorIA):
                     time.sleep(0.3)
                     continue
                 es_429 = "429" in msg or "RESOURCE_EXHAUSTED" in msg
-                # Límite DIARIO agotado: reintentar no sirve -> avisar y cortar.
+                # Límite DIARIO agotado: reintentar el MISMO modelo no sirve. Pero la cuota es
+                # por modelo: si queda otro con cuota hoy, se sigue con ese en el acto.
                 if es_429 and ("PerDay" in msg or "RequestsPerDay" in msg):
+                    if self._marcar_agotado(self._modelo_vigente()):
+                        continue                     # queda otro modelo de Gemini con cuota
                     if self.gestor:
                         self.gestor.agotada_gemini()
                     raise
@@ -273,9 +325,19 @@ class GeminiIA(ProveedorIA):
             "resumir ni corregir. Devolvé SOLO el texto transcripto, sin comillas ni "
             "comentarios. Mantené los números como dígitos (ej. 4262) y respetá los nombres "
             "propios. Nombres propios frecuentes: " + HINT_TRANSCRIPCION)
-        r = self._cliente().models.generate_content(
-            model=self.modelo_texto,
-            contents=[types.Part.from_bytes(data=audio_bytes, mime_type=mime), instr])
+        # Misma escalera que el texto: transcribir un audio también consume la cuota del día.
+        for _ in range(len(self._escalera)):
+            modelo = self._modelo_vigente()
+            try:
+                r = self._cliente().models.generate_content(
+                    model=modelo,
+                    contents=[types.Part.from_bytes(data=audio_bytes, mime_type=mime), instr])
+                break
+            except Exception as e:  # noqa: BLE001
+                msg = str(e)
+                if ("PerDay" in msg or "RequestsPerDay" in msg) and self._marcar_agotado(modelo):
+                    continue
+                raise
         if self.gestor:
             self.gestor.registrar()
         return (r.text or "").strip()

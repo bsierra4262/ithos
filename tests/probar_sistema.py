@@ -4,17 +4,20 @@
 TEST GENERAL del sistema ITHOS — circuito completo de principio a fin.
 
 Levanta el panel en un puerto de prueba y ejercita TODO vía HTTP (como el navegador):
+  0. El panel EXIGE credenciales (sin token no se entra) y los catálogos ofrecen sólo
+     lo que el software sabe hacer.
   1. Alta de empresa (formulario completo).
   2. Carga INCORRECTA (validaciones: sin nombre, duplicado).
-  3. Edición (cambia datos) + cambio de sistema de acceso IVMS -> HikCentral.
-  4. WhatsApp: config guardada + prueba del notificador (módulo).
-  5. Métricas + SLA (GLPI real) del cliente.
-  6. Config del agente generada según el sistema.
-  7. Portal del cliente (URL propia) responde.
-  8. Estado en tiempo real (endpoint de conectados).
+  3. Edición (cambia datos, tickets y los grupos de WhatsApp por tema).
+  4. Canales de notificación (módulo real) y ámbitos de cada grupo.
+  5. Config del agente generada según el sistema.
+  6. Portal del cliente (URL propia) responde.
+  7. Estado en tiempo real (endpoint de conectados).
+  8. Métricas + SLA (GLPI real) del cliente.
   9. Voz ITHOS Charon (genera audio).
-  10. Ciclo de vida de ticket con IA (crear->triage->...->cerrar), si hay cuota.
+  10. IA de texto disponible (el ciclo completo se valida con probar_ciclo.py).
   11. Borrado y verificación.
+  12. Avanzado por cliente: memoria aislada, acciones sobre tickets, reportes.
 
 Usa un clientes.json TEMPORAL para no tocar el real. No requiere el central corriendo
 (para el estado usa el fallback). Corre así:
@@ -49,10 +52,18 @@ def check(nombre, cond, detalle=""):
     return cond
 
 
-def req(metodo, ruta, body=None, espera=None):
+def _admin_token():
+    import autenticacion as AUTH
+    return AUTH.admin_token()
+
+
+def req(metodo, ruta, body=None, admin=True):
+    """Una llamada al panel como la haría el navegador del superadmin."""
     data = json.dumps(body).encode() if body is not None else None
-    r = urllib.request.Request(URL + ruta, data=data, method=metodo,
-                               headers={"Content-Type": "application/json"})
+    cab = {"Content-Type": "application/json"}
+    if admin:
+        cab["X-Admin-Token"] = _admin_token()
+    r = urllib.request.Request(URL + ruta, data=data, method=metodo, headers=cab)
     try:
         with urllib.request.urlopen(r, timeout=30) as resp:
             return resp.status, json.load(resp)
@@ -61,6 +72,12 @@ def req(metodo, ruta, body=None, espera=None):
             return e.code, json.load(e)
         except Exception:  # noqa: BLE001
             return e.code, {}
+
+
+def alta_token():
+    """Un enlace de alta nuevo. Es de UN SOLO USO: cada alta pide el suyo, igual que en la vida real."""
+    _, d = req("POST", "/api/alta_link", {"nombre": "prueba", "horas": 1})
+    return d.get("token", "")
 
 
 def levantar_panel(clientes_tmp):
@@ -72,11 +89,10 @@ def levantar_panel(clientes_tmp):
     server = uvicorn.Server(cfg)
     threading.Thread(target=server.run, daemon=True).start()
     for _ in range(40):
-        try:
-            urllib.request.urlopen(URL + "/api/clientes", timeout=1)
+        st, _ = req("GET", "/api/clientes")
+        if st == 200:
             return server
-        except Exception:  # noqa: BLE001
-            time.sleep(0.25)
+        time.sleep(0.25)
     raise RuntimeError("el panel no arrancó")
 
 
@@ -85,7 +101,7 @@ def main():
     p("  TEST GENERAL DEL SISTEMA ITHOS")
     p("=" * 60)
 
-    # clientes.json temporal (parte del real para tener GLPI/IVMS de INTELLIHELP)
+    # clientes.json temporal (parte del real para tener GLPI de INTELLIHELP)
     real = os.path.join(CENTRAL, "clientes.json")
     tmp = tempfile.NamedTemporaryFile("w", suffix=".json", delete=False, encoding="utf-8")
     base = json.load(open(real, encoding="utf-8")) if os.path.exists(real) else {"clientes": []}
@@ -94,81 +110,101 @@ def main():
     tmp.close()
 
     levantar_panel(tmp.name)
-    p("\n[0] Catálogos elegibles (tickets / canales / acceso)")
-    for cat, esperados in (("tickets", ["glpi", "zendesk", "jira"]),
-                           ("canales", ["telegram", "email", "slack"]),
-                           ("integradores", ["ivms", "hikcentral"])):
-        st, cc = req("GET", f"/api/{cat}")
-        check(f"catálogo {cat}", st == 200 and all(e in cc for e in esperados),
-              ", ".join(cc.keys()))
 
-    p("\n[1] ALTA de empresa (tickets Zendesk + canales Telegram+Email + acceso IVMS)")
+    p("\n[0] SEGURIDAD y catálogos elegibles")
+    st, _ = req("GET", "/api/clientes", admin=False)
+    check("sin credenciales el panel NO deja entrar (401)", st == 401, f"HTTP {st}")
+    # El catálogo ofrece SÓLO lo que hay: elegir algo sin implementación sería
+    # configurar un cliente que nunca recibe nada y no enterarse.
+    for cat, esperados in (("tickets", ["ninguno", "glpi"]),
+                           ("canales", ["whatsapp_no_oficial"]),
+                           ("integradores", ["ninguno", "ivms"])):
+        st, cc = req("GET", f"/api/{cat}")
+        check(f"catálogo {cat} = exactamente lo implementado",
+              st == 200 and sorted(cc) == sorted(esperados), ", ".join(cc.keys()))
+    from comun import tickets as TK
+    from comun import notificadores as NOTIF
+    st, cc = req("GET", "/api/tickets")
+    check("cada sistema de tickets del catálogo tiene adaptador real",
+          all(t == "ninguno" or TK.adaptador({"tickets": {"tipo": t}}).tipo == t for t in cc))
+    st, cc = req("GET", "/api/canales")
+    check("cada canal del catálogo se construye de verdad",
+          all(NOTIF.crear_notificadores(
+              {"notificaciones": [{"tipo": t, "enabled": True, "grupo": "G",
+                                   "session": ":memory:"}]}) is not None for t in cc))
+
+    p("\n[1] ALTA de empresa (GLPI + WhatsApp con grupos por tema + acceso IVMS)")
     alta = {"nombre": "ACME Test S.A.", "email": "it@acme.test", "activo": True,
             "idioma": "es-AR", "proveedor": "gemini", "gemini_api_key": "AIza-demo",
             "limite_diario": 150, "avisar_en": 10, "ilimitada": False,
             "integrador": "ivms", "integrador_config": {
                 "db_server": "10.0.0.9,1433", "db_database": "ivms", "db_uid": "u", "db_pwd": "x"},
-            "tickets": {"tipo": "zendesk", "host": "https://acme.zendesk.com",
-                        "email": "it@acme.test", "api_token": "ZTOK"},
+            "tickets": {"tipo": "glpi", "glpi_url": "https://g.acme/apirest.php",
+                        "glpi_app_token": "APP", "glpi_user_token": "USR", "entity_id": 2},
             "notificaciones": [
-                {"tipo": "telegram", "enabled": True, "bot_token": "BOT", "chat_ids": ["123", "-100"]},
-                {"tipo": "email", "enabled": True, "smtp_host": "smtp.acme.test",
-                 "smtp_port": 465, "usuario": "a@acme.test", "password": "p",
-                 "destinatarios": ["b@acme.test"]}]}
-    st, d = req("POST", "/api/alta", alta)
+                {"tipo": "whatsapp_no_oficial", "enabled": True, "session": "acme.sqlite3",
+                 "grupos": [{"grupo": "ACME", "ambito": "consultas"},
+                            {"grupo": "ACME_SOPORTE", "ambito": "soporte"}]}]}
+    st, d = req("POST", "/api/alta", dict(alta, _alta_token=alta_token()))
     key = d.get("api_key")
     check("alta responde 200 + api_key", st == 200 and bool(key), key or "")
     check("alta devuelve URL de portal", d.get("portal", "").startswith("/panel/"))
     st, c0 = req("GET", f"/api/cliente/{key}")
-    check("guardó sistema de tickets Zendesk", c0.get("tickets", {}).get("tipo") == "zendesk")
-    check("guardó api_token de Zendesk", c0.get("tickets", {}).get("api_token") == "ZTOK")
-    tipos_canal = [n.get("tipo") for n in c0.get("notificaciones", [])]
-    check("guardó canales Telegram + Email", "telegram" in tipos_canal and "email" in tipos_canal,
-          ", ".join(tipos_canal))
+    check("guardó sistema de tickets GLPI", c0.get("tickets", {}).get("tipo") == "glpi")
+    check("GLPI mapeado a integrador_glpi",
+          c0.get("integrador_glpi", {}).get("glpi_url", "").endswith("apirest.php"))
+    grupos = (c0.get("notificaciones", [{}])[0] or {}).get("grupos", [])
+    check("guardó los grupos con su ámbito", [g.get("ambito") for g in grupos] == ["consultas", "soporte"],
+          ", ".join(f"{g.get('grupo')}:{g.get('ambito')}" for g in grupos))
 
-    p("\n[2] Carga INCORRECTA (validaciones)")
+    p("\n[2] Carga INCORRECTA (validaciones) y enlace de alta de UN SOLO USO")
     st, _ = req("POST", "/api/alta", {"email": "x"})
     check("rechaza empresa sin nombre (400)", st == 400)
-    st, _ = req("POST", "/api/alta", {"nombre": "ACME Test S.A."})
+    st, _ = req("POST", "/api/alta", {"nombre": "OTRA S.A."})
+    check("sin enlace de alta no se da de alta a nadie (403)", st == 403)
+    t = alta_token()
+    st, _ = req("POST", "/api/alta", {"nombre": "ACME Test S.A.", "_alta_token": t})
     check("rechaza nombre duplicado (409)", st == 409)
+    st, _ = req("POST", "/api/alta", {"nombre": "OTRA S.A.", "_alta_token": t})
+    check("el enlace ya usado NO sirve de nuevo (403)", st == 403)
 
-    p("\n[3] EDICIÓN: cambia tickets Zendesk->GLPI, acceso IVMS->HikCentral, canal Telegram->WhatsApp")
+    p("\n[3] EDICIÓN: cambia el límite y suma un grupo de tareas")
     edit = dict(alta)
     edit.update({"api_key": key, "limite_diario": 999,
-                 "integrador": "hikcentral",
-                 "integrador_config": {"host": "https://10.0.0.5", "app_key": "AK", "app_secret": "SEC"},
-                 "tickets": {"tipo": "glpi", "glpi_url": "https://g.acme/apirest.php",
-                             "glpi_app_token": "APP", "entity_id": 3},
                  "notificaciones": [{"tipo": "whatsapp_no_oficial", "enabled": True,
-                                     "grupo": "ACME_ALERTAS", "session": "s.sqlite3"}]})
-    st, _ = req("POST", "/api/clientes", edit)
-    st2, c = req("GET", f"/api/cliente/{key}")
+                                     "session": "acme.sqlite3",
+                                     "grupos": [{"grupo": "ACME", "ambito": "consultas"},
+                                                {"grupo": "ACME_SOPORTE", "ambito": "soporte"},
+                                                {"grupo": "ACME_TAREAS", "ambito": "tareas"}]}]})
+    req("POST", "/api/clientes", edit)
+    st, c = req("GET", f"/api/cliente/{key}")
     check("edición guardada (limite 999)", c.get("ia", {}).get("limite_diario") == 999)
-    check("cambió acceso a HikCentral", c.get("integrador") == "hikcentral")
-    check("guardó claves HikCentral", c.get("integrador_config", {}).get("app_key") == "AK")
-    check("cambió tickets a GLPI", c.get("tickets", {}).get("tipo") == "glpi")
-    check("GLPI mapeado a integrador_glpi", c.get("integrador_glpi", {}).get("glpi_url", "").endswith("apirest.php"))
-    check("cambió canal a WhatsApp", [n["tipo"] for n in c.get("notificaciones", [])] == ["whatsapp_no_oficial"])
+    check("sigue en IVMS con sus claves", c.get("integrador") == "ivms"
+          and c.get("integrador_config", {}).get("db_database") == "ivms")
+    check("el grupo nuevo quedó guardado",
+          len((c.get("notificaciones", [{}])[0] or {}).get("grupos", [])) == 3)
 
-    p("\n[4] Canales de notificación (módulo real)")
-    from comun import notificadores as NOTIF
-    notif = NOTIF.crear_notificadores({"notificaciones": [
-        {"tipo": "telegram", "enabled": True, "bot_token": "B", "chat_ids": ["1"]},
-        {"tipo": "email", "enabled": True, "smtp_host": "h", "usuario": "u", "destinatarios": ["x"]},
-        {"tipo": "teams", "enabled": True, "webhook_url": "https://t"}]})
-    check("crea 3 canales (telegram+email+teams)", len(notif.canales) == 3, f"{len(notif.canales)} canales")
-    notif2 = NOTIF.crear_notificadores({"notificaciones": [
-        {"tipo": "whatsapp_oficial", "enabled": True, "phone_number_id": "X",
-         "access_token": "Y", "destinatarios": ["549"]}]})
-    check("canal WhatsApp oficial se construye", len(notif2.canales) == 1)
+    p("\n[4] Canales y ÁMBITOS (módulo real)")
+    from comun import ambitos as AMB
+    cfg_wa = {"grupos": [{"grupo": "ACME", "ambito": "consultas"},
+                         {"grupo": "ACME_SOPORTE", "ambito": "soporte"}]}
+    gs = AMB.grupos_de(cfg_wa)
+    check("el grupo de consultas NO recibe alertas de tickets",
+          not AMB.recibe(gs[0]["ambito"], AMB.TICKETS))
+    check("el de soporte SÍ recibe tickets y SLA",
+          AMB.recibe(gs[1]["ambito"], AMB.TICKETS) and AMB.recibe(gs[1]["ambito"], AMB.SLA))
+    check("una consulta fuera de tema se deriva al grupo que la maneja",
+          "ACME" in AMB.fuera_de_alcance(AMB.PLANKA, gs))
+    check("un cliente con un solo grupo suelto sigue recibiendo todo",
+          AMB.recibe(AMB.grupos_de({"grupo": "UNICO"})[0]["ambito"], AMB.TICKETS))
     check("canal deshabilitado no se agrega",
           len(NOTIF.crear_notificadores({"notificaciones": [
-              {"tipo": "telegram", "enabled": False}]}).canales) == 0)
+              {"tipo": "whatsapp_no_oficial", "enabled": False}]}).canales) == 0)
 
     p("\n[5] Config del AGENTE generada por sistema")
     st, cfg = req("GET", f"/api/config_agente/{key}")
-    check("config agente trae integrador HikCentral",
-          (cfg.get("integrador") or {}).get("tipo") == "hikcentral")
+    check("config agente trae integrador IVMS",
+          (cfg.get("integrador") or {}).get("tipo") == "ivms")
     check("config agente trae voz Charon", cfg.get("ia", {}).get("voz", {}).get("voz") == "Charon")
 
     p("\n[6] Portal del cliente (URL propia)")
@@ -198,19 +234,18 @@ def main():
         p("  (sin INTELLIHELP en clientes.json — salteo SLA real)")
 
     p("\n[9] VOZ ITHOS Charon")
-    voz_ok = False
     if intelli:
         try:
             from comun import ia as IA
             pcm = IA.crear_voz(intelli["ia"]).voz_pcm("Prueba de sistema ITHOS. Todo operativo.")
-            voz_ok = bool(pcm) and len(pcm) > 1000
-            check("genera audio Charon", voz_ok, f"{len(pcm)} bytes" if pcm else "")
+            check("genera audio Charon", bool(pcm) and len(pcm) > 1000,
+                  f"{len(pcm)} bytes" if pcm else "")
         except Exception as ex:  # noqa: BLE001
             agotada = "429" in str(ex) or "RESOURCE" in str(ex)
             check("voz OK (Charon o respaldo gratis edge-tts)", agotada,
                   "Charon sin cuota → usa voz edge-tts gratis" if agotada else str(ex)[:70])
 
-    p("\n[10] CICLO de ticket con IA (si hay cuota)")
+    p("\n[10] IA de texto (el triage la necesita)")
     if intelli and intelli.get("integrador_glpi", {}).get("glpi_ithos_token"):
         try:
             from comun import ia as IA
@@ -227,7 +262,7 @@ def main():
     existe = any(c.get("api_key") == key for c in cli.get("clientes", []))
     check("empresa borrada", not existe)
 
-    p("\n[12] AVANZADO por cliente: memoria, agente, reportes, facturación")
+    p("\n[12] AVANZADO por cliente: memoria, acciones sobre tickets, reportes")
     from comun import memoria as MEM
     m = MEM.Memoria("TEST_QA")
     m.agregar("user", "hola ithos")
@@ -249,12 +284,6 @@ def main():
             check("reporte proactivo genera texto real", "SLA" in txt or "Reporte" in txt)
         except Exception as ex:  # noqa: BLE001
             check("reporte proactivo", False, str(ex)[:60])
-    from comun import facturacion as F
-    check("DUEÑO no se cobra nunca", F.al_dia({"propietario": True, "enabled": True}) is True)
-    check("cliente impago detectado", F.al_dia({"enabled": True, "estado": "pending"}) is False)
-    ars, cot = F.monto_ars({"monto_usd": 10, "moneda": "ARS"})
-    check("precio USD → ARS por dólar BNA", bool(cot) and ars > 0,
-          f"10 USD = ${ars} (BNA ${cot})")
     for cq in ("TEST_QA", "OTRO_QA"):
         try:
             os.unlink(MEM._archivo(cq))

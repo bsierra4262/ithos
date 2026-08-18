@@ -70,6 +70,15 @@ def leer(ruta):
     except FileNotFoundError:
         return ""
 
+
+def leer_asistente():
+    """El asistente completo, como un solo texto: `asistente.py` (el que conversa),
+    `herramientas.py` (qué puede leer y escribir) y la fachada `conversacion.py`."""
+    base = os.path.join(APP, "comun")
+    return "\n".join(leer(os.path.join(base, f)) for f in
+                     ("conversacion.py", "asistente.py", "herramientas.py"))
+
+
 def leer_tickets(base=None):
     """Todo el módulo de tickets del Gestor, como un solo texto: triage (primera pasada), ciclo
     (vida del ticket), textos_ticket (lo que se escribe) y equipo (quién es el equipo)."""
@@ -298,7 +307,7 @@ print("=" * 58)
 demo_src = leer(os.path.join(RAIZ, "iniciar_demo.py"))
 ag_src = leer(os.path.join(APP, "agente", "agente.py"))
 main_src = leer(os.path.join(APP, "central", "main.py"))
-conv_src = leer(os.path.join(APP, "comun", "conversacion.py"))
+conv_src = leer_asistente()
 
 if "def arrancar_agente(" in demo_src and "arrancar_agente(cli)" in demo_src:
     ok("la demo lanza el AGENTE de producción (arrancar_agente)")
@@ -354,7 +363,7 @@ try:
     else:
         fail("_fusionar no deduplica bien", f"dedup={dedup} nuevo={nuevo} err={err}")
     # y que el flujo lo use (no la concatenación cruda vieja)
-    conv = leer(os.path.join(APP, "comun", "conversacion.py"))
+    conv = leer_asistente()
     if "_fusionar(respuesta, resultados)" in conv and '"\\n".join(resultados)' not in conv:
         ok("responder_texto usa _fusionar (sin la concatenación cruda que duplicaba)")
     else:
@@ -367,7 +376,7 @@ print("\n" + "=" * 58)
 print("  H) TICKETS: sin recordatorios falsos + lee el ticket (legajo)")
 print("=" * 58)
 tri_src = leer_tickets()
-conv2 = leer(os.path.join(APP, "comun", "conversacion.py"))
+conv2 = leer_asistente()
 # H1) No se manda el recordatorio automático RECURRENTE "esperamos su respuesta" en EN ESPERA (status 4)
 #   —era falso/ruidoso—. (El followup ÚNICO cuando el TÉCNICO pide coordinar SÍ es legítimo: H77.)
 _bloque_e = tri_src.split("if status == 4:")[1].split("elif status == 5:")[0] if "if status == 4:" in tri_src else tri_src
@@ -775,6 +784,38 @@ try:
              f"c1={caso1} c2={caso2} c3={caso3}")
 except Exception as e:  # noqa: BLE001
     fail("no se pudo verificar la cadena de IA (fallback secuencial)", repr(e))
+
+
+# H86) ESCALERA DE MODELOS DENTRO DE GEMINI (bug real de producción, 18-ago-2026: el triage dejó de
+#   clasificar tickets y el ciclo no cerraba nada. Causa: la cuota GRATIS de Gemini es por MODELO Y POR
+#   DÍA, y la de `gemini-2.5-flash-lite` -el que elegía 'auto' por ser el más eficiente- quedó en 20
+#   pedidos por día: se agota con 20 tickets. ITHOS saltaba de PROVEEDOR aunque `gemini-2.5-flash`
+#   todavía tuviera cuota del día, y como Cerebras pedía pago y la key de Groq estaba vencida, se
+#   quedaba sin ninguna IA). Fix: agotado un modelo, sigue con el siguiente de Gemini y recién después
+#   cambia de proveedor. Lo agotado se libera solo al día siguiente.
+try:
+    import datetime as _dt86
+    from comun import ia as _IA86
+    g86 = _IA86.GeminiIA({"gemini_api_key": "x", "modelo_texto": "gemini-2.5-flash-lite"})
+    hoy86 = _dt86.date.today().isoformat()
+    escalera = len(g86._escalera) >= 3 and g86._modelo_vigente() == "gemini-2.5-flash-lite"
+    # se agota el primero -> sigue con el segundo, sin cambiar de proveedor
+    sigue = g86._marcar_agotado("gemini-2.5-flash-lite") and g86._modelo_vigente() == "gemini-2.5-flash"
+    # se agotan TODOS -> recién ahí avisa que Gemini quedó sin cuota (y la cadena pasa al siguiente)
+    for _m86 in g86._escalera[1:]:
+        ultimo86 = g86._marcar_agotado(_m86)
+    corta = ultimo86 is False
+    # lo agotado AYER no bloquea hoy: la cuota gratuita se renueva por día
+    g86._agotados = {m: "2000-01-01" for m in g86._escalera}
+    renueva = g86._modelo_vigente() == "gemini-2.5-flash-lite" and hoy86 != "2000-01-01"
+    if escalera and sigue and corta and renueva:
+        ok("cuota de Gemini por modelo: agotado uno sigue con el siguiente modelo de Gemini y sólo "
+           "cambia de proveedor cuando se agotan TODOS; al día siguiente vuelven a estar disponibles")
+    else:
+        fail("un modelo de Gemini sin cuota tira abajo el triage (no usa los otros modelos)",
+             f"escalera={escalera} sigue={sigue} corta={corta} renueva={renueva}")
+except Exception as e:  # noqa: BLE001
+    fail("no se pudo verificar la escalera de modelos de Gemini", repr(e))
 
 
 # H12) AVISO DE CAMBIO DE IA: al agotarse una IA, avisa al canal del cliente "sigo con la siguiente"
@@ -1248,7 +1289,7 @@ try:
                  "primaria" in t3 and "secundaria" in t3 and "terciaria" in t3)
     no_inventa = "Cerebras" not in t2          # un cliente de 2 IAs NO menciona una 3ra
     respeta = c3 == ["gemini", "cerebras", "groq"] and cX == ["groq", "mistral"]
-    conv31 = leer(os.path.join(APP, "comun", "conversacion.py"))
+    conv31 = leer_asistente()
     inyecta = "estado_texto(zona=self.zona)" in conv31 and "sin inventar proveedores" in conv31
     deriva = "cadena=cadena_cfg(ia)" in leer(os.path.join(APP, "comun", "cuota.py"))
     if reporta_3 and no_inventa and respeta and inyecta and deriva:
@@ -2281,7 +2322,7 @@ except Exception as e:  # noqa: BLE001
 #   (no entrena; el entrenamiento es por audio de WhatsApp de los 2 números del dueño) y SOLO abre modo
 #   administrador si detecta la VOZ del dueño (voz-id) ADEMÁS de la frase-clave. Antes bastaba la clave.
 try:
-    conv = leer(os.path.join(APP, "comun", "conversacion.py"))
+    conv = leer_asistente()
     m56 = leer(os.path.join(APP, "central", "main.py"))
     gate = ("_admin_voz_ok" in conv and "vozid" in conv and "verificar(" in conv
             and "def responder_stream(self, texto, canal" in conv
@@ -2507,7 +2548,7 @@ except Exception as e:  # noqa: BLE001
 #   completas, no recortadas); (c) GUI del agente: versión visible + auto-arranque + editar pre-llena la
 #   config (no reescribir todo). La velocidad (1.40) ya se aplica al streaming (audiotsm) y al cacheo.
 try:
-    conv64 = leer(os.path.join(APP, "comun", "conversacion.py"))
+    conv64 = leer_asistente()
     gui64 = leer(os.path.join(APP, "agente", "gui.py"))
     voz64 = leer(os.path.join(APP, "agente", "voz.py"))
     vad_wa = ("_AUD.decodificar(audio_bytes" in conv64 and "_AUD.filtrar_voz(_pcm" in conv64
@@ -2678,9 +2719,17 @@ try:
     ia69 = leer(os.path.join(APP, "comun", "ia.py"))
     loc69 = leer(os.path.join(APP, "comun", "locucion.py"))
     vz69 = leer(os.path.join(APP, "agente", "voz.py"))
+    # Regresión (bug real, agosto 2026): la config del cliente tenía guardado el modelo VIEJO
+    # (`native-audio-latest`) y pisaba el bueno -> la voz devolvía 404 y no sonaba nunca. Ahora
+    # una config con un modelo que no es TTS se corrige sola: es preferible una voz que suena.
+    import importlib
+    _ia = importlib.import_module("comun.ia")
     tts = ('"gemini-2.5-flash-preview-tts"' in ia69                 # TTS dedicado (verbatim)
            and "aio.models.generate_content(" in ia69              # generate_content, NO live conversacional
-           and "native-audio" not in ia69.split("self.modelo_voz = cfg.get")[1].split("\n")[0]
+           and _ia.modelo_voz({"modelo_voz": "gemini-2.5-flash-native-audio-latest"}) == _ia.VOZ_MODELO
+           and _ia.modelo_voz({}) == _ia.VOZ_MODELO
+           and _ia.modelo_voz({"modelo_voz": "gemini-3.1-flash-tts-preview"}) == "gemini-3.1-flash-tts-preview"
+           and "native-audio-latest\"" not in leer(os.path.join(APP, "central", "panel.py"))
            and "inline_data.data" in ia69)
     sin_pausas = ("def preparar(texto, fonetica=True, pausas=True)" in loc69
                   and "humanizar(t) if pausas else" in loc69       # sin '…' cuando pausas=False
@@ -2866,7 +2915,7 @@ except Exception as e:  # noqa: BLE001
 #   admin dice-y-hace (honestidad) + aviso WhatsApp + la voz NUNCA lee emojis (bugs reales de Brian).
 try:
     tri_src = leer_tickets()
-    conv_src = leer(os.path.join(APP, "comun", "conversacion.py"))
+    conv_src = leer_asistente()
     loc_src = leer(os.path.join(APP, "comun", "locucion.py"))
     # (a) FUNCIONAL: procesar NO re-categoriza si ya hay categoría y NO re-asigna si ya hay técnico humano
     sys.path.insert(0, os.path.join(APP, "central"))
@@ -3123,7 +3172,7 @@ try:
     _otro83 = _K83.bloque_sistema("+5491199999999", "whatsapp", detalle=True)
     _mic83 = _K83.bloque_sistema(None, "microfono", admin=True, detalle=True)
     _comp83 = leer(os.path.join(APP, "docker-compose.yml"))
-    _conv83 = leer(os.path.join(APP, "comun", "conversacion.py"))
+    _conv83 = leer_asistente()
     _MARCA83 = "DOCUMENTO_MAESTRO del proyecto"
     hay_doc = len(_doc83) > 5000 and "Documento Maestro" in _doc83
     detalle_ok = _MARCA83 in _due_det                      # el dueño, al pedir detalle, recibe el maestro
@@ -3211,7 +3260,7 @@ CAPACIDADES = [
               "CHANGELOG.md": ["suelta ya no activa"]},
      "diagrama": ["Hey ITHOS"]},
     {"que": "consultar los tickets asignados a una persona (por su número)",
-     "codigo": [("ITHOS/comun/conversacion.py", "tickets_asignados")],
+     "codigo": [("ITHOS/comun/herramientas.py", "tickets_asignados")],
      "docs": {"DOCUMENTO_MAESTRO.md": ["Consultar"], "README.md": ["consultar"],
               "CHANGELOG.md": ["tickets por técnico asignado"]}},
     {"que": "ITHOS se explica desde el documento maestro; el detalle es sólo del dueño",
@@ -3234,7 +3283,7 @@ CAPACIDADES = [
      "codigo": [("ITHOS/comun/ambitos.py", "def recibe"),
                 ("ITHOS/comun/ambitos.py", "def fuera_de_alcance"),
                 ("ITHOS/comun/whatsapp.py", "def _destinos"),
-                ("ITHOS/comun/conversacion.py", "def _regla_ambito")],
+                ("ITHOS/comun/asistente.py", "def _regla_ambito")],
      "docs": {"DOCUMENTO_MAESTRO.md": ["Un grupo por tema (ámbitos)"],
               "README.md": ["ámbito"],
               "CHANGELOG.md": ["Un grupo de WhatsApp por tema"]}},
@@ -3282,8 +3331,8 @@ CAPACIDADES = [
     {"que": "antecedentes: casos parecidos sobre TODO el histórico, con la resolución real",
      "codigo": [("ITHOS/comun/tickets.py", "def casos_similares"),
                 ("ITHOS/comun/tickets.py", "def _cierre_administrativo"),
-                ("ITHOS/comun/conversacion.py", "def _pide_antecedentes"),
-                ("ITHOS/comun/conversacion.py", "def casos_parecidos")],
+                ("ITHOS/comun/asistente.py", "def _pide_antecedentes"),
+                ("ITHOS/comun/herramientas.py", "def casos_parecidos")],
      "docs": {"DOCUMENTO_MAESTRO.md": ["Antecedentes", "cierre administrativo"],
               "README.md": ["Antecedentes", "cierre\nadministrativo"],
               "CHANGELOG.md": ["ya resolvimos"]},

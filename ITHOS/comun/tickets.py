@@ -136,6 +136,8 @@ def _sin_html(s):
 
 
 class _GLPI:
+    tipo = "glpi"          # parte de la interfaz común: cada adaptador dice qué sistema es
+
     def __init__(self, cli_cfg):
         self.gl = cli_cfg.get("integrador_glpi") or {}
         self.ent = int(self.gl.get("entity_id", 0))

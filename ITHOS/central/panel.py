@@ -59,6 +59,8 @@ CENTRAL_URL = os.environ.get("ITHOS_CENTRAL_URL", "http://127.0.0.1:8080")
 app = FastAPI(title="ITHOS Gestor")
 
 from comun import metricas as M   # noqa: E402
+from comun import ia as IA_VOZ    # noqa: E402  (sólo para el modelo de voz vigente)
+from comun.ambitos import AMBITOS  # noqa: E402
 import reportes as R              # noqa: E402
 import autenticacion as AUTH      # noqa: E402
 from panel_ui import HTML, HTML_ALTA, portal_html   # noqa: E402
@@ -158,6 +160,9 @@ async def cambiar_password(request: Request):
 
 
 # --- Catálogo de sistemas de control de acceso (para el formulario dinámico) --
+# Sólo se ofrece lo que el software SABE hacer hoy: si figurara acá algo sin
+# integrador del lado del agente, elegirlo no haría nada y el cliente no se
+# enteraría. Sumar uno es escribir su `integrador_<x>.py` y agregarlo acá.
 INTEGRADORES = {
     "ninguno": {"label": "Ninguno / sólo tickets", "campos": []},
     "ivms": {"label": "IVMS — Hikvision (SQL Server)", "campos": [
@@ -166,21 +171,6 @@ INTEGRADORES = {
         {"k": "db_uid", "l": "Usuario", "ph": "ithos"},
         {"k": "db_pwd", "l": "Contraseña", "t": "password"},
         {"k": "max_rows", "l": "Máx. filas por consulta", "ph": "50"}]},
-    "hikcentral": {"label": "HikCentral — Artemis OpenAPI", "campos": [
-        {"k": "host", "l": "Host / URL", "ph": "https://10.0.0.5"},
-        {"k": "app_key", "l": "App Key"},
-        {"k": "app_secret", "l": "App Secret", "t": "password"}]},
-    "biostar2": {"label": "BioStar 2 — Suprema", "campos": [
-        {"k": "host", "l": "Host / URL", "ph": "https://10.0.0.6"},
-        {"k": "login_id", "l": "Usuario"},
-        {"k": "password", "l": "Contraseña", "t": "password"}]},
-    "zkteco": {"label": "ZKTeco — ZKBioSecurity", "campos": [
-        {"k": "host", "l": "Host / URL", "ph": "http://10.0.0.7"},
-        {"k": "username", "l": "Usuario"},
-        {"k": "password", "l": "Contraseña", "t": "password"}]},
-    "honeywell": {"label": "Honeywell — Pro-Watch", "campos": [
-        {"k": "host", "l": "Host / URL"},
-        {"k": "api_key", "l": "API key / token", "t": "password"}]},
 }
 
 # --- Catálogo de PROVEEDORES DE IA (texto/razonamiento) ----------------------
@@ -222,6 +212,8 @@ IA_PROVEEDORES = {
 
 
 # --- Catálogo de sistemas de TICKETS (cada cliente elige el suyo) -------------
+# Igual que arriba: acá va lo que tiene adaptador en `comun/tickets.py`. Sumar
+# otra mesa de ayuda es escribir su adaptador con la misma interfaz y listarla.
 TICKETS = {
     "ninguno": {"label": "Ninguno / todavía no tengo (solo voz y avisos)", "campos": []},
     "glpi": {"label": "GLPI", "campos": [
@@ -249,59 +241,23 @@ TICKETS = {
          "d": "El número (ID) de la entidad de GLPI donde están tus tickets. Lo ves en GLPI: "
               "Administración → Entidades (columna ID, o en la URL al abrir la entidad). Si tenés una "
               "sola entidad, normalmente es 0."}]},
-    "zendesk": {"label": "Zendesk", "campos": [
-        {"k": "host", "l": "Host / URL", "ph": "https://empresa.zendesk.com"},
-        {"k": "email", "l": "Email"},
-        {"k": "api_token", "l": "API token", "t": "password"}]},
-    "freshservice": {"label": "Freshservice", "campos": [
-        {"k": "host", "l": "Host / URL", "ph": "https://empresa.freshservice.com"},
-        {"k": "api_key", "l": "API key", "t": "password"}]},
-    "jira": {"label": "Jira Service Management", "campos": [
-        {"k": "host", "l": "Host / URL", "ph": "https://empresa.atlassian.net"},
-        {"k": "email", "l": "Email"},
-        {"k": "api_token", "l": "API token", "t": "password"},
-        {"k": "project_key", "l": "Project key", "ph": "SOP"}]},
-    "osticket": {"label": "osTicket", "campos": [
-        {"k": "host", "l": "Host / URL", "ph": "https://soporte.empresa.com"},
-        {"k": "api_key", "l": "API key", "t": "password"}]},
 }
 
 # --- Catálogo de CANALES de notificación (uno o varios por cliente) ----------
+# WhatsApp con el número propio, con un GRUPO POR TEMA (ámbito): cada grupo
+# declara qué avisos recibe y sobre qué se le puede consultar ahí.
 CANALES = {
-    "whatsapp_no_oficial": {"label": "WhatsApp (no oficial · grupo)", "campos": [
-        {"k": "grupo", "l": "Nombre del grupo", "ph": "SOPORTE_ALERTAS"},
+    "whatsapp_no_oficial": {"label": "WhatsApp (número propio · grupos por tema)", "campos": [
+        {"k": "grupos", "l": "Grupos y de qué es cada uno", "t": "grupos",
+         "opciones": [[k, f"{k} — {v['descripcion']}"] for k, v in AMBITOS.items()],
+         "d": "Un grupo por tema, así las alertas de tickets no tapan las consultas ni las tareas "
+              "del equipo. Cada grupo recibe SÓLO los avisos de su ámbito y contesta SÓLO sobre "
+              "eso; lo que se pregunta fuera de su tema se deriva al grupo que sí lo maneja."},
+        {"k": "grupo", "l": "Grupo único (sólo si no usás grupos por tema)", "ph": "SOPORTE_ALERTAS",
+         "d": "Compatibilidad: si dejás esto y ningún grupo arriba, todo va a un solo grupo."},
         {"k": "session", "l": "Archivo de sesión", "ph": "wa_session.sqlite3"},
         {"k": "respuesta", "l": "Responder con", "t": "select",
          "opciones": ["ambos", "texto", "audio"]}]},
-    "whatsapp_oficial": {"label": "WhatsApp (oficial · Cloud API)", "campos": [
-        {"k": "phone_number_id", "l": "Phone Number ID"},
-        {"k": "access_token", "l": "Access Token", "t": "password"},
-        {"k": "destinatarios", "l": "Números (coma)", "t": "list", "ph": "5491111, 5492222"},
-        {"k": "respuesta", "l": "Responder con", "t": "select",
-         "opciones": ["ambos", "texto", "audio"]}]},
-    "telegram": {"label": "Telegram", "campos": [
-        {"k": "bot_token", "l": "Bot token", "t": "password"},
-        {"k": "chat_ids", "l": "Chat IDs (coma)", "t": "list", "ph": "12345678, -1009999"},
-        {"k": "respuesta", "l": "Responder con", "t": "select",
-         "opciones": ["texto", "audio", "ambos"]}]},
-    "email": {"label": "Email (SMTP)", "campos": [
-        {"k": "smtp_host", "l": "Servidor SMTP", "ph": "smtp.gmail.com"},
-        {"k": "smtp_port", "l": "Puerto", "t": "number", "ph": "465"},
-        {"k": "usuario", "l": "Usuario"},
-        {"k": "password", "l": "Contraseña", "t": "password"},
-        {"k": "destinatarios", "l": "Destinatarios (coma)", "t": "list"},
-        {"k": "asunto", "l": "Asunto", "ph": "Alerta ITHOS"}]},
-    "teams": {"label": "Microsoft Teams (webhook)", "campos": [
-        {"k": "webhook_url", "l": "Webhook URL"}]},
-    "slack": {"label": "Slack (webhook)", "campos": [
-        {"k": "webhook_url", "l": "Webhook URL"}]},
-    "element": {"label": "Matrix — Element/FluffyChat/SchildiChat/Cinny (open-source, tipo Slack · OPERABLE)", "campos": [
-        {"k": "homeserver", "l": "Homeserver Matrix (sirve para CUALQUIER cliente Matrix)", "ph": "https://matrix.org"},
-        {"k": "access_token", "l": "Access token del bot (en Element: Ajustes → Avanzado → Token de acceso)", "t": "password"},
-        {"k": "room_ids", "l": "Salas (IDs, coma) — vacío = todas donde esté", "t": "list", "ph": "!abc:matrix.org"},
-        {"k": "activacion_palabra", "l": "Palabra de activación", "ph": "ithos"},
-        {"k": "respuesta", "l": "Responder con", "t": "select",
-         "opciones": ["texto", "audio", "ambos"]}]},
 }
 
 
@@ -361,7 +317,9 @@ def _armar_ia(b):
         # 'auto' = ITHOS elige el modelo más EFICIENTE EN CUOTA GRATIS por defecto (o el más
         # capaz cost-effective si el plan es pago). El cliente puede fijar uno específico.
         "modelo_texto": iap.get("modelo_texto") or "auto",
-        "modelo_voz": "gemini-2.5-flash-native-audio-latest",
+        # TTS DEDICADO: lee el texto VERBATIM. El modelo 'native-audio' es conversacional
+        # (no genera audio por `generateContent`) y además se comía nombres al interpretarlos.
+        "modelo_voz": IA_VOZ.VOZ_MODELO,
         "voz": "Charon",
         "voz_motor": b.get("voz_motor", "charon"),                   # charon (Gemini) | edge (multiplataforma) | windows (solo Windows)
         "limite_diario": int(b.get("limite_diario") or 200),
@@ -687,7 +645,7 @@ def config_agente(api_key: str):
         "integrador": {"tipo": tipo, **integ_cfg} if tipo != "ninguno" else None,
         "ia": {"voz": {"proveedor": "gemini", "voz": "Charon",
                        "gemini_api_key": ia.get("gemini_api_key", ""),
-                       "modelo_voz": ia.get("modelo_voz", "gemini-2.5-flash-native-audio-latest"),
+                       "modelo_voz": IA_VOZ.modelo_voz(ia),
                        "idioma": c.get("idioma", "es-AR")}},
     }
 

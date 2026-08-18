@@ -481,7 +481,8 @@ def nivel4_mis_tickets():
            "número no mapeado -> pregunta de quién, ofreciendo los técnicos cargados")
 
         # 4) el prompt le dice al modelo que use esta acción y que NO pida el legajo
-        src = open(os.path.join(APP, "comun", "conversacion.py"), encoding="utf-8").read()
+        src = "".join(open(os.path.join(APP, "comun", f), encoding="utf-8").read()
+                      for f in ("asistente.py", "herramientas.py"))
         ok("'tickets_asignados' args:{persona:'yo'" in src
            and "NUNCA le pidas su nombre" in src and "legajo ni su usuario" in src,
            "el prompt manda usar tickets_asignados y prohíbe pedir nombre/legajo")

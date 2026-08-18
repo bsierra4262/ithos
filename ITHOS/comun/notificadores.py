@@ -124,14 +124,11 @@ def crear_notificadores(cfg_cliente, wa_compartido=None):
         if not n.get("enabled", True):
             continue
         tipo = (n.get("tipo") or "").lower()
-        if tipo in ("whatsapp", "whatsapp_oficial", "whatsapp_no_oficial"):
+        if tipo in ("whatsapp", "whatsapp_no_oficial"):
             if wa_compartido is not None:   # ya usamos el WhatsApp compartido -> no duplicar sesión
                 continue
             from comun import whatsapp
-            # Mapea el tipo del catálogo al modo que espera crear_whatsapp.
-            modo = "oficial" if tipo == "whatsapp_oficial" else \
-                   ("no_oficial" if tipo == "whatsapp_no_oficial" else n.get("modo", "no_oficial"))
-            wa = whatsapp.crear_whatsapp({**n, "enabled": True, "tipo": modo})
+            wa = whatsapp.crear_whatsapp({**n, "enabled": True, "tipo": "no_oficial"})
             if wa:
                 canales.append(wa)
     return Notificadores(canales)
