@@ -432,6 +432,8 @@ try:
     llam = {"marcar": 0, "confirm": 0}
 
     class _Tri:
+        # El ciclo pregunta PRIMERO si queda algo del cliente (acá no) y recién después si resuelve.
+        def tecnico_pide_confirmacion(self, t): return False
         def tecnico_resolvio(self, t): return True     # el comentario del técnico resuelve
         def marcar_resuelto(self, tid, sol="", autor=None):llam["marcar"] += 1; return True
         def pedir_confirmacion(self, tid): llam["confirm"] += 1; return True
@@ -3056,10 +3058,15 @@ try:
              and "_coordinacion_despues_de(fu, int(ult[" in tri_src          # anti-repetición tras reinicio
              # y si la IA no contesta, el comentario del técnico NO se da por visto: se reintenta.
              # Marcarlo igual dejaba el ticket trabado para siempre (caso real #674).
-             and "resolvio is None or (consulta_coordinacion and pide is None)" in tri_src
+             and "pide is None or (not pide and resolvio is None)" in tri_src
+             # PRIMERO se pregunta si queda algo del CLIENTE y recién después si está resuelto: un
+             # "se solucionó el acceso, pero falta que ustedes revisen la terminal" NO cierra el
+             # ticket, lo deja esperándolos (corrección de Brian sobre el #673).
+             and "resolvio = None if pide else triage.tecnico_resolvio(cont)" in tri_src
+             and "QUEDA ALGO PENDIENTE del lado del cliente" in tri_src
              and "impersonal" in tri_src                                     # detecta 'se deberá coordinar…'
              and "NUNCA del cliente" in tri_src                              # invariante técnico-only
-             and "el técnico necesita coordinar" in tri_src)                 # avisa WhatsApp
+             and "queda algo en manos del cliente" in tri_src.lower())       # avisa WhatsApp
     # (c) admin: honestidad -> NO afirmar un cambio sin poner la acción + avisa a WhatsApp al cambiar estado
     main_src77 = leer(os.path.join(APP, "central", "main.py"))
     honesto = ("REGLA DE HONESTIDAD" in conv_src

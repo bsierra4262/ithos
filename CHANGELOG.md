@@ -147,7 +147,25 @@ y el versionado, [SemVer](https://semver.org/lang/es/).
   coordinación sólo del lado del técnico (no del cliente), deja notas internas privadas y ajusta
   el SLA por calendario y horario de atención (Lun–Vie 09–18).
 
+### Changed
+- **Mientras falte algo del cliente, el ticket lo espera.** El ciclo ahora pregunta **primero** si
+  queda algo en manos del cliente y **después** si está resuelto. Un comentario del técnico puede
+  decir «el acceso quedó solucionado» y en la misma línea pedirle al cliente que escale algo para
+  cerrarlo del todo: eso no es un cierre, es un **seguimiento**. Queda En espera, el cliente
+  responde, vuelve a En curso, y así hasta que de verdad no falte nada. También cuenta como pendiente
+  que el cliente tenga que gestionar algo **de su lado** (derivarlo a otra área suya, reconectar o
+  revisar un equipo propio), no sólo coordinar una visita.
+
 ### Fixed
+- **El comentario del técnico le llegaba a la IA como una pared de CSS.** GLPI guarda el contenido con
+  las etiquetas **escapadas** (`&#60;p&#62;` por `<p>`), así que quitar `<...>` no quitaba nada: de un
+  comentario de 24.000 caracteres, el texto real quedaba enterrado entre los estilos del editor y la
+  IA no lo veía. Un «quedó solucionado» pasaba de largo. Ahora se desescapa antes de limpiar, en el
+  comentario del técnico y en la solución documentada.
+- **Un «quedó solucionado» explícito ya no depende de interpretación.** Si el técnico lo dice con
+  todas las letras, cuenta —por largo que siga el comentario—, salvo que quede algo pendiente del
+  cliente. Reconoce las formas habituales y no se confunde con las negadas ni con las futuras
+  («todavía no se resolvió», «cuando quede solucionado»).
 - **Un ticket podía quedarse esperando una respuesta que ya había llegado.** Para saber si el cliente
   había contestado, el ciclo miraba el **último comentario de un técnico**. Cuando el técnico
   respondía **después** del cliente —que es lo normal y lo deseable—, esa referencia se corría por

@@ -188,6 +188,102 @@ POSTERIOR = {"id": 602, "users_id": 7, "is_private": 0, "content": "Buenísimo, 
 ok(CI._respondio_a([CONF, DICE_OK, POSTERIOR], CI._es_aviso_confirmacion, TECS) == DICE_OK,
    "en un ticket RESUELTO pasa lo mismo: la confirmación del cliente no la tapa el técnico")
 
+print("\n=== 4 · Un 'quedó solucionado' SIEMPRE se detecta ===")
+# Caso real (#673): el técnico escribió un comentario largo que ARRANCA con "El inconveniente
+# quedó solucionado" y sigue con todo el diagnóstico, terminando en algo que todavía falla. Dos
+# cosas lo tapaban:
+#   · GLPI guarda el comentario con las etiquetas ESCAPADAS ('&#60;p&#62;'), así que sacar '<...>'
+#     no sacaba nada: a la IA le llegaban 24.000 caracteres de CSS del editor, sin ver el texto.
+#   · aun leyéndolo limpio, el modelo pesaba el final y lo llamaba "avance".
+COMENTARIO_REAL = (
+    "&#60;p style=\"box-sizing: border-box; color: #8892a8; font-size: 14px;\"&#62;"
+    "El inconveniente quedó solucionado. Empezamos revisando sus fichadas en tiempo real desde la "
+    "base de datos; ejecutamos la consulta HikINOut query.sql. Detectamos que la terminal de la "
+    "misma sede está desconectada, impidiendo sincronizar la información.&#60;/p&#62;")
+limpio = CI._texto_plano(COMENTARIO_REAL)
+ok("El inconveniente quedó solucionado" in limpio,
+   "el comentario se desescapa antes de limpiarlo: la IA ve el TEXTO, no el CSS")
+ok("box-sizing" not in limpio and "font-size" not in limpio,
+   "y no le queda nada del estilo del editor", limpio[:60])
+
+ok(cerebro.dice_resuelto(limpio),
+   "un 'quedó solucionado' se detecta aunque el comentario siga con el detalle técnico")
+for texto in ("Listo, ya está solucionado.", "Se solucionó el problema con el lector.",
+              "Lo solucionamos cambiando el cable.", "El problema resuelto, ya puede fichar.",
+              "Ya quedó operativo el molinete.", "Se resolvió, era el PIN mal cargado."):
+    ok(cerebro.dice_resuelto(texto), f"detecta: {texto}")
+for texto in ("No quedó solucionado, sigue igual.", "Todavía no se resolvió, falta el repuesto.",
+              "Cuando quede solucionado les avisamos.", "Sin solucionar por ahora.",
+              "Se deberá coordinar la reubicación del molinete.",
+              "Le pedimos el legajo del agente para poder avanzar."):
+    ok(not cerebro.dice_resuelto(texto), f"NO se confunde con: {texto}")
+
+
+import triage as TR                     # noqa: E402
+
+
+class _SinIA(_TriageFalso):
+    """Sin IA disponible: lo que el técnico AFIRMA tiene que alcanzar igual."""
+
+    def __init__(self):
+        super().__init__(ia_viva=True)
+
+    tecnico_resolvio = TR.Triage.tecnico_resolvio
+    ia = property(lambda self: (_ for _ in ()).throw(RuntimeError("IA caída")))
+
+
+ok(_SinIA().tecnico_resolvio(limpio) is True,
+   "lo que el técnico afirma se detecta aunque la IA no esté")
+ok(_SinIA().tecnico_resolvio("Seguimos revisando los logs, sin novedades.") is None,
+   "y sin afirmación explícita ni IA, no se inventa nada")
+
+print("\n=== 5 · Si queda algo EN MANOS DEL CLIENTE, es ESPERA aunque diga 'solucionado' ===")
+# Correción de Brian: "se solucionó el acceso, pero necesitamos que ELLOS escalen lo de la terminal
+# para que quede 100%". Eso NO es un cierre: es un seguimiento. Queda En espera, el cliente
+# responde, vuelve a En curso, y así hasta que de verdad no falte nada. Por eso el ciclo pregunta
+# PRIMERO si queda algo del cliente y sólo después si está resuelto.
+CICLO_SRC = open(os.path.join(APP, "central", "ciclo.py"), encoding="utf-8").read()
+orden = CICLO_SRC.index("pide = triage.tecnico_pide_confirmacion(cont)")
+luego = CICLO_SRC.index("resolvio = None if pide else triage.tecnico_resolvio(cont)")
+ok(orden < luego, "se pregunta primero por el cliente y recién después por la resolución")
+ok("resolvio = None if pide else" in CICLO_SRC,
+   "y si queda algo del cliente, ni se evalúa cerrarlo")
+
+
+class _ConPendiente(_TriageFalso):
+    """El comentario dice 'solucionado' PERO deja algo para el cliente."""
+
+    def __init__(self):
+        super().__init__(ia_viva=True)
+        self.en_espera = []
+
+    def tecnico_pide_confirmacion(self, texto):
+        return True                    # queda algo del lado del cliente
+
+    def poner_en_espera_pedido(self, tid, comentario):
+        self.en_espera.append(tid)
+        return True
+
+
+PEND = [{"id": 910, "users_id": 7, "is_private": 0,
+         "content": "El acceso quedó solucionado. Para cerrarlo necesitamos que escalen con "
+                    "Sistemas la revisión de la terminal, que está desconectada.",
+         "date_creation": "2026-08-19 14:49:00"}]
+
+
+class _ClientePend(_ClienteFalso):
+    def request(self, path, *a, **k):
+        if path.endswith("/ITILFollowup"):
+            return PEND
+        return super().request(path, *a, **k)
+
+
+pend = _ConPendiente()
+list(CI.gestionar_ciclo(_ClientePend(), pend, 12, {}))
+ok(pend.en_espera == [674] and not pend.resueltos,
+   "queda EN ESPERA del cliente y NO se marca resuelto, aunque diga 'quedó solucionado'",
+   f"espera={pend.en_espera} resueltos={pend.resueltos}")
+
 print("\n" + "=" * 78)
 if FALLAS:
     print(f"FALLARON {len(FALLAS)} chequeo(s):")

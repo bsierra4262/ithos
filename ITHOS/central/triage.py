@@ -547,8 +547,19 @@ class Triage:
             return None
 
     def tecnico_resolvio(self, texto):
-        """Usa la IA para decidir si el comentario de un TÉCNICO indica que el ticket QUEDÓ
-        RESUELTO (no solo un avance). Devuelve True/False, o None si la IA no está disponible."""
+        """¿El comentario de un TÉCNICO dice que el ticket QUEDÓ RESUELTO (no sólo un avance)?
+        True/False, o None si la IA no está disponible.
+
+        Si el técnico lo dice CON TODAS LAS LETRAS, se toma como resuelto sin preguntarle a la IA:
+        un comentario que arranca con "el inconveniente quedó solucionado" y sigue con dos párrafos
+        de diagnóstico se leía como un simple avance, y el ticket quedaba En curso con el técnico
+        dando el trabajo por terminado. Lo que el técnico AFIRMA no se somete a interpretación.
+
+        OJO: esto se consulta DESPUÉS de descartar que quede algo en manos del cliente. Un "se
+        solucionó el acceso, pero falta que ustedes revisen la terminal" NO cierra el ticket: lo
+        deja esperando al cliente. Esa decisión la toma el ciclo, en ese orden."""
+        if cerebro.dice_resuelto(texto):
+            return True
         try:
             r = self.ia.chat(
                 "Sos un asistente de mesa de ayuda. Un TÉCNICO dejó un comentario en un ticket. "
@@ -580,26 +591,34 @@ class Triage:
             return None
 
     def tecnico_pide_confirmacion(self, texto):
-        """IA: para AVANZAR, ¿el CLIENTE debe responder/confirmar/coordinar algo (coordinar un día u
-        horario para un trabajo/visita; reubicar/mover/instalar/reemplazar algo a acordar con el cliente;
-        aprobar/dar el OK; quedar a la espera de una decisión del cliente)? -> pide_confirmacion=true,
-        AUNQUE esté redactado impersonal ('se deberá coordinar la reubicación', 'próximos pasos:
-        coordinar el reemplazo'). Si es una SOLUCIÓN ya aplicada, un avance interno o info que no
-        requiere respuesta del cliente: false. None si la IA no está."""
+        """IA: ¿queda algo EN MANOS DEL CLIENTE para poder avanzar o cerrar? -> True.
+
+        Cuenta coordinar un día/horario, aprobar algo, decidir, y también que el cliente tenga que
+        gestionar algo de su lado (escalarlo a otra área, reconectar o revisar un equipo suyo).
+        Vale aunque esté redactado impersonal ('se deberá coordinar la reubicación') y AUNQUE el
+        comentario diga que una parte ya quedó resuelta: si falta algo del cliente, el ticket sigue
+        esperándolo. False si es una solución cerrada o un avance interno. None si la IA no está."""
         try:
             r = self.ia.chat(
-                "Un TÉCNICO dejó un comentario en un ticket de soporte. Decidí si, para poder AVANZAR, "
-                "el CLIENTE debe responder / confirmar / coordinar algo ANTES de continuar.\n"
+                "Un TÉCNICO dejó un comentario en un ticket de soporte. Decidí si queda algo EN MANOS "
+                "DEL CLIENTE para poder avanzar o para dar el caso por cerrado.\n"
                 "- pide_confirmacion=true si el comentario o sus 'próximos pasos' implican: coordinar un "
                 "día u horario para hacer un trabajo o una visita; reubicar, mover, instalar o reemplazar "
                 "algo que hay que ACORDAR con el cliente; pedir una aprobación, un OK o una confirmación; "
-                "o quedar a la espera de una decisión o respuesta del cliente. Cuenta AUNQUE esté escrito "
-                "en tercera persona o de forma impersonal (ej.: 'se deberá coordinar la reubicación', "
-                "'próximos pasos: coordinar el reemplazo y la visita', 'a coordinar con el cliente', "
-                "'queda sujeto a la confirmación del cliente').\n"
-                "- pide_confirmacion=false SOLO si es una SOLUCIÓN ya aplicada y lista, un avance "
-                "puramente interno del equipo, o información que NO necesita ninguna respuesta del "
-                "cliente.\n"
+                "quedar a la espera de una decisión o respuesta del cliente; o que el CLIENTE tenga que "
+                "gestionar algo de su lado para cerrarlo del todo (escalarlo o derivarlo a otra área "
+                "suya, revisar/reconectar/reparar un equipo o un enlace que es de él, dar de alta o "
+                "corregir un dato en un sistema suyo). Cuenta AUNQUE esté escrito en tercera persona o "
+                "de forma impersonal (ej.: 'se deberá coordinar la reubicación', 'próximos pasos: "
+                "coordinar el reemplazo y la visita', 'a coordinar con el cliente', 'queda sujeto a la "
+                "confirmación del cliente').\n"
+                "- IMPORTANTE: también es true cuando el comentario dice que UNA PARTE quedó resuelta "
+                "pero QUEDA ALGO PENDIENTE del lado del cliente para que quede resuelto del todo (ej.: "
+                "'se solucionó el acceso, pero la terminal de la sede está desconectada'). Que una "
+                "parte esté lista no cierra el caso si falta algo de él.\n"
+                "- pide_confirmacion=false SOLO si es una SOLUCIÓN completa y cerrada, un avance "
+                "puramente interno del equipo, o información que NO necesita ninguna respuesta ni "
+                "ninguna gestión del cliente.\n"
                 "Respondé SOLO JSON: {\"pide_confirmacion\": true|false}.",
                 texto, json_out=True)
             import json as _j

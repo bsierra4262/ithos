@@ -183,6 +183,43 @@ _RE_LEGAJO_EXPLICITO = re.compile(r"legajo\s*n?[°º:.\s-]*(\d{2,})|\bleg\.?\s*(
 _RE_LEGAJO_ASUNTO = re.compile(r"^\s*(\d{3,6})\s*[-–.]?\s+[^\W\d_]", re.UNICODE)
 
 
+# El técnico dice, con todas las letras, que el ticket QUEDÓ RESUELTO. Esto NO se somete a
+# interpretación: si lo escribió, es una resolución. Hizo falta porque un comentario que arranca
+# con "El inconveniente quedó solucionado" y sigue con el detalle de todo lo que se revisó —incluido
+# algo que todavía falla— el modelo lo leía como un avance, y el ticket se quedaba En curso.
+_RE_DICE_RESUELTO = re.compile(
+    r"(?:qued[oó]|queda|est[aá]|ya\s+est[aá]|fue|lo\s+dejamos|lo\s+dejo)\s+"
+    r"(?:solucionad|resuelt|arreglad|normalizad|operativ|funcionando)|"
+    r"(?:se|lo|la)\s+(?:solucion[oó]|resolvi[oó]|arregl[oó]|normaliz[oó])|"
+    r"(?:solucionamos|resolvimos|arreglamos|normalizamos)\b|"
+    r"\b(?:inconveniente|problema|incidente|tema)\s+(?:solucionad|resuelt|arreglad)|"
+    r"^\s*(?:solucionado|resuelto|listo)\b", re.I | re.M)
+# Lo mismo pero NEGADO o a futuro: "no quedó solucionado", "todavía no se resolvió", "cuando
+# quede solucionado", "para que quede resuelto". Estas frases NO cierran nada.
+_RE_NO_RESUELTO = re.compile(
+    r"(?:no|a[uú]n\s+no|todav[ií]a\s+no|sin|nunca|cuando|para\s+que|si)\s+"
+    r"(?:\w+\s+){0,3}?(?:qued[oó]|queda|quede|est[aá]|se)?\s*"
+    r"(?:solucionad|resuelt|arreglad|solucion[oó]|resolvi[oó]|arregl[oó])", re.I)
+
+
+def dice_resuelto(texto):
+    """True si el TÉCNICO afirma que el ticket quedó resuelto, sin depender de la IA.
+
+    Es una red determinística, no un reemplazo del modelo: se usa ANTES de preguntarle, para que
+    un "quedó solucionado" explícito SIEMPRE se detecte, por largo que sea el comentario y por más
+    detalle técnico que venga después."""
+    t = str(texto or "")
+    if not t.strip():
+        return False
+    # Si la única mención está negada o es a futuro, no cuenta.
+    negados = {m.group(0).lower() for m in _RE_NO_RESUELTO.finditer(t)}
+    for m in _RE_DICE_RESUELTO.finditer(t):
+        frase = m.group(0).lower()
+        if not any(frase in n for n in negados):
+            return True
+    return False
+
+
 def legajo_en_texto(asunto, descripcion=""):
     """El número de legajo que YA está en el ticket, o None. Mira el asunto y la descripción."""
     m = _RE_LEGAJO_ASUNTO.match(str(asunto or ""))

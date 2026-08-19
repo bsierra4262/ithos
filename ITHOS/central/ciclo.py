@@ -111,7 +111,13 @@ def _coordinacion_despues_de(fu, tec_fu_id, tecs=None):
 
 
 def _texto_plano(html):
-    """El comentario del cliente en texto legible, para poder citarlo en el aviso del grupo."""
+    """Un comentario de GLPI en texto legible: para citarlo en un aviso y, sobre todo, para
+    dárselo a la IA.
+
+    GLPI guarda el contenido con las etiquetas ESCAPADAS ('&#60;p&#62;' por '<p>'), y el editor
+    mete además un `style` gigante en cada párrafo. Si no se desescapa primero, sacar '<...>' no
+    saca nada y lo que queda son miles de caracteres de CSS con el texto real perdido adentro.
+    Por eso el desescapado va SIEMPRE antes de limpiar las etiquetas."""
     import html as _html
     t = _html.unescape(_html.unescape(str(html or "")))
     t = re.sub(r"<\s*br\s*/?>|</\s*p\s*>", " ", t, flags=re.I)
@@ -201,14 +207,14 @@ def _texto_resolucion(cliente, tid, fu, humanos=None):
         sol = cliente.request(f"/Ticket/{tid}/ITILSolution")
         if isinstance(sol, list):
             for s in sol:
-                c = re.sub(r"<[^>]+>", " ", str(s.get("content", ""))).strip()
+                c = _texto_plano(s.get("content"))
                 if c:
                     partes.append(c)
     except Exception:  # noqa: BLE001
         pass
     tec = [f for f in fu if int(f.get("users_id") or 0) in (humanos or TECNICOS_HUMANOS)]
     if tec:
-        c = re.sub(r"<[^>]+>", " ", str(tec[-1].get("content", ""))).strip()
+        c = _texto_plano(tec[-1].get("content"))
         if c:
             partes.append(c)
     return "  ".join(partes).strip()
@@ -338,20 +344,42 @@ def gestionar_ciclo(cliente, triage, entidad, estado):
             tec_fus = [f for f in fu if int(f.get("users_id") or 0) in humanos]
             ult = tec_fus[-1] if tec_fus else None
             if ult and int(ult["id"]) > int(st.get("ultimo_tec_fu", 0)):
-                cont = re.sub(r"<[^>]+>", " ", str(ult.get("content", ""))).strip()
+                # GLPI guarda el comentario con las etiquetas ESCAPADAS ('&#60;p&#62;' por '<p>'),
+                # así que sacar '<...>' a secas no saca NADA: a la IA le llegaban miles de
+                # caracteres de CSS del editor y ni veía el texto. Pasó de verdad: un "quedó
+                # solucionado" no se detectó porque el comentario eran 24.000 caracteres de estilos.
+                cont = _texto_plano(ult.get("content"))
                 # Interpretar el comentario del técnico necesita la IA. Si NO está disponible
                 # (devuelve None), el comentario NO se da por visto: se reintenta en el próximo
                 # ciclo. Antes se marcaba igual y el ticket quedaba trabado para siempre — pasó de
                 # verdad: un técnico escribió "quedó solucionado" justo cuando la cadena de IA
                 # estaba caída, y el ticket se quedó En curso aunque la IA volviera diez minutos
                 # después.
-                resolvio = triage.tecnico_resolvio(cont)
-                consulta_coordinacion = (resolvio is False and status != 4
-                                         and not _coordinacion_despues_de(fu, int(ult["id"]), tecs))
-                pide = triage.tecnico_pide_confirmacion(cont) if consulta_coordinacion else False
-                if resolvio is None or (consulta_coordinacion and pide is None):
+                # INVARIANTE: `cont` es SIEMPRE el comentario de un TÉCNICO HUMANO (viene de
+                # `tec_fus`), NUNCA del cliente. Si el CLIENTE escribe "coordinemos una reunión",
+                # eso es una RESPUESTA suya y no dispara nada de esto.
+                # ORDEN IMPORTANTE: primero se pregunta si queda algo EN MANOS DEL CLIENTE y recién
+                # después si está resuelto. Un comentario puede decir "el acceso quedó solucionado"
+                # y en la misma línea pedirle al cliente que escale algo para cerrarlo del todo:
+                # eso NO es un cierre, es una ESPERA. Mientras la pelota sea del cliente el ticket
+                # queda En espera; cuando responde vuelve a En curso, y así hasta que de verdad no
+                # falte nada. Al revés se cerraba de más.
+                pide = triage.tecnico_pide_confirmacion(cont)
+                resolvio = None if pide else triage.tecnico_resolvio(cont)
+                if pide is None or (not pide and resolvio is None):
                     continue                  # la IA no contestó: lo vemos en el próximo ciclo
                 st["ultimo_tec_fu"] = int(ult["id"])
+                if pide:
+                    # Sólo si NO estaba ya en espera y NO se lo pedimos ya por ESTE comentario.
+                    if status != 4 and not _coordinacion_despues_de(fu, int(ult["id"]), tecs) \
+                            and triage.poner_en_espera_pedido(t["id"], cont):
+                        anunciar(
+                            t["id"],
+                            f"En el ticket número {t['id']} el técnico dejó algo pendiente de "
+                            "parte del cliente. Lo dejé en espera y le pedí que responda.",
+                            f"⏳ *Ticket #{t['id']}* — queda algo en manos del cliente. En ESPERA "
+                            "de su respuesta.")
+                    continue                  # ya lo procesamos en este ciclo
                 if resolvio:
                     # La resolución es EL COMENTARIO DEL TÉCNICO, con sus palabras: ya está en el
                     # ticket, así que sólo se pasa a RESUELTO (no se copia ni se redacta otra) y se
@@ -365,23 +393,6 @@ def gestionar_ciclo(cliente, triage, entidad, estado):
                             "resuelto y le pedí al cliente que confirme para cerrarlo.",
                             f"✅ *Ticket #{t['id']}* — resuelto por el técnico. Pedí "
                             "confirmación al cliente para cerrarlo.")
-                    continue                  # ya lo procesamos en este ciclo
-                # ¿El técnico PIDE COORDINAR/CONFIRMAR algo con el cliente (no es una solución)? -> lo
-                # dejamos EN ESPERA de la respuesta del cliente y le transmitimos el pedido para que
-                # confirme. Solo si NO estaba ya en espera (status 4) y si NO pedimos ya coordinación
-                # por ESTE comentario (robusto ante reinicios). Avisa por voz + WhatsApp.
-                # IMPORTANTE: `cont` es SIEMPRE el comentario de un TÉCNICO HUMANO (viene de `tec_fus`
-                # = users_id in TECNICOS_HUMANOS), NUNCA del cliente. Si el CLIENTE escribe algo como
-                # "coordinemos una reunión", eso es una respuesta del cliente (`nuevos`) y NO dispara
-                # esta lógica: la coordinación en espera es exclusiva de lo que pide el TÉCNICO.
-                if pide:
-                    if triage.poner_en_espera_pedido(t["id"], cont):
-                        anunciar(
-                            t["id"],
-                            f"En el ticket número {t['id']} el técnico pidió coordinar con el "
-                            "cliente. Lo dejé en espera y le pedí que confirme para avanzar.",
-                            f"⏳ *Ticket #{t['id']}* — el técnico necesita coordinar/confirmar con "
-                            "el cliente. En ESPERA de su respuesta.")
                     continue                  # ya lo procesamos en este ciclo
 
         if status == 4:                       # EN ESPERA
