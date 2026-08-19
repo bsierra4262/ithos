@@ -316,9 +316,21 @@ def gestionar_ciclo(cliente, triage, entidad, estado):
             tec_fus = [f for f in fu if int(f.get("users_id") or 0) in humanos]
             ult = tec_fus[-1] if tec_fus else None
             if ult and int(ult["id"]) > int(st.get("ultimo_tec_fu", 0)):
-                st["ultimo_tec_fu"] = int(ult["id"])
                 cont = re.sub(r"<[^>]+>", " ", str(ult.get("content", ""))).strip()
-                if triage.tecnico_resolvio(cont):
+                # Interpretar el comentario del técnico necesita la IA. Si NO está disponible
+                # (devuelve None), el comentario NO se da por visto: se reintenta en el próximo
+                # ciclo. Antes se marcaba igual y el ticket quedaba trabado para siempre — pasó de
+                # verdad: un técnico escribió "quedó solucionado" justo cuando la cadena de IA
+                # estaba caída, y el ticket se quedó En curso aunque la IA volviera diez minutos
+                # después.
+                resolvio = triage.tecnico_resolvio(cont)
+                consulta_coordinacion = (resolvio is False and status != 4
+                                         and not _coordinacion_despues_de(fu, int(ult["id"]), tecs))
+                pide = triage.tecnico_pide_confirmacion(cont) if consulta_coordinacion else False
+                if resolvio is None or (consulta_coordinacion and pide is None):
+                    continue                  # la IA no contestó: lo vemos en el próximo ciclo
+                st["ultimo_tec_fu"] = int(ult["id"])
+                if resolvio:
                     # La resolución es EL COMENTARIO DEL TÉCNICO, con sus palabras: ya está en el
                     # ticket, así que sólo se pasa a RESUELTO (no se copia ni se redacta otra) y se
                     # le pide UNA confirmación al cliente. Si no contesta, el ciclo se la recuerda
@@ -340,8 +352,7 @@ def gestionar_ciclo(cliente, triage, entidad, estado):
                 # = users_id in TECNICOS_HUMANOS), NUNCA del cliente. Si el CLIENTE escribe algo como
                 # "coordinemos una reunión", eso es una respuesta del cliente (`nuevos`) y NO dispara
                 # esta lógica: la coordinación en espera es exclusiva de lo que pide el TÉCNICO.
-                if (status != 4 and not _coordinacion_despues_de(fu, int(ult["id"]), tecs)
-                        and triage.tecnico_pide_confirmacion(cont)):
+                if pide:
                     if triage.poner_en_espera_pedido(t["id"], cont):
                         anunciar(
                             t["id"],

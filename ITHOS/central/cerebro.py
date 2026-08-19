@@ -152,6 +152,8 @@ def clasificar_ticket(ia, asunto, descripcion, reglas=REGLAS_SRT, solicitante=""
 # un legajo, o bajarle la prioridad porque el texto no nombra a nadie. Estas reglas se aplican
 # SIEMPRE sobre lo que devolvió, así el resultado no depende de que se acuerde de cumplirlas.
 _PRIORIDAD_ORDEN = {"Baja": 1, "Media": 2, "Alta": 3, "Urgente": 4}
+# La prioridad QUE LE CORRESPONDE a cada alcance. No es un piso: es la que va. Dos tickets del
+# mismo tipo tienen que salir con la misma prioridad siempre, o los reportes no miden nada.
 _PISO_PRIORIDAD = {"individual": "Baja", "grupo": "Media", "equipo": "Alta",
                    "sede": "Urgente", "masivo": "Urgente"}
 ALCANCES = ("individual", "grupo", "equipo", "sede", "masivo")
@@ -303,13 +305,14 @@ def coherente(a, asunto="", descripcion=""):
         hechas.append("la respuesta le pide un dato al cliente, así que el ticket queda EN ESPERA "
                       "y el SLA no corre mientras la pelota es de él")
 
-    piso = _PISO_PRIORIDAD[alcance]
-    prio = a.get("prioridad") if a.get("prioridad") in _PRIORIDAD_ORDEN else piso
-    if _PRIORIDAD_ORDEN[prio] < _PRIORIDAD_ORDEN[piso]:
-        a["prioridad"] = piso
-        hechas.append(f"prioridad {prio} -> {piso} por el alcance ({alcance})")
-    else:
-        a["prioridad"] = prio
+    # La prioridad la decide el ALCANCE, no el ánimo del modelo. Antes esto era sólo un PISO, y un
+    # ticket de una persona salía Baja un día y Media al otro según cómo lo redactaran: dos tickets
+    # iguales con prioridades distintas, y los reportes de SLA midiendo ruido. Ahora es exacta.
+    debe = _PISO_PRIORIDAD[alcance]
+    prio = a.get("prioridad") if a.get("prioridad") in _PRIORIDAD_ORDEN else debe
+    if prio != debe:
+        hechas.append(f"prioridad {prio} -> {debe} por el alcance ({alcance})")
+    a["prioridad"] = debe
 
     # Equipamiento caído en una sede es instalaciones; el software y los casos sueltos, soporte.
     if alcance in ALCANCE_SERVICIO and a.get("categoria") in ("TERMINALES", "MOLINETES") \

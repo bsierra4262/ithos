@@ -3052,7 +3052,11 @@ try:
     #     corriendo SOLO sobre comentarios de TÉCNICOS (nunca del cliente).
     coord = ("def tecnico_pide_confirmacion(" in tri_src and "def poner_en_espera_pedido(" in tri_src
              and "triage.tecnico_pide_confirmacion(cont)" in tri_src
-             and "status != 4 and not _coordinacion_despues_de" in tri_src   # anti-repetición tras reinicio
+             and "status != 4" in tri_src                                    # no re-pide si ya está en espera
+             and "_coordinacion_despues_de(fu, int(ult[" in tri_src          # anti-repetición tras reinicio
+             # y si la IA no contesta, el comentario del técnico NO se da por visto: se reintenta.
+             # Marcarlo igual dejaba el ticket trabado para siempre (caso real #674).
+             and "resolvio is None or (consulta_coordinacion and pide is None)" in tri_src
              and "impersonal" in tri_src                                     # detecta 'se deberá coordinar…'
              and "NUNCA del cliente" in tri_src                              # invariante técnico-only
              and "el técnico necesita coordinar" in tri_src)                 # avisa WhatsApp

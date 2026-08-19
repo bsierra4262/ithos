@@ -144,10 +144,16 @@ indiv, corr_i = cerebro.coherente({"alcance": "individual", "categoria": "TERMIN
 ok(indiv["necesita_info"] is True, "si falta el legajo de UNA persona, se sigue pidiendo")
 ok(indiv["prioridad"] == "Baja" and indiv["responsable"] == "bsierra" and not corr_i,
    "y no se toca nada más")
-subido, _ = cerebro.coherente({"alcance": "individual", "categoria": "TERMINALES",
-                               "prioridad": "Media", "responsable": "bsierra",
-                               "necesita_info": True})
-ok(subido["prioridad"] == "Media", "un caso individual reincidente puede ser Media (es un piso)")
+# CAMBIO DE REQUERIMIENTO (#674): la prioridad la decide el ALCANCE, y punto. Antes era sólo un
+# PISO y el modelo podía subirla a gusto: el mismo tipo de ticket salía Baja un día y Media al otro
+# —pasó de verdad—, y con prioridades que no significan nada los reportes de SLA no miden nada.
+subido, corr_s = cerebro.coherente({"alcance": "individual", "categoria": "TERMINALES",
+                                    "prioridad": "Media", "responsable": "bsierra",
+                                    "necesita_info": True})
+ok(subido["prioridad"] == "Baja",
+   "el caso de UNA persona sale Baja aunque el modelo diga Media: dos tickets iguales, la misma "
+   "prioridad", subido["prioridad"])
+ok(any("prioridad" in c for c in corr_s), "y queda asentado el ajuste", str(corr_s))
 sin_dato, _ = cerebro.coherente({"categoria": "TERMINALES", "prioridad": "Baja",
                                  "responsable": "bsierra", "necesita_info": True})
 ok(sin_dato["alcance"] == "individual", "sin alcance declarado se asume el caso más conservador")
