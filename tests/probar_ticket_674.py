@@ -151,6 +151,43 @@ vivo2 = _TriageFalso(ia_viva=True)
 list(CI.gestionar_ciclo(_ClienteFalso(), vivo2, 12, estado))
 ok(not vivo2.resueltos, "y no se vuelve a marcar resuelto en cada vuelta del ciclo")
 
+print("\n=== 3 · Si el técnico contesta DESPUÉS del cliente, el ticket sale igual de la espera ===")
+# Caso real #651: el cliente contestó "sí, pueden correrlo", el técnico le respondió siete minutos
+# después, y el ticket se quedó EN ESPERA dieciséis días. La referencia de "¿contestó el cliente?"
+# era el último comentario de un TÉCNICO, así que la respuesta del técnico tapaba la del cliente.
+# Y en espera el SLA no corre: no chilla nada, no se entera nadie.
+PEDIDO = {"id": 500, "users_id": 28, "is_private": 0,
+          "content": "Para avanzar necesitamos su confirmación. " + CI._MARCA_ESPERA_CLIENTE,
+          "date_creation": "2026-07-26 21:41:00"}
+CLIENTE = {"id": 501, "users_id": 26, "is_private": 0,
+           "content": "Hola si pueden correrlo para su correcto funcionamiento",
+           "date_creation": "2026-08-03 15:18:00"}
+TECNICO = {"id": 502, "users_id": 8, "is_private": 0,
+           "content": "Dale perfecto, vamos a proceder a encargar el selenoide para repararlo",
+           "date_creation": "2026-08-03 15:25:00"}
+TECS = {28, 7, 8}
+
+ok(CI._respondio_a([PEDIDO, CLIENTE], lambda f: CI._es_pedido_al_cliente(f, TECS), TECS) is not None,
+   "el cliente contestó el pedido -> se detecta")
+ok(CI._respondio_a([PEDIDO, CLIENTE, TECNICO],
+                   lambda f: CI._es_pedido_al_cliente(f, TECS), TECS) == CLIENTE,
+   "y se SIGUE detectando aunque el técnico haya contestado después (el #651)")
+ok(CI._respondio_a([PEDIDO], lambda f: CI._es_pedido_al_cliente(f, TECS), TECS) is None,
+   "si el cliente todavía no contestó, no se inventa una respuesta")
+ok(CI._respondio_a([PEDIDO, TECNICO],
+                   lambda f: CI._es_pedido_al_cliente(f, TECS), TECS) is None,
+   "un comentario del TÉCNICO no cuenta como respuesta del cliente")
+# La misma referencia vale para la confirmación de un ticket ya resuelto.
+CONF = {"id": 600, "users_id": 28, "is_private": 0,
+        "content": "Le informamos que su solicitud fue resuelta. " + CI._MARCA_CONFIRMACION,
+        "date_creation": "2026-08-19 14:30:00"}
+DICE_OK = {"id": 601, "users_id": 26, "is_private": 0, "content": "Sí, ya puede fichar. Gracias!",
+           "date_creation": "2026-08-19 15:00:00"}
+POSTERIOR = {"id": 602, "users_id": 7, "is_private": 0, "content": "Buenísimo, lo cerramos.",
+             "date_creation": "2026-08-19 15:02:00"}
+ok(CI._respondio_a([CONF, DICE_OK, POSTERIOR], CI._es_aviso_confirmacion, TECS) == DICE_OK,
+   "en un ticket RESUELTO pasa lo mismo: la confirmación del cliente no la tapa el técnico")
+
 print("\n" + "=" * 78)
 if FALLAS:
     print(f"FALLARON {len(FALLAS)} chequeo(s):")

@@ -79,6 +79,28 @@ def _es_pedido_al_cliente(f, tecs=None):
     return _MARCA_ESPERA_CLIENTE in str(f.get("content", "")).lower()
 
 
+def _respondio_a(fu, es_pedido, tecs=None):
+    """El comentario con el que el CLIENTE respondió al último pedido de ITHOS, o None.
+
+    Se mide contra EL PEDIDO, no contra el último comentario de un técnico. Parece un detalle y no
+    lo es: cuando un técnico contesta DESPUÉS del cliente —que es lo normal y lo que uno quiere—,
+    la referencia se corría sola por delante de la respuesta y el ticket quedaba esperando para
+    siempre algo que ya había llegado. Pasó de verdad: en el #651 el cliente contestó "sí, pueden
+    correrlo", el técnico le respondió siete minutos después, y el ticket siguió EN ESPERA
+    dieciséis días sin que nadie se enterara (en espera el SLA no corre, así que no chilla nada).
+
+    `es_pedido`: qué cuenta como pedido de ITHOS (un dato que falta, o una confirmación)."""
+    pedidos = [int(f.get("id") or 0) for f in fu if es_pedido(f)]
+    if not pedidos:
+        return None
+    ultimo = max(pedidos)
+    posteriores = sorted((f for f in fu
+                          if int(f.get("id") or 0) > ultimo
+                          and int(f.get("users_id") or 0) not in (tecs or TECNICOS)),
+                         key=lambda f: int(f.get("id") or 0))
+    return posteriores[-1] if posteriores else None
+
+
 def _coordinacion_despues_de(fu, tec_fu_id, tecs=None):
     """True si ITHOS ya dejó un pedido al cliente POSTERIOR al comentario `tec_fu_id`. Así el
     pedido NO se repite para el MISMO comentario del técnico tras un reinicio (el estado en memoria
@@ -363,9 +385,13 @@ def gestionar_ciclo(cliente, triage, entidad, estado):
                     continue                  # ya lo procesamos en este ciclo
 
         if status == 4:                       # EN ESPERA
-            if nuevos:                        # el cliente respondió
-                autor = _nombre_usuario(cliente, nuevos[-1].get("users_id"))
-                dijo = _texto_plano(nuevos[-1].get("content"))
+            # ¿Contestó el cliente al pedido que lo dejó en espera? Se mide contra EL PEDIDO, no
+            # contra el último comentario de un técnico: si el técnico le responde después —lo
+            # normal—, el ticket tiene que salir de la espera igual.
+            respuesta = _respondio_a(fu, lambda f: _es_pedido_al_cliente(f, tecs), tecs)
+            if respuesta:                      # el cliente respondió
+                autor = _nombre_usuario(cliente, respuesta.get("users_id"))
+                dijo = _texto_plano(respuesta.get("content"))
                 # FUERA DE HORARIO: no se pasa a EN CURSO. Si se pasara, el SLA correría toda la
                 # noche o todo el fin de semana contra un equipo que no está trabajando y el lunes
                 # el ticket nacería vencido. Queda EN ESPERA y se reabre solo al abrir la jornada.
@@ -480,9 +506,11 @@ def gestionar_ciclo(cliente, triage, entidad, estado):
             if not st.get("confirm_pedido"):
                 if triage.pedir_confirmacion(t["id"]):
                     st["confirm_pedido"] = True
-            elif nuevos:
-                autor = _nombre_usuario(cliente, nuevos[-1].get("users_id"))
-                texto = " ".join(str(f.get("content", "")) for f in nuevos)
+            # ¿Contestó al pedido de confirmación? Igual que en la espera: se mide contra EL PEDIDO
+            # de ITHOS, para que un comentario del técnico posterior no tape la respuesta.
+            elif (dijo_cliente := _respondio_a(fu, _es_aviso_confirmacion, tecs)):
+                autor = _nombre_usuario(cliente, dijo_cliente.get("users_id"))
+                texto = str(dijo_cliente.get("content", ""))
                 conf = triage.cliente_confirma(texto)
                 if conf is None:
                     continue  # IA no disponible ahora -> reintentar próximo ciclo

@@ -148,6 +148,21 @@ y el versionado, [SemVer](https://semver.org/lang/es/).
   el SLA por calendario y horario de atención (Lun–Vie 09–18).
 
 ### Fixed
+- **Un ticket podía quedarse esperando una respuesta que ya había llegado.** Para saber si el cliente
+  había contestado, el ciclo miraba el **último comentario de un técnico**. Cuando el técnico
+  respondía **después** del cliente —que es lo normal y lo deseable—, esa referencia se corría por
+  delante de la respuesta y el ticket se quedaba **En espera para siempre**. Y en espera el SLA no
+  corre: no vence, no alerta, no se entera nadie. Un ticket estuvo así **dieciséis días**. Ahora la
+  referencia es **el pedido de ITHOS**, no el último que habló: si hay una respuesta del cliente
+  posterior al pedido, el ticket avanza. Vale igual para la confirmación de un ticket resuelto.
+- **La prioridad dependía del humor del modelo.** Era sólo un mínimo: si el modelo decía «Media» para
+  el caso de una persona, nadie lo corregía, así que dos tickets iguales salían con prioridades
+  distintas y los reportes de SLA comparaban cosas que no son comparables. Ahora la prioridad **es la
+  que le corresponde al alcance**, siempre.
+- **Un ticket quedaba trabado si la IA no estaba en ese instante.** Interpretar el comentario de un
+  técnico («quedó solucionado») necesita la IA. Si no estaba, el ciclo no hacía nada —correcto—, pero
+  **daba el comentario por visto**, así que cuando la IA volvía minutos después ya no lo miraba más.
+  Ahora queda pendiente y se reintenta.
 - **Los tickets que entraban por otra área del cliente no los veía nadie.** En GLPI un mismo cliente
   tiene **una entidad por área** —mesa de ayuda, soporte técnico, infraestructura— e ITHOS miraba una
   sola: todo lo que entraba por las otras quedaba fuera del circuito. Un aviso de Sistemas por unas
