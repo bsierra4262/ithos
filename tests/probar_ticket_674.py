@@ -284,6 +284,21 @@ ok(pend.en_espera == [674] and not pend.resueltos,
    "queda EN ESPERA del cliente y NO se marca resuelto, aunque diga 'quedó solucionado'",
    f"espera={pend.en_espera} resueltos={pend.resueltos}")
 
+print("\n=== 6 · El mensaje le dice al cliente QUÉ TIENE QUE HACER ===")
+# No alcanza con informarle y quedarse esperando: si la terminal es de él y está desconectada, hay
+# que pedirle que lo escale a SU área de sistemas y que verifiquen energía y conexión de red.
+TRI_SRC = open(os.path.join(APP, "central", "triage.py"), encoding="utf-8").read()
+prompt = TRI_SRC[TRI_SRC.index("def _mensaje_pedir_confirmacion"):]
+prompt = prompt[:prompt.index("return (")]
+for exige, que in (
+        ("QUÉ NECESITAMOS DE ÉL", "pide algo concreto, no sólo avisa"),
+        ("ESCALE al área de sistemas", "si el equipo es del cliente, que lo escale a SU área"),
+        ("ENERGIZADO", "que verifiquen que esté energizado"),
+        ("CONEXIÓN DE RED", "y que tenga conexión de red"),
+        ("no se puede dar por cerrado", "y por qué el caso todavía no se cierra"),
+        ("no uses tecnicismos internos", "sin nombres de consultas ni jerga interna")):
+    ok(exige.lower() in prompt.lower(), que)
+
 print("\n" + "=" * 78)
 if FALLAS:
     print(f"FALLARON {len(FALLAS)} chequeo(s):")

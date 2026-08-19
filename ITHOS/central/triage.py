@@ -641,15 +641,30 @@ class Triage:
             self.cli.cerrar()
 
     def _mensaje_pedir_confirmacion(self, comentario_tecnico):
-        """Redacta, PARA EL CLIENTE, el pedido de confirmación/coordinación basado en lo que planteó el
-        técnico (ej. 'coordinemos un día'). Si la IA no está, usa un texto genérico."""
+        """Redacta, PARA EL CLIENTE, qué necesitamos de él, a partir de lo que planteó el técnico.
+
+        Tiene que quedar claro QUÉ TIENE QUE HACER, no sólo que estamos esperando: si el técnico
+        avanzó una parte y falta algo del lado del cliente (que lo derive a otra área suya, que
+        revise un equipo propio), el mensaje lo dice con todas las letras. Si la IA no está, va un
+        texto genérico."""
         try:
             r = self.ia.chat(
-                "Un TÉCNICO de soporte le pide algo al cliente en un ticket (coordinar un día/horario, "
-                "confirmar una acción, dar el OK para un trabajo, etc.). Redactá un mensaje BREVE y "
-                "profesional PARA EL CLIENTE (de usted) que le transmita ese pedido y le solicite que "
-                "RESPONDA/CONFIRME para avanzar. No inventes datos; basate en el comentario. Terminá "
-                "con 'Quedamos a la espera de su respuesta. Soporte ITH.'. Respondé SOLO el mensaje.",
+                "Un TÉCNICO de soporte dejó un comentario en un ticket y para seguir hace falta algo "
+                "DEL CLIENTE. Redactá un mensaje BREVE y profesional PARA EL CLIENTE (de usted).\n"
+                "Tiene que tener, en este orden y en pocas líneas:\n"
+                "1. Qué se hizo o qué se resolvió hasta ahora, si el comentario lo dice.\n"
+                "2. QUÉ FALTA y POR QUÉ el caso todavía no se puede dar por cerrado.\n"
+                "3. QUÉ NECESITAMOS DE ÉL, concreto y accionable: coordinar un día y horario, dar el "
+                "OK, o gestionar algo de su lado. Que quede claro qué tiene que hacer, no sólo que "
+                "estamos esperando.\n"
+                "REGLA para el punto 3: si lo que falta está en la INFRAESTRUCTURA DEL CLIENTE —un "
+                "equipo o una terminal desconectada, sin energía o sin red—, pedile expresamente que "
+                "lo ESCALE al área de sistemas/IT de su organización para que revisen ese equipo, y "
+                "que verifiquen que esté ENERGIZADO y que tenga CONEXIÓN DE RED. Aclarále que en "
+                "cuanto vuelva a estar en línea podemos sincronizarlo y dar el caso por cerrado.\n"
+                "No inventes datos ni pasos que el comentario no diga; no uses tecnicismos internos "
+                "ni nombres de consultas o archivos. Terminá con 'Quedamos a la espera de su "
+                "respuesta. Soporte ITH.'. Respondé SOLO el mensaje.",
                 comentario_tecnico, json_out=False)
             r = (r or "").strip()
             if r:
