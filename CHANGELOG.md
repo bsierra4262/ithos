@@ -161,6 +161,11 @@ y el versionado, [SemVer](https://semver.org/lang/es/).
   revisar un equipo propio), no sólo coordinar una visita.
 
 ### Fixed
+- **Si el cliente rechazaba la solución con el botón, nadie se enteraba.** El cliente puede contestar
+  de dos formas: escribiendo, o apretando **Aprobar / Rechazar** sobre la solución. Sólo mirábamos lo
+  escrito, así que quien rechazaba sin escribir nada quedaba esperando para siempre: la solución
+  figuraba rechazada y el ticket seguía en Resuelto. Ahora aprobar **cierra** el ticket y rechazar lo
+  devuelve a **En curso**, avisando al equipo.
 - **El cliente no tenía cómo confirmar el cierre ni rechazarlo.** El ticket pasaba a Resuelto **sin
   cargar la solución**, y en la mesa de ayuda el solicitante aprueba o rechaza **la solución**: sin
   ella veía el ticket resuelto y no tenía ningún botón que tocar. Ahora se carga con **las palabras

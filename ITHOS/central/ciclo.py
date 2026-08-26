@@ -199,6 +199,23 @@ def _ya_pidio_procedimiento(fu):
                and _MARCA_PROCEDIMIENTO in str(f.get("content", "")).lower() for f in fu)
 
 
+def _solucion_resuelta(cliente, tid):
+    """Qué hizo el cliente con la SOLUCIÓN desde la mesa de ayuda: 'aceptada', 'rechazada' o None.
+
+    En GLPI el solicitante confirma o rechaza APRETANDO UN BOTÓN sobre la solución, no escribiendo.
+    Mientras no la toca, la solución queda 'pendiente' (2) y esto devuelve None. Sin mirar esto, un
+    cliente que rechaza y no escribe nada quedaba esperando para siempre: la solución figuraba
+    rechazada y el ticket seguía en Resuelto sin que el equipo se enterara."""
+    try:
+        sol = cliente.request(f"/Ticket/{tid}/ITILSolution")
+    except Exception:  # noqa: BLE001
+        return None
+    if not isinstance(sol, list) or not sol:
+        return None
+    ultima = sorted(sol, key=lambda s: int(s.get("id") or 0))[-1]
+    return {1: "aceptada", 3: "rechazada"}.get(int(ultima.get("status") or 0))
+
+
 def _texto_resolucion(cliente, tid, fu, humanos=None):
     """Junta el texto de la RESOLUCIÓN para que la IA juzgue si explica el procedimiento: la
     ITILSolution documentada (si hay) + el último comentario de un técnico HUMANO. '' si no hay nada."""
@@ -503,7 +520,31 @@ def gestionar_ciclo(cliente, triage, entidad, estado):
                              "hábiles* y sigue sin respuesta nuestra. La pelota es nuestra: "
                              "contestale o dejá asentado qué se está haciendo.")
 
-        elif status == 5:                     # RESUELTO: confirmar antes de cerrar
+        elif status == 5:                     # RESUELTO = esperando que el cliente confirme
+            # El cliente tiene DOS formas de contestar, y las dos cuentan:
+            #   · los BOTONES de la mesa de ayuda (aprueba o rechaza la solución), o
+            #   · escribiendo un comentario.
+            # Esto mira los botones. Si sólo miráramos los comentarios, un cliente que aprieta
+            # "Rechazar" y no escribe nada quedaría esperando para siempre: la solución figura
+            # rechazada y el ticket seguiría en Resuelto, sin que nadie del equipo se entere.
+            veredicto = _solucion_resuelta(cliente, t["id"])
+            if veredicto == "aceptada":
+                if triage.cerrar(t["id"]):
+                    anunciar(t["id"],
+                             f"El cliente aprobó la solución del ticket número {t['id']}. "
+                             "Ticket cerrado.",
+                             f"✅ *Ticket #{t['id']}* — el cliente aprobó la solución. Cerrado.")
+                estado.pop(tid, None)
+                continue
+            if veredicto == "rechazada":
+                if triage.reabrir(t["id"]):
+                    anunciar(t["id"],
+                             f"El cliente rechazó la solución del ticket número {t['id']}. "
+                             "Vuelve a estar en curso.",
+                             f"🔁 *Ticket #{t['id']}* — el cliente *rechazó* la solución. En curso "
+                             "otra vez: hay que revisarlo.")
+                estado.pop(tid, None)
+                continue
             # Feedback INTERNO al equipo (para la BASE DE CONOCIMIENTO): si la resolución NO explica el
             # PROCEDIMIENTO (no hay solución, o es un 'listo/solucionado' vago sin explicar cómo), ITHOS
             # le pide al técnico por nota PRIVADA que documente PASO A PASO qué hizo. Se revisa una vez

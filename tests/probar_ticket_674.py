@@ -341,6 +341,86 @@ ok("(ahora.hour - desde) % cada == 0" in PL_SRC,
 ok("no por acá" in PL_SRC,
    "lo instantáneo (tarjeta nueva, asignación, movimiento) sigue avisándose en el momento")
 
+print("\n=== 10 · El cliente contesta con los BOTONES, no sólo escribiendo ===")
+# En GLPI el solicitante aprueba o rechaza LA SOLUCIÓN apretando un botón. Si sólo miráramos los
+# comentarios, un cliente que aprieta "Rechazar" y no escribe nada quedaría esperando para siempre:
+# la solución figura rechazada y el ticket seguiría en Resuelto sin que el equipo se entere.
+ESTADO_SOL = {"aceptada": 1, "pendiente": 2, "rechazada": 3}
+
+
+class _ClienteSol:
+    """Mesa de ayuda de mentira con un ticket RESUELTO y una solución en cierto estado."""
+
+    session = "s"
+
+    def __init__(self, estado_sol):
+        self.estado_sol = estado_sol
+
+    def request(self, path, *a, **k):
+        if path.endswith("/ITILSolution"):
+            return [{"id": 7, "users_id": 7, "status": ESTADO_SOL[self.estado_sol],
+                     "content": "Se recalibró el lector."}]
+        if path.endswith("/ITILFollowup"):
+            return [{"id": 800, "users_id": 28, "is_private": 0,
+                     "content": "Le informamos que su solicitud fue resuelta. "
+                                + CI._MARCA_CONFIRMACION,
+                     "date_creation": "2026-08-26 11:36:00"}]
+        return []
+
+    def tickets_recientes(self, n=30):
+        return [{"id": 678, "status": 5, "entities_id": 12, "name": "No puede fichar"}]
+
+    def abrir(self):
+        pass
+
+    def cerrar(self):
+        pass
+
+
+class _TriageBotones(_TriageFalso):
+    def __init__(self):
+        super().__init__(ia_viva=True)
+        self.cerrados, self.reabiertos = [], []
+
+    def cerrar(self, tid):
+        self.cerrados.append(tid)
+        return True
+
+    def reabrir(self, tid):
+        self.reabiertos.append(tid)
+        return True
+
+    def pedir_confirmacion(self, tid):
+        return True
+
+    def explica_procedimiento(self, texto):
+        return True
+
+    def cliente_confirma(self, texto):
+        return None            # por comentario no dice nada: tiene que decidir el BOTÓN
+
+
+ok(CI._solucion_resuelta(_ClienteSol("pendiente"), 678) is None,
+   "mientras el cliente no toca nada, la solución sigue pendiente y no se hace nada")
+ok(CI._solucion_resuelta(_ClienteSol("aceptada"), 678) == "aceptada", "se lee la aprobación")
+ok(CI._solucion_resuelta(_ClienteSol("rechazada"), 678) == "rechazada", "y el rechazo")
+
+aprob = _TriageBotones()
+list(CI.gestionar_ciclo(_ClienteSol("aceptada"), aprob, 12, {}))
+ok(aprob.cerrados == [678] and not aprob.reabiertos,
+   "si aprueba con el botón, el ticket se CIERRA", str(aprob.cerrados))
+
+rech = _TriageBotones()
+list(CI.gestionar_ciclo(_ClienteSol("rechazada"), rech, 12, {}))
+ok(rech.reabiertos == [678] and not rech.cerrados,
+   "si rechaza con el botón, vuelve a EN CURSO (no queda esperando para siempre)",
+   str(rech.reabiertos))
+
+quieto = _TriageBotones()
+list(CI.gestionar_ciclo(_ClienteSol("pendiente"), quieto, 12, {}))
+ok(not quieto.cerrados and not quieto.reabiertos,
+   "y si todavía no contestó, el ticket no se toca")
+
 print("\n" + "=" * 78)
 if FALLAS:
     print(f"FALLARON {len(FALLAS)} chequeo(s):")
