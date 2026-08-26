@@ -388,6 +388,20 @@ ok(bool(sol_m), "se carga la SOLUCIÓN (sin ella el cliente no puede aprobar ni 
 ok("quedó solucionado" in sol_m.lower(),
    "y la solución son LAS PALABRAS DEL TÉCNICO, no una que redacte ITHOS", sol_m[:60])
 
+print("\n=== 7.b.2 · Lo que hace el EQUIPO no deja el ticket esperando al cliente ===")
+# Caso real (#651): el técnico escribió "vamos a proceder a encargar el selenoide" —lo encarga el
+# EQUIPO— e ITHOS le escribió al cliente "necesitamos que gestione la compra". Salió al cliente.
+# La pregunta no es si falta algo, es QUIÉN lo hace; y CUÁNDO: lo que se coordinará "cuando llegue
+# la pieza" todavía no le pide nada a nadie.
+prompt_pide = TRI_SRC2[TRI_SRC2.index("def tecnico_pide_confirmacion"):]
+prompt_pide = prompt_pide[:prompt_pide.index("except Exception")]
+ok("MIRÁ QUIÉN HACE LA ACCIÓN" in prompt_pide,
+   "se decide por quién hace la acción, no por si la tarea está pendiente")
+ok("vamos a encargar el repuesto" in prompt_pide,
+   "lo que encarga o gestiona el equipo es trabajo NUESTRO (el ticket sigue en curso)")
+ok("Y MIRÁ CUÁNDO" in prompt_pide and "cuando llegue la pieza" in prompt_pide,
+   "y lo que se coordinará más adelante todavía no le pide nada al cliente")
+
 print("\n=== 7.c · En espera puede estar esperando DOS cosas distintas ===")
 # Un dato que le pedimos -> cuando contesta vuelve a En curso. La confirmación de que quedó
 # resuelto -> lo que contesta CIERRA el ticket o lo REABRE. Se distinguen por si hay una solución
