@@ -216,6 +216,22 @@ def _solucion_resuelta(cliente, tid):
     return {1: "aceptada", 3: "rechazada"}.get(int(ultima.get("status") or 0))
 
 
+def _espera_confirmacion(cliente, tid):
+    """True si lo que el ticket espera del cliente es que CONFIRME que quedó resuelto.
+
+    Se reconoce por tener una SOLUCIÓN cargada y todavía pendiente de su aprobación. Es lo que
+    separa las dos esperas: si le pedimos un dato, cuando contesta el ticket vuelve a En curso;
+    si le pedimos la confirmación, lo que contesta cierra el ticket o lo reabre."""
+    try:
+        sol = cliente.request(f"/Ticket/{tid}/ITILSolution")
+    except Exception:  # noqa: BLE001
+        return False
+    if not isinstance(sol, list) or not sol:
+        return False
+    ultima = sorted(sol, key=lambda s: int(s.get("id") or 0))[-1]
+    return int(ultima.get("status") or 0) == 2          # 2 = pendiente del cliente
+
+
 def _texto_resolucion(cliente, tid, fu, humanos=None):
     """Junta el texto de la RESOLUCIÓN para que la IA juzgue si explica el procedimiento: la
     ITILSolution documentada (si hay) + el último comentario de un técnico HUMANO. '' si no hay nada."""
@@ -398,28 +414,70 @@ def gestionar_ciclo(cliente, triage, entidad, estado):
                             "de su respuesta.")
                     continue                  # ya lo procesamos en este ciclo
                 if resolvio:
-                    # La solución que se carga son LAS PALABRAS DEL TÉCNICO —su propio comentario—
-                    # y va con SU USUARIO. Hace falta cargarla: en GLPI el cliente aprueba o
-                    # rechaza LA SOLUCIÓN, así que un ticket que pasa a Resuelto sin ninguna lo
-                    # deja sin poder confirmar el cierre ni decir que sigue igual. Después se le
-                    # pide la confirmación por mensaje; si no contesta, se le recuerda una vez por
-                    # día hábil.
-                    if triage.marcar_resuelto(t["id"], cont, int(ult.get("users_id") or 0)) \
-                            and triage.pedir_confirmacion(t["id"]):
+                    # El técnico resolvió -> el ticket queda ESPERANDO QUE EL CLIENTE CONFIRME: se
+                    # carga la solución con el texto del técnico (la carga ITHOS, que es quien hace
+                    # el pasaje), se le pide que confirme y el ticket va a EN ESPERA con la
+                    # solución pendiente de su aprobación. El estado dice lo que de verdad pasa, el
+                    # SLA no corre mientras espera, y el cliente puede cerrarlo o decir que sigue
+                    # igual. Si no contesta, se le recuerda una vez por día hábil.
+                    if triage.a_confirmacion_del_cliente(t["id"], cont):
                         st["confirm_pedido"] = True
                         anunciar(
                             t["id"],
-                            f"El técnico resolvió el ticket número {t['id']}. Lo marqué "
-                            "resuelto y le pedí al cliente que confirme para cerrarlo.",
-                            f"✅ *Ticket #{t['id']}* — resuelto por el técnico. Pedí "
-                            "confirmación al cliente para cerrarlo.")
+                            f"El técnico resolvió el ticket número {t['id']}. Quedó en espera de "
+                            "que el cliente confirme para cerrarlo.",
+                            f"✅ *Ticket #{t['id']}* — resuelto por el técnico. En ESPERA de que "
+                            "el cliente confirme para cerrarlo.")
                     continue                  # ya lo procesamos en este ciclo
 
         if status == 4:                       # EN ESPERA
+            # Un ticket en espera puede estar esperando DOS cosas distintas, y no se resuelven
+            # igual: un DATO que le pedimos (o coordinar algo) -> cuando contesta vuelve a En
+            # curso; o la CONFIRMACIÓN de que quedó resuelto -> ahí se cierra o se reabre. Se
+            # distinguen por si hay una SOLUCIÓN pendiente de su aprobación.
+            veredicto = _solucion_resuelta(cliente, t["id"])
+            if veredicto == "aceptada":        # apretó "Aprobar" en la mesa de ayuda
+                if triage.cerrar(t["id"]):
+                    anunciar(t["id"],
+                             f"El cliente aprobó la solución del ticket número {t['id']}. "
+                             "Ticket cerrado.",
+                             f"✅ *Ticket #{t['id']}* — el cliente aprobó la solución. Cerrado.")
+                estado.pop(tid, None)
+                continue
+            if veredicto == "rechazada":       # apretó "Rechazar"
+                if triage.reabrir(t["id"]):
+                    anunciar(t["id"],
+                             f"El cliente rechazó la solución del ticket número {t['id']}. "
+                             "Vuelve a estar en curso.",
+                             f"🔁 *Ticket #{t['id']}* — el cliente *rechazó* la solución. En curso "
+                             "otra vez: hay que revisarlo.")
+                estado.pop(tid, None)
+                continue
             # ¿Contestó el cliente al pedido que lo dejó en espera? Se mide contra EL PEDIDO, no
             # contra el último comentario de un técnico: si el técnico le responde después —lo
             # normal—, el ticket tiene que salir de la espera igual.
             respuesta = _respondio_a(fu, lambda f: _es_pedido_al_cliente(f, tecs), tecs)
+            if respuesta and _espera_confirmacion(cliente, t["id"]):
+                # Lo que esperábamos era que dijera si quedó resuelto: contestó ESCRIBIENDO en vez
+                # de usar los botones. Vale igual.
+                autor = _nombre_usuario(cliente, respuesta.get("users_id"))
+                dijo = _texto_plano(respuesta.get("content"))
+                conf = triage.cliente_confirma(dijo)
+                if conf is None:
+                    continue                   # la IA no está: se reintenta en el próximo ciclo
+                if conf and triage.cerrar(t["id"]):
+                    anunciar(t["id"],
+                             f"El cliente {autor} confirmó que el ticket número {t['id']} quedó "
+                             "resuelto. Ticket cerrado.",
+                             f"✅ *Ticket #{t['id']}* — {autor} confirmó. Cerrado.")
+                elif not conf and triage.reabrir(t["id"]):
+                    anunciar(t["id"],
+                             f"El cliente {autor} indica que el ticket número {t['id']} sigue sin "
+                             "resolverse. Vuelve a estar en curso.",
+                             f"🔁 *Ticket #{t['id']}* — {autor} dice que sigue. En curso otra vez.\n"
+                             f"_{dijo[:300]}_")
+                estado.pop(tid, None)
+                continue
             if respuesta:                      # el cliente respondió
                 autor = _nombre_usuario(cliente, respuesta.get("users_id"))
                 dijo = _texto_plano(respuesta.get("content"))

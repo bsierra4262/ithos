@@ -361,8 +361,12 @@ def nivel2_espera_confirmacion():
        "RESUELTO: no se repite el recordatorio el mismo día")
 
     # -- 7) el recordatorio NO cambia el estado del ticket (sigue EN ESPERA, SLA pausado) --
-    ok(all(not str(p).startswith("/Ticket/900") or "Ticket_User" in str(p) or
-           "ITILFollowup" in str(p) for p in cli.pedidos),
+    # Leer no es escribir: el ciclo consulta los seguimientos, los asignados y la SOLUCIÓN (para
+    # saber si el cliente ya la aprobó o la rechazó con los botones). Lo que no puede hacer es
+    # tocarle el estado al ticket, que es lo que mantiene el SLA pausado.
+    LECTURAS = ("Ticket_User", "ITILFollowup", "ITILSolution")
+    ok(all(not str(p).startswith("/Ticket/900") or any(r in str(p) for r in LECTURAS)
+           for p in cli.pedidos),
        "el ciclo no escribe el estado del ticket al recordar (queda EN ESPERA, SLA pausado)")
 
 

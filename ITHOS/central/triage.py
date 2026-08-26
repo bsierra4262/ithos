@@ -371,17 +371,50 @@ class Triage:
         except Exception:  # noqa: BLE001
             return None
 
+    def a_confirmacion_del_cliente(self, tid, solucion):
+        """El técnico resolvió: se deja el ticket ESPERANDO QUE EL CLIENTE CONFIRME.
+
+        Hace todo el pasaje de una:
+          1. carga la SOLUCIÓN con el texto del técnico —la carga ITHOS, que es quien hace el
+             pasaje; no se replica con el usuario del técnico porque su explicación YA está en el
+             ticket y quedaría duplicada—,
+          2. le pide al cliente que confirme, y
+          3. deja el ticket EN ESPERA con la solución PENDIENTE de su aprobación.
+
+        Los dos detalles del punto 3 importan y hay que hacerlos en ese orden: al pasar a En espera
+        la mesa de ayuda saca la solución de "pendiente" —y ahí el cliente se queda sin los botones
+        de aprobar/rechazar—, así que se la vuelve a dejar pendiente después. Resultado: el estado
+        dice lo que de verdad pasa (esperando al cliente), el SLA no corre mientras espera, y el
+        cliente puede cerrar el ticket o decir que sigue igual."""
+        if not self.marcar_resuelto(tid, solucion):
+            return False
+        self.pedir_confirmacion(tid)
+        try:
+            self.cli.abrir()
+            self.cli.request(f"/Ticket/{tid}", "PUT", {"input": {"status": 4}})
+            sol = self.cli.request(f"/Ticket/{tid}/ITILSolution") or []
+            if sol:
+                ultima = sorted(sol, key=lambda s: int(s.get("id") or 0))[-1]
+                self.cli.request(f"/ITILSolution/{ultima['id']}", "PUT", {"input": {
+                    "id": ultima["id"], "status": 2}})     # 2 = pendiente del cliente
+            return True
+        except Exception as e:  # noqa: BLE001
+            log.warning("Triage #%s: no pude dejarlo en espera de la confirmación: %s", tid, e)
+            return False
+        finally:
+            self.cli.cerrar()
+
     def marcar_resuelto(self, tid, solucion="", autor=None):
         """Pasa el ticket a RESUELTO (status 5), cargando la SOLUCIÓN cuando se le pasa el texto.
 
         POR QUÉ IMPORTA LA SOLUCIÓN: en GLPI el cliente aprueba o rechaza LA SOLUCIÓN. Un ticket
         que pasa a Resuelto sin cargar ninguna no le deja al solicitante nada que aprobar ni que
         rechazar: ve el ticket resuelto y no tiene cómo decir "sigue igual". Con la solución
-        cargada, GLPI la deja pendiente de su aprobación y le muestra los dos botones.
+        cargada, la mesa de ayuda la deja pendiente de su aprobación y le muestra los dos botones.
 
-        El texto que se carga son LAS PALABRAS DEL TÉCNICO (su propio comentario), y si se indica
-        el `autor` y tiene su token configurado, se carga CON SU USUARIO: el ticket dice quién
-        resolvió de verdad, no ITHOS ni el administrador.
+        La carga ITHOS con el texto del técnico. `autor` existe por compatibilidad: si se pasa y
+        ese técnico tiene token, se carga con su usuario; el ciclo NO lo usa, porque la explicación
+        del técnico ya está en el ticket y replicarla a su nombre la deja duplicada.
 
         Sin texto sólo cambia el estado (compatibilidad)."""
         if not solucion:

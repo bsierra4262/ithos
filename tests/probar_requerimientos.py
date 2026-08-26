@@ -435,6 +435,8 @@ try:
         # El ciclo pregunta PRIMERO si queda algo del cliente (acá no) y recién después si resuelve.
         def tecnico_pide_confirmacion(self, t): return False
         def tecnico_resolvio(self, t): return True     # el comentario del técnico resuelve
+        def a_confirmacion_del_cliente(self, tid, sol):   # el pasaje completo
+            llam["marcar"] += 1; llam["confirm"] += 1; return True
         def marcar_resuelto(self, tid, sol="", autor=None):llam["marcar"] += 1; return True
         def pedir_confirmacion(self, tid): llam["confirm"] += 1; return True
         def poner_en_curso(self, tid): return True

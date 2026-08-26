@@ -97,6 +97,11 @@ class _TriageFalso:
         self.resueltos.append(tid)
         return True
 
+    def a_confirmacion_del_cliente(self, tid, solucion):
+        """El pasaje completo: resuelto -> en espera de que el cliente confirme."""
+        self.resueltos.append(tid)
+        return True
+
     def pedir_confirmacion(self, tid):
         return True
 
@@ -299,27 +304,100 @@ for exige, que in (
         ("no uses tecnicismos internos", "sin nombres de consultas ni jerga interna")):
     ok(exige.lower() in prompt.lower(), que)
 
-print("\n=== 7 · El cliente tiene QUÉ aprobar o rechazar ===")
+ESTADO_SOL_ = {"aceptada": 1, "pendiente": 2, "rechazada": 3}
+
+
+class _ClienteSol_:
+    """Mesa de ayuda de mentira con una solución en cierto estado."""
+
+    session = "s"
+
+    def __init__(self, estado_sol, status=4):
+        self.estado_sol, self.status = estado_sol, status
+
+    def request(self, path, *a, **k):
+        if path.endswith("/ITILSolution"):
+            return [{"id": 7, "users_id": 28, "status": ESTADO_SOL_[self.estado_sol],
+                     "content": "Se recalibró el lector."}]
+        if path.endswith("/ITILFollowup"):
+            return [{"id": 800, "users_id": 28, "is_private": 0,
+                     "content": "Confírmenos si ya puede fichar. " + CI._MARCA_ESPERA_CLIENTE,
+                     "date_creation": "2026-08-26 11:36:00"},
+                    {"id": 801, "users_id": 27, "is_private": 0,
+                     "content": "Sí, ya puede fichar. Gracias!",
+                     "date_creation": "2026-08-26 12:00:00"}]
+        return []
+
+    def tickets_recientes(self, n=30):
+        return [{"id": 678, "status": self.status, "entities_id": 12, "name": "No puede fichar"}]
+
+    def abrir(self):
+        pass
+
+    def cerrar(self):
+        pass
+
+
+class _SinSolucion(_ClienteSol_):
+    def __init__(self):
+        super().__init__("pendiente")
+
+    def request(self, path, *a, **k):
+        if path.endswith("/ITILSolution"):
+            return []
+        return super().request(path, *a, **k)
+
+
+print("\n=== 7 · Resuelto por el técnico -> EN ESPERA de que el cliente confirme ===")
+# Pedido de Brian: si le estamos pidiendo la confirmación, el estado tiene que decir eso. El pasaje
+# lo hace ITHOS entero: carga la solución con el texto del técnico (no se replica con el usuario de
+# él, que lo dejaría duplicado), pide la confirmación y deja el ticket EN ESPERA con la solución
+# PENDIENTE. Ese último paso importa: al pasar a En espera la mesa de ayuda saca la solución de
+# pendiente y el cliente se queda sin los botones, así que hay que volver a dejarla pendiente.
+TRI_SRC2 = open(os.path.join(APP, "central", "triage.py"), encoding="utf-8").read()
+paso = TRI_SRC2[TRI_SRC2.index("def a_confirmacion_del_cliente"):]
+paso = paso[:paso.index("def marcar_resuelto")]
+ok('"status": 4' in paso, "el ticket queda EN ESPERA")
+ok('"status": 2' in paso, "y la solución vuelve a quedar PENDIENTE (los botones del cliente)")
+ok(paso.index('"status": 4') < paso.index('"status": 2'),
+   "en ese orden: primero el estado, después la solución (si no, se pierde)")
+ok("self.pedir_confirmacion(tid)" in paso, "y se le pide al cliente que confirme")
+ok("triage.a_confirmacion_del_cliente(t[\"id\"], cont)" in CICLO_SRC,
+   "el ciclo hace todo el pasaje de una")
+ok("marcar_resuelto(t[\"id\"], cont, int(ult" not in CICLO_SRC,
+   "y NO se replica la solución con el usuario del técnico (quedaba duplicada)")
+
+print("\n=== 7.b · El cliente tiene QUÉ aprobar o rechazar ===")
 # En GLPI el solicitante aprueba o rechaza LA SOLUCIÓN. Un ticket que pasa a Resuelto SIN cargar
 # ninguna lo deja sin nada que tocar: ve el ticket resuelto y no tiene cómo confirmar el cierre ni
 # decir que sigue igual. Pasó en producción con los tres tickets resueltos (#674, #677, #678).
 resuelto = _TriageFalso(ia_viva=True)
-resuelto.marcados = []
+resuelto.pasajes = []
 
 
-def _marcar(tid, solucion="", autor=None):
-    resuelto.marcados.append((tid, solucion, autor))
+def _pasaje(tid, solucion):
+    resuelto.pasajes.append((tid, solucion))
     return True
 
 
-resuelto.marcar_resuelto = _marcar
+resuelto.a_confirmacion_del_cliente = _pasaje
 list(CI.gestionar_ciclo(_ClienteFalso(), resuelto, 12, {}))
-ok(len(resuelto.marcados) == 1, "se marca resuelto una vez")
-tid_m, sol_m, autor_m = resuelto.marcados[0]
+ok(len(resuelto.pasajes) == 1, "se hace el pasaje una sola vez")
+tid_m, sol_m = resuelto.pasajes[0]
 ok(bool(sol_m), "se carga la SOLUCIÓN (sin ella el cliente no puede aprobar ni rechazar)")
 ok("quedó solucionado" in sol_m.lower(),
    "y la solución son LAS PALABRAS DEL TÉCNICO, no una que redacte ITHOS", sol_m[:60])
-ok(autor_m == 7, "cargada con el USUARIO del técnico que resolvió", str(autor_m))
+
+print("\n=== 7.c · En espera puede estar esperando DOS cosas distintas ===")
+# Un dato que le pedimos -> cuando contesta vuelve a En curso. La confirmación de que quedó
+# resuelto -> lo que contesta CIERRA el ticket o lo REABRE. Se distinguen por si hay una solución
+# pendiente de su aprobación.
+ok(CI._espera_confirmacion(_ClienteSol_("pendiente"), 678) is True,
+   "con una solución pendiente, lo que se espera es la CONFIRMACIÓN")
+ok(CI._espera_confirmacion(_ClienteSol_("aceptada"), 678) is False,
+   "ya aprobada, no se espera confirmación")
+ok(CI._espera_confirmacion(_SinSolucion(), 678) is False,
+   "y sin solución cargada, lo que se espera es un DATO (vuelve a En curso)")
 
 print("\n=== 8 · El SLA no corre cuando la pelota no es nuestra ===")
 TK_SRC = open(os.path.join(APP, "comun", "tickets.py"), encoding="utf-8").read()

@@ -202,6 +202,70 @@ def _mapa_asignados_cache(cfg_glpi, c_ithos, ithos_id):
     return m
 
 
+def _tecnicos_humanos(cfg_glpi, ithos_id):
+    """Ids de las PERSONAS del equipo (los técnicos de la config, sin ITHOS). Sale de la config del
+    cliente: sumar a alguien al equipo no tiene que obligar a tocar el reporte."""
+    from comun import tickets as TK
+    ids = set()
+    for t in TK.tecnicos(cfg_glpi):
+        for clave in ("glpi_id", "id"):
+            try:
+                v = int(t.get(clave))
+            except (TypeError, ValueError):
+                continue
+            if v and v != ithos_id:
+                ids.add(v)
+            break
+    return ids
+
+
+# Quién resolvió cada ticket no cambia minuto a minuto, y leerlo cuesta (son TODOS los
+# seguimientos del histórico: ~18 s la primera vez). Se cachea 10 minutos, no los 45 segundos de
+# los asignados: repetir esa lectura en cada reporte haría lento algo que se mira seguido.
+_RESCACHE = {}
+_RES_TTL = 600
+
+
+def _mapa_resolutores(cfg_glpi, c_ithos, humanos, ttl=_RES_TTL):
+    """{ticket_id: user_id del TÉCNICO QUE LO RESOLVIÓ} para todo el histórico.
+
+    Quien resolvió es quien dejó el ÚLTIMO comentario del lado del equipo: la solución formal la
+    carga ITHOS (hace el pasaje), así que mirar el autor del registro de solución diría siempre
+    'ITHOS' y el reporte no serviría para saber quién sacó adelante cada caso.
+
+    Es UNA lectura masiva de seguimientos, cacheada: pedirlos ticket por ticket llevaba el reporte
+    de un segundo a casi un minuto."""
+    key = (cfg_glpi.get("glpi_url"), tuple(sorted(humanos)))
+    hit = _RESCACHE.get(key)
+    if hit and (time.time() - hit[0]) < ttl:
+        return hit[1]
+    mapa, inicio, tam = {}, 0, 500
+    while True:
+        try:
+            chunk = c_ithos.request(f"/ITILFollowup?range={inicio}-{inicio + tam - 1}")
+        except Exception:  # noqa: BLE001
+            break
+        if not isinstance(chunk, list) or not chunk:
+            break
+        for f in chunk:
+            if not isinstance(f, dict) or str(f.get("itemtype")) != "Ticket":
+                continue
+            uid = int(f.get("users_id") or 0)
+            if uid not in humanos:
+                continue
+            tid = int(f.get("items_id") or 0)
+            fid = int(f.get("id") or 0)
+            if fid >= mapa.get(tid, (0, 0))[0]:          # el ÚLTIMO comentario del equipo
+                mapa[tid] = (fid, uid)
+        inicio += len(chunk)
+        if inicio > 200000:                              # tope de seguridad
+            break
+    out = {tid: uid for tid, (_, uid) in mapa.items()}
+    if out:
+        _RESCACHE[key] = (time.time(), out)
+    return out
+
+
 # ------------------------------------------------------------------ cálculo
 # Caché CORTO de KPIs ya calculados: al abrir el reporte se calcula UNA vez y las descargas de
 # CSV/PDF del mismo tramo reusan ese resultado (instantáneo, sin recalcular 3 veces). TTL corto:
@@ -290,18 +354,28 @@ def _calcular_con(cfg_glpi, c_ithos, c_lect, entidad, periodo, zona, n, con_tecn
 
     mttr = round(sum(horas_resol) / len(horas_resol), 1) if horas_resol else None
 
-    # Por técnico (asignado): backlog + resueltos del período. Los vínculos ticket-técnico se traen
-    # en UNA sola lectura masiva (evita el N+1 de una request por ticket, que llevaba el reporte de
-    # ~1s a ~50s). El conteo es EXACTO sobre todo el período (ya no se recorta por costo).
+    # POR TÉCNICO. Un ticket RESUELTO cuenta para QUIEN LO RESOLVIÓ, no para quien lo tenía
+    # asignado: los tickets se asignan al equipo, pero el que da la solución es el que lo sacó
+    # adelante, y el reporte tiene que reflejar eso. Los que siguen ABIERTOS cuentan para su
+    # asignado, que es de quien depende que avancen.
+    # Todo con lecturas MASIVAS (una por recurso): pedir followups ticket por ticket llevaba el
+    # reporte de ~1s a ~50s.
     if con_tecnico:
         cache_nom = _NAMECACHE.setdefault(cfg_glpi.get("glpi_url"), {})   # nombres persistentes
         resolver = lambda uid: _nombre_usuario(c_lect, uid, cache_nom)  # noqa: E731
-        objetivo = [t for t in tickets
-                    if int(t.get("status", 0)) in ABIERTOS or _en_rango(_fecha(t.get("solvedate")), desde, hasta)]
         mapa = _mapa_asignados_cache(cfg_glpi, c_ithos, ithos_id)
-        for t in objetivo:
-            uids = mapa.get(int(t.get("id", 0)), [])
-            for nom in ([resolver(u) for u in uids] or ["(sin asignar)"]):
+        humanos = _tecnicos_humanos(cfg_glpi, ithos_id)
+        resolutores = _mapa_resolutores(cfg_glpi, c_ithos, humanos)
+        for t in tickets:
+            tid = int(t.get("id", 0))
+            abierto = int(t.get("status", 0)) in ABIERTOS
+            if not abierto and not _en_rango(_fecha(t.get("solvedate")), desde, hasta):
+                continue
+            if not abierto and resolutores.get(tid):
+                nombres = [resolver(resolutores[tid])]        # el que dio la solución
+            else:
+                nombres = [resolver(u) for u in mapa.get(tid, [])] or ["(sin asignar)"]
+            for nom in nombres:
                 por_tec[nom] = por_tec.get(nom, 0) + 1
 
     return {
