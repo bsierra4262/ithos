@@ -148,6 +148,10 @@ y el versionado, [SemVer](https://semver.org/lang/es/).
   el SLA por calendario y horario de atención (Lun–Vie 09–18).
 
 ### Changed
+- **El seguimiento del tablero pasa de cada hora a cada 3 horas.** Preguntarle a alguien nueve veces
+  por día cómo viene con la misma tarea deja de ser seguimiento y pasa a ser ruido, y el ruido se
+  ignora. Lo que de verdad cambió —una tarjeta nueva, una asignación, un movimiento de lista— se
+  sigue avisando **en el momento**. Configurable con `seguimiento_cada_horas`.
 - **Mientras falte algo del cliente, el ticket lo espera.** El ciclo ahora pregunta **primero** si
   queda algo en manos del cliente y **después** si está resuelto. Un comentario del técnico puede
   decir «el acceso quedó solucionado» y en la misma línea pedirle al cliente que escale algo para
@@ -157,6 +161,15 @@ y el versionado, [SemVer](https://semver.org/lang/es/).
   revisar un equipo propio), no sólo coordinar una visita.
 
 ### Fixed
+- **El cliente no tenía cómo confirmar el cierre ni rechazarlo.** El ticket pasaba a Resuelto **sin
+  cargar la solución**, y en la mesa de ayuda el solicitante aprueba o rechaza **la solución**: sin
+  ella veía el ticket resuelto y no tenía ningún botón que tocar. Ahora se carga con **las palabras
+  del propio técnico** y **con su usuario**, así el cliente puede confirmar que quedó bien o decir
+  que sigue igual para que vuelva a En curso.
+- **El SLA seguía alertando de tickets que estaban pausados.** El vigilante incluía los tickets **En
+  espera**, cuando ahí el SLA no corre porque la pelota es del cliente; encima usaba un vencimiento
+  que la mesa de ayuda todavía no había descontado (lo ajusta recién al salir de la espera). Eran dos
+  errores en el mismo aviso. Ahora sólo se alerta por **Nuevo** y **En curso**.
 - **El comentario del técnico le llegaba a la IA como una pared de CSS.** GLPI guarda el contenido con
   las etiquetas **escapadas** (`&#60;p&#62;` por `<p>`), así que quitar `<...>` no quitaba nada: de un
   comentario de 24.000 caracteres, el texto real quedaba enterrado entre los estilos del editor y la

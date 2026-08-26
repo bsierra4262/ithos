@@ -314,13 +314,16 @@ class PlankaIntegrador:
                 "Cuando termines o avances con alguna, escribime: _Hey ITHOS, terminé…_")
 
     def seguimiento(self, u, snap, ahora):
-        """'¿cómo vas?' horario: solo Haciendo + En espera, salteando lo movido hace <1h. Una tarjeta
+        """'¿cómo vas?': solo Haciendo + En espera, salteando lo que se movió recién. Una tarjeta
         por línea si hay varias. Registra qué preguntó (contexto para resolver un 'terminé eso' vago)."""
         pid = str(u["planka_id"])
+        # Una tarjeta que se movió hace poco ya "habló": preguntar por ella es preguntar algo que
+        # la persona acaba de contestar con los hechos. La ventana acompaña a la cadencia.
+        reciente = max(1, int(self.cfg.get("seguimiento_cada_horas", 3))) * 3600
         activos = []
         for cid, c in self._cards_usuario(pid, snap, listas=("haciendo", "en_espera")):
             ts = self._estado.get(cid, {}).get("ts", 0)
-            if ahora.timestamp() - ts < 3600:      # se movió hace <1h -> no preguntar
+            if ahora.timestamp() - ts < reciente:
                 continue
             activos.append((cid, c["nombre"]))
         if not activos:
@@ -580,12 +583,19 @@ class PlankaIntegrador:
                 if txt:
                     enviar(txt, [u["telefono"]])
             log.info("Planka: resumen diario enviado (%s).", dia)
-        # SEGUIMIENTO 10:00-18:00 en punto (una vez por hora): pregunta SOLO por Haciendo + En
-        # revisión/Esperando. Cuando alguien TERMINA todo lo que tenía en curso, le pregunta qué sigue.
+        # SEGUIMIENTO en punto, CADA 3 HORAS entre las 10 y las 18: pregunta SOLO por Haciendo +
+        # En revisión/Esperando. Cuando alguien TERMINA todo lo que tenía en curso, le pregunta qué
+        # sigue. Cada hora era demasiado: preguntarle a alguien nueve veces por día cómo viene con
+        # la misma tarea deja de ser seguimiento y pasa a ser ruido, y el ruido se ignora. Lo que
+        # SÍ sigue siendo instantáneo es lo que de verdad cambió: una tarjeta nueva, una asignación
+        # o un movimiento de lista se avisa en el momento (eso va por otro camino, no por acá).
         desde = int(str(self.cfg.get("seguimiento_desde", "10:00"))[:2])
         hasta = int(str(self.cfg.get("seguimiento_hasta", "18:00"))[:2])
+        cada = max(1, int(self.cfg.get("seguimiento_cada_horas", 3)))
         hkey = ahora.strftime("%Y-%m-%d-%H")
-        if ahora.minute == 0 and desde <= ahora.hour <= hasta and self._segui_key != hkey:
+        en_turno = (ahora.hour - desde) % cada == 0
+        if ahora.minute == 0 and desde <= ahora.hour <= hasta and en_turno \
+                and self._segui_key != hkey:
             self._segui_key = hkey
             activo_ahora = set()
             for u in self._por_pid.values():

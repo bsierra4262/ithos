@@ -372,15 +372,18 @@ class Triage:
             return None
 
     def marcar_resuelto(self, tid, solucion="", autor=None):
-        """Pasa el ticket a RESUELTO (status 5).
+        """Pasa el ticket a RESUELTO (status 5), cargando la SOLUCIÓN cuando se le pasa el texto.
 
-        SIN texto de solución sólo cambia el estado: cuando el técnico resolvió por comentario, su
-        explicación YA está en el ticket y volver a escribirla la deja repetida. La resolución que
-        se lee es la de él, con sus palabras, no una redactada por ITHOS.
+        POR QUÉ IMPORTA LA SOLUCIÓN: en GLPI el cliente aprueba o rechaza LA SOLUCIÓN. Un ticket
+        que pasa a Resuelto sin cargar ninguna no le deja al solicitante nada que aprobar ni que
+        rechazar: ve el ticket resuelto y no tiene cómo decir "sigue igual". Con la solución
+        cargada, GLPI la deja pendiente de su aprobación y le muestra los dos botones.
 
-        CON texto se documenta como solución formal y, si se indica el `autor` —el técnico que
-        resolvió— y tiene su token configurado, se carga CON SU USUARIO: el ticket dice quién
-        resolvió de verdad, no ITHOS ni el administrador."""
+        El texto que se carga son LAS PALABRAS DEL TÉCNICO (su propio comentario), y si se indica
+        el `autor` y tiene su token configurado, se carga CON SU USUARIO: el ticket dice quién
+        resolvió de verdad, no ITHOS ni el administrador.
+
+        Sin texto sólo cambia el estado (compatibilidad)."""
         if not solucion:
             try:
                 self.cli.abrir()

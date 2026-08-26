@@ -381,11 +381,14 @@ def gestionar_ciclo(cliente, triage, entidad, estado):
                             "de su respuesta.")
                     continue                  # ya lo procesamos en este ciclo
                 if resolvio:
-                    # La resolución es EL COMENTARIO DEL TÉCNICO, con sus palabras: ya está en el
-                    # ticket, así que sólo se pasa a RESUELTO (no se copia ni se redacta otra) y se
-                    # le pide UNA confirmación al cliente. Si no contesta, el ciclo se la recuerda
-                    # una vez por día hábil hasta que responda.
-                    if triage.marcar_resuelto(t["id"]) and triage.pedir_confirmacion(t["id"]):
+                    # La solución que se carga son LAS PALABRAS DEL TÉCNICO —su propio comentario—
+                    # y va con SU USUARIO. Hace falta cargarla: en GLPI el cliente aprueba o
+                    # rechaza LA SOLUCIÓN, así que un ticket que pasa a Resuelto sin ninguna lo
+                    # deja sin poder confirmar el cierre ni decir que sigue igual. Después se le
+                    # pide la confirmación por mensaje; si no contesta, se le recuerda una vez por
+                    # día hábil.
+                    if triage.marcar_resuelto(t["id"], cont, int(ult.get("users_id") or 0)) \
+                            and triage.pedir_confirmacion(t["id"]):
                         st["confirm_pedido"] = True
                         anunciar(
                             t["id"],

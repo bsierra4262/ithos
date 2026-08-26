@@ -299,6 +299,48 @@ for exige, que in (
         ("no uses tecnicismos internos", "sin nombres de consultas ni jerga interna")):
     ok(exige.lower() in prompt.lower(), que)
 
+print("\n=== 7 · El cliente tiene QUÉ aprobar o rechazar ===")
+# En GLPI el solicitante aprueba o rechaza LA SOLUCIÓN. Un ticket que pasa a Resuelto SIN cargar
+# ninguna lo deja sin nada que tocar: ve el ticket resuelto y no tiene cómo confirmar el cierre ni
+# decir que sigue igual. Pasó en producción con los tres tickets resueltos (#674, #677, #678).
+resuelto = _TriageFalso(ia_viva=True)
+resuelto.marcados = []
+
+
+def _marcar(tid, solucion="", autor=None):
+    resuelto.marcados.append((tid, solucion, autor))
+    return True
+
+
+resuelto.marcar_resuelto = _marcar
+list(CI.gestionar_ciclo(_ClienteFalso(), resuelto, 12, {}))
+ok(len(resuelto.marcados) == 1, "se marca resuelto una vez")
+tid_m, sol_m, autor_m = resuelto.marcados[0]
+ok(bool(sol_m), "se carga la SOLUCIÓN (sin ella el cliente no puede aprobar ni rechazar)")
+ok("quedó solucionado" in sol_m.lower(),
+   "y la solución son LAS PALABRAS DEL TÉCNICO, no una que redacte ITHOS", sol_m[:60])
+ok(autor_m == 7, "cargada con el USUARIO del técnico que resolvió", str(autor_m))
+
+print("\n=== 8 · El SLA no corre cuando la pelota no es nuestra ===")
+TK_SRC = open(os.path.join(APP, "comun", "tickets.py"), encoding="utf-8").read()
+riesgo = TK_SRC[TK_SRC.index("def en_riesgo_sla"):]
+riesgo = riesgo[:riesgo.index("def _asignados_de")]
+ok('int(t.get("status", 0)) not in (1, 2)' in riesgo,
+   "sólo se alerta por Nuevo y En curso: En espera y Resuelto quedan afuera")
+ok("EN ESPERA (4)" in riesgo and "PAUSADO" in riesgo,
+   "y queda explicado por qué (el SLA está pausado, la pelota es del cliente)")
+ok("RESUELTO (5)" in riesgo,
+   "un ticket resuelto esperando confirmación tampoco genera alerta de SLA")
+
+print("\n=== 9 · Planka: el seguimiento cada 3 horas, no cada una ===")
+PL_SRC = open(os.path.join(APP, "central", "planka_integrador.py"), encoding="utf-8").read()
+ok('self.cfg.get("seguimiento_cada_horas", 3)' in PL_SRC,
+   "el '¿cómo venís?' sale cada 3 horas por defecto (configurable)")
+ok("(ahora.hour - desde) % cada == 0" in PL_SRC,
+   "y respeta la franja horaria, contando desde la hora de inicio")
+ok("no por acá" in PL_SRC,
+   "lo instantáneo (tarjeta nueva, asignación, movimiento) sigue avisándose en el momento")
+
 print("\n" + "=" * 78)
 if FALLAS:
     print(f"FALLARON {len(FALLAS)} chequeo(s):")

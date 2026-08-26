@@ -710,16 +710,25 @@ class _GLPI:
             return None
 
     def en_riesgo_sla(self, horas=4):
-        """Tickets ABIERTOS cuyo SLA (time_to_resolve) vence dentro de `horas` o ya
-        venció y siguen sin resolver. Devuelve [{id,asunto,faltan_horas,vencido,asignados}].
-        `asignados` = user-ids del campo "Asignado a" (para @mencionar SOLO al técnico del ticket)."""
+        """Tickets cuyo SLA vence dentro de `horas` o ya venció, y que dependen de NOSOTROS.
+
+        SÓLO Nuevo (1) y En curso (2). Quedan afuera:
+          · EN ESPERA (4): el SLA está PAUSADO porque la pelota es del cliente. Además el
+            vencimiento que informa la mesa de ayuda todavía no descuenta esa espera —lo corrige
+            recién al salir—, así que alertar ahí es avisar dos veces mal: de algo que no corre y
+            con una fecha que no es. Era el caso: tickets esperando al cliente hace días
+            apareciendo como "SLA VENCIDO" todas las mañanas.
+          · RESUELTO (5): el reloj ya paró cuando se resolvió; espera la confirmación, no trabajo.
+
+        Devuelve [{id,asunto,faltan_horas,vencido,asignados}]; `asignados` = user-ids del campo
+        "Asignado a" (para @mencionar SOLO al técnico del ticket)."""
         from datetime import datetime
         c = self._c()
         try:
             ts = self._ent(c.tickets_recientes(60))
             ahora, out = datetime.now(), []
             for t in ts:
-                if int(t.get("status", 0)) not in (1, 2, 4):
+                if int(t.get("status", 0)) not in (1, 2):
                     continue
                 ttr = self._fecha(t.get("time_to_resolve"))
                 if not ttr:
