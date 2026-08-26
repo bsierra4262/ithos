@@ -412,7 +412,12 @@ class Triage:
                 self.cli.request("/ITILSolution", "POST", {"input": {
                     "itemtype": "Ticket", "items_id": tid,
                     "content": solucion or "Resuelto por el equipo de soporte técnico."}})
-            except Exception:  # noqa: BLE001
+            except Exception as e:  # noqa: BLE001
+                # Último recurso: dejarlo resuelto igual. Pero SIN solución el cliente no tiene en
+                # la mesa de ayuda los botones de aprobar/rechazar, así que esto se avisa fuerte:
+                # es un ticket que va a quedar esperando una confirmación que él no puede dar.
+                log.warning("Triage #%s: NO pude cargar la solución (%s). El ticket queda resuelto "
+                            "pero el cliente no va a poder aprobarla ni rechazarla.", tid, str(e)[:120])
                 self.cli.request(f"/Ticket/{tid}", "PUT", {"input": {"status": 5}})
             return True
         except Exception as e:  # noqa: BLE001

@@ -5,8 +5,10 @@ Integrador PLANKA <-> WhatsApp (solo para el cliente ITHOS INTELLIHELP; NO toca 
 
 Mantiene el tablero Kanban del equipo (Planka) 100% actualizado desde WhatsApp:
   · 09:00  -> RESUMEN por persona: @menciona a cada uno con sus tarjetas asignadas.
-  · 10:00-18:00, cada hora EN PUNTO (Lun-Vie) -> "¿cómo vas?" por las tarjetas ACTIVAS
-    (Haciendo + En espera), salteando las que se movieron hace <1h.
+  · 10:00-18:00, CADA 3 HORAS en punto (Lun-Vie) -> "¿cómo vas?" por las tarjetas ACTIVAS
+    (Haciendo + En espera), salteando las que se movieron dentro de esa misma ventana.
+    Lo que CAMBIÓ de verdad —tarjeta movida, tarjeta asignada— NO espera a esa hora: se avisa
+    en el momento, en cada pasada.
   · ESCUCHA PROACTIVA: cualquiera, desde su número, dice "Hey ITHOS, terminé/empecé tal tarea"
     (aunque ITHOS no haya preguntado) -> la IA lo interpreta y MUEVE la tarjeta sola.
   · @mención al ASIGNAR una tarjeta a alguien (evento puntual).
@@ -18,8 +20,9 @@ Mantiene el tablero Kanban del equipo (Planka) 100% actualizado desde WhatsApp:
     y meses anteriores quedan como están (config 'mes_legacy'). Idempotente y sobrevive reinicios.
 
 La LLAMADA "Hey ITHOS" ya la exige el handler de WhatsApp (comun/wake.py); acá solo llega lo que
-ya lo mencionó. Reusa el MISMO grupo/conexión de WhatsApp del cliente. La cadencia (cada 1h) fue
-decisión de Brian (ver la memoria del proyecto).
+ya lo mencionó. Reusa el MISMO grupo/conexión de WhatsApp del cliente. La cadencia se configura con
+`seguimiento_cada_horas` (3 por defecto): cada hora resultaba nueve preguntas por día sobre la misma
+tarea, y eso se ignora.
 """
 
 import os
