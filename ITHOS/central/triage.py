@@ -228,6 +228,7 @@ class Triage:
                                                 "type": 2}})
                 except Exception:  # noqa: BLE001
                     pass  # ya asignado (ERROR_GLPI_ADD): estado final correcto
+            self._habilitar_respuesta_del_cliente(tid, humanos)
             # Estado según el HORARIO: si el ticket ENTRÓ fuera del horario de atención y NO necesita datos
             # del cliente, queda EN ESPERA hasta que abra el horario y la agenda lo reabre solo. OJO: el
             # CLIENTE ve SOLO la respuesta profesional; lo del horario va como NOTA INTERNA (no se entera).
@@ -356,6 +357,34 @@ class Triage:
         """Aviso de SUPERVISOR al técnico asignado: el cliente respondió y nadie le contestó. Va
         como NOTA INTERNA (el cliente no la ve); el ciclo lo repite por WhatsApp @mencionándolo."""
         return self.nota_interna(tid, _nota_sin_atender(desde, horas))
+
+    def _habilitar_respuesta_del_cliente(self, tid, humanos):
+        """Que la gente del CLIENTE que sigue el ticket pueda RESPONDERLO.
+
+        En SRT los compañeros del área se agregan como OBSERVADORES para estar al tanto. Pero la
+        mesa de ayuda sólo deja escribir a los SOLICITANTES: el que no abrió el ticket lo ve y no
+        tiene dónde contestar. Pasó de verdad (#673: lo abrió una persona y la otra no podía ni
+        responder), y rompe el circuito entero, porque la confirmación del cierre la da el cliente.
+
+        Se los suma como solicitantes —sin sacarles el rol de observador— y sólo a ellos: los
+        técnicos y ITHOS no se tocan."""
+        try:
+            actores = self.cli.request(f"/Ticket/{tid}/Ticket_User") or []
+        except Exception:  # noqa: BLE001
+            return
+        equipo = set(humanos or ()) | {ITHOS_ID}
+        solicitantes = {int(u.get("users_id") or 0) for u in actores if int(u.get("type", 0)) == 1}
+        for u in actores:
+            uid = int(u.get("users_id") or 0)
+            if int(u.get("type", 0)) != 3 or uid in equipo or uid in solicitantes:
+                continue                       # sólo observadores del CLIENTE que no son ya solicitantes
+            try:
+                self.cli.request("/Ticket_User", "POST", {"input": {
+                    "tickets_id": tid, "users_id": uid, "type": 1}})
+                log.info("Triage #%s: %s podrá responder el ticket (estaba sólo de observador).",
+                         tid, uid)
+            except Exception:  # noqa: BLE001
+                pass                           # no es fatal: el ticket igual queda atendido
 
     def _sesion_de(self, uid):
         """Sesión de GLPI con el token del TÉCNICO `uid`, o None si no lo tiene configurado.
