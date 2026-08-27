@@ -456,8 +456,14 @@ def gestionar_ciclo(cliente, triage, entidad, estado):
             # ¿Contestó el cliente al pedido que lo dejó en espera? Se mide contra EL PEDIDO, no
             # contra el último comentario de un técnico: si el técnico le responde después —lo
             # normal—, el ticket tiene que salir de la espera igual.
-            respuesta = _respondio_a(fu, lambda f: _es_pedido_al_cliente(f, tecs), tecs)
-            if respuesta and _espera_confirmacion(cliente, t["id"]):
+            # OJO: el pedido a buscar DEPENDE de qué se esperaba. El pedido de confirmación y el
+            # pedido de un dato son mensajes distintos, con marcas distintas; buscar el que no es
+            # daba "el cliente no contestó" con la respuesta ahí escrita, y el ticket no se movía.
+            espera_conf = _espera_confirmacion(cliente, t["id"])
+            es_pedido = (_es_aviso_confirmacion if espera_conf
+                         else (lambda f: _es_pedido_al_cliente(f, tecs)))
+            respuesta = _respondio_a(fu, es_pedido, tecs)
+            if respuesta and espera_conf:
                 # Lo que esperábamos era que dijera si quedó resuelto: contestó ESCRIBIENDO en vez
                 # de usar los botones. Vale igual.
                 autor = _nombre_usuario(cliente, respuesta.get("users_id"))

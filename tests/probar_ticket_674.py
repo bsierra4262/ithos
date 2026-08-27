@@ -491,6 +491,9 @@ class _TriageBotones(_TriageFalso):
     def cliente_confirma(self, texto):
         return None            # por comentario no dice nada: tiene que decidir el BOTÓN
 
+    def recordar_confirmacion(self, tid):
+        return True            # si todavía no contestó, se le recuerda (no se toca el ticket)
+
 
 ok(CI._solucion_resuelta(_ClienteSol("pendiente"), 678) is None,
    "mientras el cliente no toca nada, la solución sigue pendiente y no se hace nada")
