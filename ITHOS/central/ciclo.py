@@ -430,60 +430,52 @@ def gestionar_ciclo(cliente, triage, entidad, estado):
                             "el cliente confirme para cerrarlo.")
                     continue                  # ya lo procesamos en este ciclo
 
-        if status == 4:                       # EN ESPERA
-            # Un ticket en espera puede estar esperando DOS cosas distintas, y no se resuelven
-            # igual: un DATO que le pedimos (o coordinar algo) -> cuando contesta vuelve a En
-            # curso; o la CONFIRMACIÓN de que quedó resuelto -> ahí se cierra o se reabre. Se
-            # distinguen por si hay una SOLUCIÓN pendiente de su aprobación.
-            veredicto = _solucion_resuelta(cliente, t["id"])
-            if veredicto == "aceptada":        # apretó "Aprobar" en la mesa de ayuda
-                if triage.cerrar(t["id"]):
-                    anunciar(t["id"],
-                             f"El cliente aprobó la solución del ticket número {t['id']}. "
-                             "Ticket cerrado.",
-                             f"✅ *Ticket #{t['id']}* — el cliente aprobó la solución. Cerrado.")
-                estado.pop(tid, None)
-                continue
-            if veredicto == "rechazada":       # apretó "Rechazar"
-                if triage.reabrir(t["id"]):
-                    anunciar(t["id"],
-                             f"El cliente rechazó la solución del ticket número {t['id']}. "
-                             "Vuelve a estar en curso.",
-                             f"🔁 *Ticket #{t['id']}* — el cliente *rechazó* la solución. En curso "
-                             "otra vez: hay que revisarlo.")
-                estado.pop(tid, None)
-                continue
-            # ¿Contestó el cliente al pedido que lo dejó en espera? Se mide contra EL PEDIDO, no
-            # contra el último comentario de un técnico: si el técnico le responde después —lo
-            # normal—, el ticket tiene que salir de la espera igual.
-            # OJO: el pedido a buscar DEPENDE de qué se esperaba. El pedido de confirmación y el
-            # pedido de un dato son mensajes distintos, con marcas distintas; buscar el que no es
-            # daba "el cliente no contestó" con la respuesta ahí escrita, y el ticket no se movía.
-            espera_conf = _espera_confirmacion(cliente, t["id"])
-            es_pedido = (_es_aviso_confirmacion if espera_conf
-                         else (lambda f: _es_pedido_al_cliente(f, tecs)))
-            respuesta = _respondio_a(fu, es_pedido, tecs)
-            if respuesta and espera_conf:
-                # Lo que esperábamos era que dijera si quedó resuelto: contestó ESCRIBIENDO en vez
-                # de usar los botones. Vale igual.
+        # ================= ¿EL CLIENTE YA DIJO SI QUEDÓ RESUELTO? =================
+        # Se mira ANTES que el estado, y a propósito. Cuando el cliente responde, la mesa de ayuda
+        # REABRE el ticket sola (pasa a En curso): si esto viviera dentro del "si está en espera",
+        # su confirmación llegaría cuando el ticket ya no está en espera y se leería como un
+        # comentario más. Pasó en producción: tres tickets con el cliente diciendo "listo, quedó
+        # solucionado" y ninguno se cerró.
+        # Lo que manda es que haya una SOLUCIÓN ESPERANDO SU APROBACIÓN. Mientras la haya, lo que
+        # el cliente diga —o el botón que apriete— es la respuesta a eso.
+        # "Esperando confirmación" es: hay una solución esperando su aprobación, o bien el ticket
+        # figura RESUELTO y ya le pedimos que confirme (un técnico puede marcarlo resuelto a mano,
+        # sin cargar solución). Fuera de Resuelto se exige la solución pendiente, que se apaga sola
+        # al cerrar o reabrir: así un ticket ya reabierto no vuelve a procesar la misma respuesta.
+        espera_conf = (_espera_confirmacion(cliente, t["id"])
+                       or (status == 5 and _ya_pidio_confirmacion(fu)))
+        if status in (2, 4, 5) and espera_conf:
+            veredicto = _solucion_resuelta(cliente, t["id"])   # ¿usó los botones?
+            respuesta = _respondio_a(fu, _es_aviso_confirmacion, tecs)   # ¿o escribió?
+            conf = {"aceptada": True, "rechazada": False}.get(veredicto)
+            autor, dijo = "el cliente", ""
+            if conf is None and respuesta:
                 autor = _nombre_usuario(cliente, respuesta.get("users_id"))
                 dijo = _texto_plano(respuesta.get("content"))
                 conf = triage.cliente_confirma(dijo)
                 if conf is None:
                     continue                   # la IA no está: se reintenta en el próximo ciclo
-                if conf and triage.cerrar(t["id"]):
+            if conf is True:
+                if triage.cerrar(t["id"]):
                     anunciar(t["id"],
                              f"El cliente {autor} confirmó que el ticket número {t['id']} quedó "
                              "resuelto. Ticket cerrado.",
                              f"✅ *Ticket #{t['id']}* — {autor} confirmó. Cerrado.")
-                elif not conf and triage.reabrir(t["id"]):
+                estado.pop(tid, None)
+                continue
+            if conf is False:
+                if triage.reabrir(t["id"]):
                     anunciar(t["id"],
                              f"El cliente {autor} indica que el ticket número {t['id']} sigue sin "
                              "resolverse. Vuelve a estar en curso.",
-                             f"🔁 *Ticket #{t['id']}* — {autor} dice que sigue. En curso otra vez.\n"
-                             f"_{dijo[:300]}_")
+                             f"🔁 *Ticket #{t['id']}* — {autor} dice que sigue. En curso otra vez."
+                             + (("\n_" + dijo[:300] + "_") if dijo else ""))
                 estado.pop(tid, None)
                 continue
+
+        if status == 4:                       # EN ESPERA de un DATO o de coordinar algo
+            # (la espera de la CONFIRMACIÓN se resolvió más arriba, sin mirar el estado)
+            respuesta = _respondio_a(fu, lambda f: _es_pedido_al_cliente(f, tecs), tecs)
             if respuesta:                      # el cliente respondió
                 autor = _nombre_usuario(cliente, respuesta.get("users_id"))
                 dijo = _texto_plano(respuesta.get("content"))
@@ -585,30 +577,7 @@ def gestionar_ciclo(cliente, triage, entidad, estado):
                              "contestale o dejá asentado qué se está haciendo.")
 
         elif status == 5:                     # RESUELTO = esperando que el cliente confirme
-            # El cliente tiene DOS formas de contestar, y las dos cuentan:
-            #   · los BOTONES de la mesa de ayuda (aprueba o rechaza la solución), o
-            #   · escribiendo un comentario.
-            # Esto mira los botones. Si sólo miráramos los comentarios, un cliente que aprieta
-            # "Rechazar" y no escribe nada quedaría esperando para siempre: la solución figura
-            # rechazada y el ticket seguiría en Resuelto, sin que nadie del equipo se entere.
-            veredicto = _solucion_resuelta(cliente, t["id"])
-            if veredicto == "aceptada":
-                if triage.cerrar(t["id"]):
-                    anunciar(t["id"],
-                             f"El cliente aprobó la solución del ticket número {t['id']}. "
-                             "Ticket cerrado.",
-                             f"✅ *Ticket #{t['id']}* — el cliente aprobó la solución. Cerrado.")
-                estado.pop(tid, None)
-                continue
-            if veredicto == "rechazada":
-                if triage.reabrir(t["id"]):
-                    anunciar(t["id"],
-                             f"El cliente rechazó la solución del ticket número {t['id']}. "
-                             "Vuelve a estar en curso.",
-                             f"🔁 *Ticket #{t['id']}* — el cliente *rechazó* la solución. En curso "
-                             "otra vez: hay que revisarlo.")
-                estado.pop(tid, None)
-                continue
+            # (aprobar/rechazar y la respuesta escrita se resuelven arriba, sin mirar el estado)
             # Feedback INTERNO al equipo (para la BASE DE CONOCIMIENTO): si la resolución NO explica el
             # PROCEDIMIENTO (no hay solución, o es un 'listo/solucionado' vago sin explicar cómo), ITHOS
             # le pide al técnico por nota PRIVADA que documente PASO A PASO qué hizo. Se revisa una vez
@@ -625,27 +594,6 @@ def gestionar_ciclo(cliente, triage, entidad, estado):
             if not st.get("confirm_pedido"):
                 if triage.pedir_confirmacion(t["id"]):
                     st["confirm_pedido"] = True
-            # ¿Contestó al pedido de confirmación? Igual que en la espera: se mide contra EL PEDIDO
-            # de ITHOS, para que un comentario del técnico posterior no tape la respuesta.
-            elif (dijo_cliente := _respondio_a(fu, _es_aviso_confirmacion, tecs)):
-                autor = _nombre_usuario(cliente, dijo_cliente.get("users_id"))
-                texto = str(dijo_cliente.get("content", ""))
-                conf = triage.cliente_confirma(texto)
-                if conf is None:
-                    continue  # IA no disponible ahora -> reintentar próximo ciclo
-                if conf:
-                    if triage.cerrar(t["id"]):
-                        anunciar(t["id"],
-                                 f"El cliente {autor} confirmó la solución del "
-                                 f"ticket número {t['id']}. Ticket cerrado.",
-                                 f"✅ *Ticket #{t['id']}* — {autor} confirmó. Cerrado.")
-                else:
-                    if triage.reabrir(t["id"]):
-                        anunciar(t["id"],
-                                 f"El cliente {autor} indica que el ticket número "
-                                 f"{t['id']} sigue sin resolverse. Reabierto.",
-                                 f"🔁 *Ticket #{t['id']}* — {autor} reporta que sigue. Reabierto.")
-                estado.pop(tid, None)
             else:
                 # RESUELTO, confirmación ya pedida y SIN respuesta del cliente todavía: recordatorio
                 # UNA VEZ POR DÍA HÁBIL, a la misma hora y DENTRO del horario de atención (no de

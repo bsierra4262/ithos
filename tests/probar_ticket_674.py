@@ -321,7 +321,8 @@ class _ClienteSol_:
                      "content": "Se recalibró el lector."}]
         if path.endswith("/ITILFollowup"):
             return [{"id": 800, "users_id": 28, "is_private": 0,
-                     "content": "Confírmenos si ya puede fichar. " + CI._MARCA_ESPERA_CLIENTE,
+                     "content": "Confírmenos si ya puede fichar. " + CI._MARCA_CONFIRMACION
+                                + " " + CI._MARCA_ESPERA_CLIENTE,
                      "date_creation": "2026-08-26 11:36:00"},
                     {"id": 801, "users_id": 27, "is_private": 0,
                      "content": "Sí, ya puede fichar. Gracias!",
@@ -515,6 +516,44 @@ quieto = _TriageBotones()
 list(CI.gestionar_ciclo(_ClienteSol("pendiente"), quieto, 12, {}))
 ok(not quieto.cerrados and not quieto.reabiertos,
    "y si todavía no contestó, el ticket no se toca")
+
+print("")
+print("=== 11 . La confirmacion vale aunque la mesa de ayuda reabra el ticket ===")
+# Caso real (#674, #677, #678): al responder el cliente, GLPI pasa el ticket de En espera a EN
+# CURSO solo. Como la logica de confirmacion vivia dentro del "si esta en espera", su "listo,
+# quedo solucionado" llegaba con el ticket ya reabierto y se leia como un comentario mas: tres
+# tickets con el cliente confirmando y ninguno se cerro. Ahora lo que manda es que haya una
+# SOLUCION esperando aprobacion, no el estado.
+
+
+class _Confirma(_TriageBotones):
+    def cliente_confirma(self, texto):
+        return True
+
+    def avisar_tecnico_sin_atender(self, tid, desde, horas):
+        return True
+
+    def poner_en_curso(self, tid):
+        return True
+
+
+class _SigueIgual(_Confirma):
+    def cliente_confirma(self, texto):
+        return False
+
+
+for _est, _nombre in ((2, "En curso"), (4, "En espera"), (5, "Resuelto")):
+    _t = _Confirma()
+    list(CI.gestionar_ciclo(_ClienteSol_("pendiente", status=_est), _t, 12, {}))
+    ok(_t.cerrados == [678],
+       f"el cliente confirma con el ticket en {_nombre} -> se CIERRA", str(_t.cerrados))
+
+for _est, _nombre in ((2, "En curso"), (4, "En espera")):
+    _t = _SigueIgual()
+    list(CI.gestionar_ciclo(_ClienteSol_("pendiente", status=_est), _t, 12, {}))
+    ok(_t.reabiertos == [678] and not _t.cerrados,
+       f"y si dice que sigue, con el ticket en {_nombre} -> vuelve a EN CURSO",
+       str(_t.reabiertos))
 
 print("\n" + "=" * 78)
 if FALLAS:
