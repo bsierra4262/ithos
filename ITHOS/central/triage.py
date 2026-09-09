@@ -401,34 +401,38 @@ class Triage:
             return None
 
     def a_confirmacion_del_cliente(self, tid, solucion):
-        """El técnico resolvió: se deja el ticket ESPERANDO QUE EL CLIENTE CONFIRME.
+        """El técnico resolvió: el ticket queda ESPERANDO QUE EL CLIENTE CONFIRME.
 
-        Hace todo el pasaje de una:
-          1. carga la SOLUCIÓN con el texto del técnico —la carga ITHOS, que es quien hace el
-             pasaje; no se replica con el usuario del técnico porque su explicación YA está en el
-             ticket y quedaría duplicada—,
-          2. le pide al cliente que confirme, y
-          3. deja el ticket EN ESPERA con la solución PENDIENTE de su aprobación.
+        Carga la SOLUCIÓN con el texto del técnico —la carga ITHOS, que es quien hace el pasaje; no
+        se replica con el usuario del técnico porque su explicación ya está en el ticket y quedaría
+        duplicada— y le pide al cliente que confirme.
 
-        Los dos detalles del punto 3 importan y hay que hacerlos en ese orden: al pasar a En espera
-        la mesa de ayuda saca la solución de "pendiente" —y ahí el cliente se queda sin los botones
-        de aprobar/rechazar—, así que se la vuelve a dejar pendiente después. Resultado: el estado
-        dice lo que de verdad pasa (esperando al cliente), el SLA no corre mientras espera, y el
-        cliente puede cerrar el ticket o decir que sigue igual."""
+        POR QUÉ QUEDA EN 'RESUELTO' Y NO EN 'EN ESPERA': se probó dejarlo en espera, que describe
+        mejor la situación, y la mesa de ayuda entonces NO le dibuja al cliente los botones de
+        APROBAR / RECHAZAR —sólo el cuadro de responder—. Esos botones son el modo natural en que
+        el cliente cierra o rechaza, así que se elige tenerlos. No se pierde nada de lo otro: al
+        resolver queda grabada la fecha de solución, con lo cual el SLA de resolución deja de
+        correr, y el vigilante tampoco alerta por un ticket resuelto. Y si el cliente contesta
+        escribiendo en vez de apretar el botón, también se cierra o se reabre."""
         if not self.marcar_resuelto(tid, solucion):
             return False
         self.pedir_confirmacion(tid)
         try:
             self.cli.abrir()
-            self.cli.request(f"/Ticket/{tid}", "PUT", {"input": {"status": 4}})
+            # Que haya quedado como corresponde no se da por hecho: se comprueba. El ticket tiene
+            # que estar RESUELTO y la solución PENDIENTE de aprobación; si algo lo movió, se
+            # corrige (un ticket a medio camino no se lo nota nadie hasta que es tarde).
+            if int((self.cli.request(f"/Ticket/{tid}") or {}).get("status", 0)) != 5:
+                self.cli.request(f"/Ticket/{tid}", "PUT", {"input": {"status": 5}})
             sol = self.cli.request(f"/Ticket/{tid}/ITILSolution") or []
             if sol:
                 ultima = sorted(sol, key=lambda s: int(s.get("id") or 0))[-1]
-                self.cli.request(f"/ITILSolution/{ultima['id']}", "PUT", {"input": {
-                    "id": ultima["id"], "status": 2}})     # 2 = pendiente del cliente
+                if int(ultima.get("status") or 0) != 2:
+                    self.cli.request(f"/ITILSolution/{ultima['id']}", "PUT", {"input": {
+                        "id": ultima["id"], "status": 2}})     # 2 = pendiente del cliente
             return True
         except Exception as e:  # noqa: BLE001
-            log.warning("Triage #%s: no pude dejarlo en espera de la confirmación: %s", tid, e)
+            log.warning("Triage #%s: no pude dejarlo esperando la confirmación: %s", tid, e)
             return False
         finally:
             self.cli.cerrar()

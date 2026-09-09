@@ -358,10 +358,14 @@ print("\n=== 7 · Resuelto por el técnico -> EN ESPERA de que el cliente confir
 TRI_SRC2 = open(os.path.join(APP, "central", "triage.py"), encoding="utf-8").read()
 paso = TRI_SRC2[TRI_SRC2.index("def a_confirmacion_del_cliente"):]
 paso = paso[:paso.index("def marcar_resuelto")]
-ok('"status": 4' in paso, "el ticket queda EN ESPERA")
-ok('"status": 2' in paso, "y la solución vuelve a quedar PENDIENTE (los botones del cliente)")
-ok(paso.index('"status": 4') < paso.index('"status": 2'),
-   "en ese orden: primero el estado, después la solución (si no, se pierde)")
+# Queda en RESUELTO, no en espera: es el único estado en el que la mesa de ayuda le dibuja al
+# cliente los botones de APROBAR / RECHAZAR (comprobado con el perfil real del cliente). En espera
+# describiría mejor la situación pero lo deja sin botones, y esos botones son el modo natural de
+# cerrar. No se pierde el SLA: al resolver queda la fecha de solución y el reloj para.
+ok('"status": 5' in paso, "el ticket queda RESUELTO (es donde el cliente ve los botones)")
+ok('"status": 2' in paso, "y la solución queda PENDIENTE de su aprobación")
+ok("!= 5" in paso and "!= 2" in paso,
+   "y se COMPRUEBA que haya quedado así, no se da por hecho")
 ok("self.pedir_confirmacion(tid)" in paso, "y se le pide al cliente que confirme")
 ok("triage.a_confirmacion_del_cliente(t[\"id\"], cont)" in CICLO_SRC,
    "el ciclo hace todo el pasaje de una")

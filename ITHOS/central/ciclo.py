@@ -463,6 +463,24 @@ def gestionar_ciclo(cliente, triage, entidad, estado):
                              f"✅ *Ticket #{t['id']}* — {autor} confirmó. Cerrado.")
                 estado.pop(tid, None)
                 continue
+            if conf is None:
+                # Todavía no contestó. El ticket TIENE que estar EN ESPERA: es lo que dice la
+                # verdad —la pelota es del cliente— y además ahí el SLA no corre. No se da por
+                # hecho que el cambio de estado salió bien cuando se pidió la confirmación: se
+                # comprueba en cada vuelta y se corrige. Pasó en el #651, que quedó En curso con
+                # la solución ya esperando aprobación y la confirmación pedida.
+                if status != 5:
+                    # Quedó a medio camino: la solución está esperando aprobación pero el ticket
+                    # figura en otro estado, y ahí la mesa de ayuda NO le dibuja al cliente los
+                    # botones de aprobar/rechazar. Se corrige y se sigue en la próxima vuelta.
+                    # Pasó en el #651: solución cargada, confirmación pedida y el ticket En curso.
+                    if triage.marcar_resuelto(t["id"]):
+                        log.info("Ciclo #%s: esperaba la confirmación pero figuraba en %s; vuelve "
+                                 "a RESUELTO para que el cliente tenga los botones.",
+                                 t["id"], status)
+                    continue
+                # Ya está como corresponde y el cliente todavía no contestó: sigue de largo, que
+                # más abajo se le manda el recordatorio una vez por día hábil.
             if conf is False:
                 if triage.reabrir(t["id"]):
                     anunciar(t["id"],
