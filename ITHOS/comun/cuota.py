@@ -24,12 +24,15 @@ Avisos (callback notificar(nivel, mensaje) que el central/agente conectan a What
 Si el cliente pone su propia key PAGA (ilimitada=True), no se avisa.
 """
 
+import logging
 import os
 import re
 import json
 import time
 import threading
 from datetime import datetime, timedelta
+
+log = logging.getLogger("cuota")
 
 try:
     from zoneinfo import ZoneInfo
@@ -68,6 +71,35 @@ def cadena_cfg(ia_cfg):
         if prov and prov not in orden:
             orden.append(prov)
     return orden
+
+
+def _tiene_clave(ia_cfg, proveedor):
+    """¿Hay una clave configurada para ese proveedor? Se busca en su bloque y en la raíz."""
+    ia = ia_cfg or {}
+    campo = f"{proveedor}_api_key"
+    if (ia.get(campo) or "").strip():
+        return True
+    for b in (ia.get("secundario"), ia.get("terciario")):
+        b = b or {}
+        if (b.get("proveedor") or "").lower() == proveedor and (b.get(campo) or b.get("api_key") or ""):
+            return True
+    return proveedor in ("local", "ollama")      # los locales no llevan clave
+
+
+def cadena_util(ia_cfg):
+    """La cadena REAL, salteando los proveedores que no tienen clave cargada.
+
+    Una cadena sirve para una cosa: que cuando la IA de arriba se queda sin cuota, la de abajo
+    conteste. Un eslabón sin credencial no contesta nada —sólo agrega un viaje fallido y la
+    latencia de descubrirlo— y, peor, hace creer que hay un respaldo donde no lo hay. Se avisa
+    en el log, porque un respaldo caído es algo que alguien tiene que ir a arreglar."""
+    util, descartados = [], []
+    for prov in cadena_cfg(ia_cfg):
+        (util if _tiene_clave(ia_cfg, prov) else descartados).append(prov)
+    if descartados:
+        log.warning("Cadena de IA: %s no tiene clave configurada, no cuenta como respaldo. "
+                    "Queda: %s", ", ".join(descartados), " -> ".join(util) or "(ninguna)")
+    return util or cadena_cfg(ia_cfg)
 
 
 def _zona(zona):
