@@ -356,7 +356,7 @@ def _armar_cliente(b, api_key):
             "glpi_bsierra_token": (tk.get("glpi_bsierra_token") or "").strip(),  # helpdesk
             "glpi_test_token": (tk.get("glpi_test_token") or "").strip(),    # cliente
             "entity_id": int(tk.get("entity_id") or 0),
-            "poll_interval": 5,
+            "poll_interval": 60,   # cada cuánto se miran los tickets; 5s era pegarle a GLPI 17.280 veces/día
         })
     tickets = {"tipo": tk_tipo, **{k: v for k, v in tk.items() if k != "tipo"}}
     # Canales de notificación elegidos (whatsapp/telegram/email/teams/slack).

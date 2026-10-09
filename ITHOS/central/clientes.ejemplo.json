@@ -26,7 +26,7 @@
         "glpi_user_token": "USER-TOKEN-DE-LECTURA",
         "glpi_ithos_token": "USER-TOKEN-DEL-USUARIO-ITHOS",
         "entity_id": 12,
-        "poll_interval": 5,
+        "poll_interval": 60,
         "_nota": "ubicacion='central' si el GLPI está en la nube; 'agente' si está en la red interna del cliente (privado)."
       },
 
