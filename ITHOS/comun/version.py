@@ -52,8 +52,12 @@ _ARCHIVO_REVISION = "REVISION"
 def revision_desplegada():
     """Revisión (commit corto + fecha) del código que está corriendo, o 'desconocida'."""
     import os
-    for base in (os.path.dirname(os.path.dirname(os.path.abspath(__file__))),        # ITHOS/
-                 os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+    _aqui = os.path.dirname(os.path.abspath(__file__))
+    # El primero es la carpeta de ESTE módulo: en el contenedor `comun/` va montado desde el
+    # servidor, así que es el único lugar que el deploy puede escribir y el proceso puede leer.
+    for base in (_aqui,
+                 os.path.dirname(_aqui),                      # ITHOS/
+                 os.path.dirname(os.path.dirname(_aqui)),     # raíz del repo
                  "/app"):
         try:
             with open(os.path.join(base, _ARCHIVO_REVISION), encoding="utf-8") as f:

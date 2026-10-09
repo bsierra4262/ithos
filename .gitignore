@@ -66,3 +66,4 @@ Thumbs.db
 # Marca de QUE revision quedo desplegada (la escribe el deploy EN EL SERVIDOR; no se versiona
 # porque es propia de cada despliegue, no del codigo)
 ITHOS/REVISION
+ITHOS/comun/REVISION

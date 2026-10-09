@@ -69,8 +69,9 @@ python3 compilador/build/bump_version.py gestor patch 2>/dev/null && ok "Versió
   else
     echo "sin git · desplegado $(date -u '+%Y-%m-%d %H:%M UTC')"
   fi
-} > ITHOS/REVISION 2>/dev/null || true
-ok "Revisión desplegada: $(cat ITHOS/REVISION 2>/dev/null || echo '?')"
+} > ITHOS/comun/REVISION 2>/dev/null || true
+cp -f ITHOS/comun/REVISION ITHOS/REVISION 2>/dev/null || true
+ok "Revisión desplegada: $(cat ITHOS/comun/REVISION 2>/dev/null || echo '?')"
 
 # 3) REBUILD. Los volúmenes (ithos_data) y clientes.json PERSISTEN: no se pierde nada de los clientes.
 say "Reconstruyendo y recreando contenedores..."
