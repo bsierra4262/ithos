@@ -6,7 +6,88 @@ y el versionado, [SemVer](https://semver.org/lang/es/).
 
 ## [Unreleased]
 
+### Security
+- **El portal del cliente entregaba TODOS sus secretos.** `GET /api/cliente/<api_key>` devolvía la
+  configuración completa y descifrada —los tokens de GLPI (incluido el de **super admin**), las
+  claves de IA, la contraseña del agente y la de la base de fichajes— a cualquiera que tuviera la
+  `api_key`. Y esa clave viaja en la URL del portal, así que termina en los registros del proxy, en
+  el historial del navegador y en la cabecera `Referer`. El cifrado en reposo dejaba de servir por
+  esta sola puerta. Ahora los secretos salen **enmascarados** (se ve que están y cuál es cuál, no su
+  valor) salvo para el superadmin, y al guardar, un valor enmascarado **no pisa** al que estaba.
+- **Todo el ciclo de vida de los tickets corría como administrador de GLPI.** Se instanciaba el
+  cliente sin token, así que caía en `glpi_user_token`: el usuario que puede **borrar**. ITHOS tiene
+  a propósito un perfil acotado para que un error suyo no pueda destruir nada. Ahora usa el suyo; el
+  nombre de quien escribe se lee con el token de lectura, que es el único que puede.
+- **El anti fuerza-bruta del login no existía en la práctica.** Contaba los intentos por el PRIMER
+  valor de `X-Forwarded-For`, que lo escribe quien llama: mandando uno distinto en cada intento,
+  nunca se llegaba al límite. Ahora se usa el último, que es el que agrega nuestro proxy.
+- **Se entraba al panel con la contraseña en la URL** (`?k=…`), que queda registrada en todos lados.
+  Se eliminó: se entra por el formulario.
+- **Toda ruta nueva nacía pública.** El control enumeraba lo privado, así que cualquier endpoint que
+  se agregara quedaba abierto a internet hasta que alguien se acordara de listarlo. Ahora es al
+  revés: **denegar por defecto**, con una lista explícita de lo público.
+- **El modo administrador se concedía ante la duda.** El control de identidad fallaba abierto por
+  tres caminos distintos —sin perfil de voz entrenado, ante cualquier excepción del verificador, y
+  en todo canal que no fuera el micrófono—. Por WhatsApp la frase-clave **sola** daba acceso total:
+  cualquiera del grupo que la escuchara una vez quedaba con el conocimiento propietario y las
+  acciones sobre los tickets. Ahora la frase-clave es un **segundo** factor y, sin poder confirmar
+  quién habla, no hay acceso.
+- **La frase-clave se aceptaba a medias.** Bastaba con algo que *sonara* parecido (pasaban
+  "canelito", "panerito") más una palabra de uso común como "administrador". El número ahora es
+  obligatorio y la tolerancia fonética admite una sola letra.
+- **La clave de administrador estaba escrita en el código**, la misma para todos los clientes, y
+  viajaba al proveedor de transcripción en el vocabulario de **cada audio**. Sale de
+  `ITHOS_CLAVE_ADMIN`.
+- **La sesión del panel no vencía ni se podía revocar.** La cookie era un hash fijo: el mismo valor
+  siempre, aceptado para siempre; `max_age` sólo le pide al navegador que la olvide, y `/logout`
+  borraba nada más esa copia. Una cookie copiada servía hasta cambiar la contraseña. Ahora va
+  firmada con su fecha de emisión, el servidor la vence a las 8 horas y cerrar sesión invalida
+  todas las anteriores.
+- **El enlace de alta de "un solo uso" se podía usar dos veces.** Se leía y escribía sin candado:
+  dos envíos simultáneos —el doble clic de siempre— lo consumían los dos. Y la escritura no atómica
+  podía dejar el archivo a medias y perder, en silencio, todos los enlaces vigentes.
+
 ### Fixed
+- **La mesa de ayuda dejaba de funcionar cuando el cliente apagaba la PC.** El triage, los reportes,
+  la alerta de SLA, la base de conocimiento y la reactivación de tickets pospuestos vivían dentro
+  del manejador del WebSocket del agente y se cancelaban al desconectarse. Un ticket que entraba a
+  la noche o un fin de semana no se categorizaba, no se asignaba, no recibía primera respuesta y no
+  corría su SLA hasta que alguien encendiera la computadora. Ahora esos servicios son **del
+  cliente, no de la conexión**: arrancan con el Gestor y siguen estén o no los agentes. El agente
+  aporta la voz y el control de acceso; si no está, lo único que no se puede entregar es la voz.
+- **Guardar desde el panel borraba configuración.** El registro se reconstruía con los campos del
+  formulario, y el formulario no los tiene todos: una edición para cambiar un correo dejaba al
+  cliente sin su bloque `tecnicos`, sin los tokens de GLPI de cada técnico, sin Planka, sin su
+  saludo, su abreviatura, su horario de atención ni su micrófono. Ahora se fusiona sobre lo guardado.
+- **El estado de las tareas de fondo se perdía en cada actualización.** `proactivo`, `anomalias` y
+  `reportes_programados` lo guardaban junto a su propio código, que en el servidor vive dentro de la
+  imagen del contenedor: cada deploy lo borraba, así que las alertas de SLA ya avisadas volvían a
+  salir y el reporte del día se reenviaba. Va al volumen, y **todos** los archivos de estado se
+  escriben de forma atómica (antes, un corte a mitad de escritura los dejaba truncados y, como la
+  lectura devuelve vacío ante un error, el estado se perdía sin que nadie se enterara).
+- **Los avisos salían con la hora del servidor.** La alerta de SLA decía "21:40" cuando para el
+  cliente eran las 18:40, y el contador de "una vez por día" se reiniciaba a las 21:00 de su hora,
+  así que la misma alerta podía repetirse esa noche. El asistente, además, le daba a la IA la fecha
+  del servidor: entre las 21:00 y la medianoche le contestaba con la fecha de **mañana**.
+- **No se le podía asignar un ticket a nadie del equipo nuevo.** `asignar` salía de una lista fija
+  de dos personas escrita en el código: pedirle "asigná el #123 a Laura" contestaba que no la
+  reconocía, aunque estuviera cargada en la configuración y el triage automático sí la usara. Y el
+  prompt del asistente nombraba a esas mismas dos personas como únicos responsables posibles.
+- **La base de conocimiento aprendía los recordatorios como si fueran soluciones.** La "resolución"
+  se tomaba del último comentario del ticket, fuera lo que fuera; con los tickets llenos de avisos
+  automáticos, terminó registrando "le recordamos que su ticket está a la espera…" como la forma de
+  resolver un problema de fichaje. Ahora los avisos del circuito nunca cuentan como resolución.
+- **Lecturas repetidas contra la mesa de ayuda.** Cada acción sobre un ticket abría y cerraba una
+  sesión de GLPI (cuatro viajes para hacer uno, y tres sesiones para una sola operación lógica); la
+  solución de un ticket se pedía tres veces por vuelta; y armar la lista de resueltos hacía una
+  petición por ticket (hasta 160). Todo eso es una lectura ahora.
+- **La consulta al sistema de fichajes se armaba pegando valores del formulario**, y el recorte de
+  fichadas ya anunciadas descartaba entradas al azar (un conjunto no tiene orden), así que podía
+  volver a anunciar una fichada reciente por los parlantes.
+- **El Gestor informaba una versión escrita a mano** ("0.5" con el Gestor en 1.1.x). Sale del
+  control de versiones, y el deploy deja asentada **qué revisión quedó corriendo** —antes no había
+  forma de saber si un arreglo había llegado al servidor—.
+
 - **Cada cliente nuevo nacía consultando la mesa de ayuda cada 5 segundos.** El valor estaba fijo en
   el panel (`_armar_cliente`), en el ejemplo de configuración y en la de INTELLIHELP: **17.280
   vueltas por día** contra GLPI para atender un puñado de tickets, y cada vuelta lee los tickets,

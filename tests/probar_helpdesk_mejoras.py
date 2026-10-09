@@ -131,11 +131,18 @@ class GLPIFalso:
 
     def request(self, ruta, metodo="GET", datos=None):
         self.pedidos.append(ruta)
-        if ruta.endswith("/ITILFollowup"):
-            tid = int(ruta.split("/")[2])
-            return list(self.followups.get(tid, []))
-        if ruta.endswith("/Ticket_User"):
-            tid = int(ruta.split("/")[2])
+        # Las rutas llegan con `?range=…`: el ciclo PAGINA los seguimientos, porque la API de GLPI
+        # devuelve sólo los 50 primeros si no se le pide un rango (ver comun/glpi.py).
+        base = str(ruta).split("?")[0]
+        if base.endswith("/ITILFollowup"):
+            tid = int(base.split("/")[2])
+            todos = list(self.followups.get(tid, []))
+            if "range=" in str(ruta):
+                ini, fin = (int(x) for x in str(ruta).split("range=")[1].split("&")[0].split("-"))
+                return todos[ini:fin + 1]
+            return todos
+        if base.endswith("/Ticket_User"):
+            tid = int(base.split("/")[2])
             return [{"users_id": u, "type": 2} for u in self.asignados.get(tid, [])]
         if ruta.startswith("/User/"):
             return {"firstname": "Cliente", "realname": "Test"}

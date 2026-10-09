@@ -59,6 +59,19 @@ fi
 # 2.6) VERSIÓN del GESTOR: sube sola (control de versiones) en cada deploy.
 python3 compilador/build/bump_version.py gestor patch 2>/dev/null && ok "Versión del Gestor actualizada" || true
 
+# 2.7) DEJAR ASENTADO QUÉ QUEDA CORRIENDO. El servidor no es un checkout de git (el paquete se
+# descomprime sobre la carpeta), así que no hay a quién preguntarle "¿qué commit estás corriendo?".
+# Cuando algo falla en producción, lo primero que hay que saber es si el arreglo llegó o no; sin
+# esto, es adivinar. Queda en ITHOS/REVISION y lo informa el endpoint de salud del Gestor.
+{
+  if [ -d .git ]; then
+    git log -1 --format="%h %ad %s" --date=short 2>/dev/null
+  else
+    echo "sin git · desplegado $(date -u '+%Y-%m-%d %H:%M UTC')"
+  fi
+} > ITHOS/REVISION 2>/dev/null || true
+ok "Revisión desplegada: $(cat ITHOS/REVISION 2>/dev/null || echo '?')"
+
 # 3) REBUILD. Los volúmenes (ithos_data) y clientes.json PERSISTEN: no se pierde nada de los clientes.
 say "Reconstruyendo y recreando contenedores..."
 "${COMPOSE[@]}" up -d --build
@@ -67,6 +80,7 @@ say "Reconstruyendo y recreando contenedores..."
 sleep 6
 if [ "$("${COMPOSE[@]}" ps --status running -q | wc -l)" -ge 2 ]; then
   ok "Contenedores arriba. Verificá el login del Gestor y que un agente conecte (Conectadas >= 1)."
+  echo "   Revisión en línea:  curl -s http://localhost:8080/ | grep revision"
   echo "   Logs:  docker compose -p $PROYECTO logs -f central panel"
 else
   err "Algo no levantó. Revisá:  docker compose -p $PROYECTO logs --tail=80"
