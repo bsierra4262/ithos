@@ -27,27 +27,24 @@ log = logging.getLogger("anomalias")
 BASE = os.path.dirname(os.path.abspath(__file__))
 
 
-def _estado_path(cliente):
-    seguro = "".join(ch if ch.isalnum() else "_" for ch in (cliente or "cliente"))
-    return os.path.join(BASE, f"anomalias_estado_{seguro}.json")
-
-
+# El estado va al VOLUMEN y se escribe atómico (comun/estado.py). Antes se guardaba al lado de
+# este archivo, que en el servidor está DENTRO de la imagen del contenedor: cada deploy lo borraba
+# y los avisos que ya se habían mandado volvían a salir.
 def _cargar(cliente):
-    try:
-        return json.load(open(_estado_path(cliente), encoding="utf-8"))
-    except Exception:  # noqa: BLE001
-        return {}
+    from comun import estado as _E
+    return _E.cargar("anomalias_estado", cliente)
 
 
 def _guardar(cliente, st):
-    try:
-        json.dump(st, open(_estado_path(cliente), "w", encoding="utf-8"))
-    except Exception:  # noqa: BLE001
-        pass
+    from comun import estado as _E
+    _E.guardar("anomalias_estado", cliente, st)
 
 
-def _texto(anoms):
-    hora = datetime.now().strftime("%H:%M")
+def _texto(anoms, zona=None):
+    # La hora es la del CLIENTE: el servidor corre en UTC y el aviso le llegaba con una hora que
+    # no es la de su reloj.
+    from comun.horario import ahora_zona
+    hora = ahora_zona({"zona_horaria": zona}).strftime("%H:%M")
     lineas = [f"🚨 *Anomalía de acceso* — {hora}"]
     for a in anoms:
         lineas.append(f"• {a.get('nombre', '?')} — {a.get('motivo', 'fuera de horario')}"
@@ -76,14 +73,15 @@ async def vigilar_anomalias(conf, notif, stop=None):
             anoms = await asyncio.to_thread(adap.anomalias)
             if anoms:
                 st = _cargar(cliente)
-                hoy = datetime.now().strftime("%Y-%m-%d")
+                from comun.horario import ahora_local as _al
+                hoy = _al(conf).strftime("%Y-%m-%d")     # el día del CLIENTE, no el del servidor
                 if st.get("dia") != hoy:
                     st = {"dia": hoy, "avisados": []}
                 clave = lambda x: f"{x.get('nombre')}|{x.get('cuando')}"  # noqa: E731
                 nuevos = [x for x in anoms if clave(x) not in st["avisados"]]
                 if nuevos:
                     if notif:
-                        await asyncio.to_thread(notif.enviar, _texto(nuevos))
+                        await asyncio.to_thread(notif.enviar, _texto(nuevos, conf.get("zona_horaria")))
                     st["avisados"].extend(clave(x) for x in nuevos)
                     _guardar(cliente, st)
                     log.info("Anomalías: avisé %d en %s.", len(nuevos), cliente)

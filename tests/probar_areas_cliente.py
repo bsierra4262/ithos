@@ -169,12 +169,23 @@ try:
             return super().request(path, method, data, **k)
 
     ses = _Sesion()
-    G.GLPIClient.abrir(ses)
+    G.GLPIClient.reabrir(ses)          # `reabrir` = abrir una sesión NUEVA (ver comun/glpi.py)
     ok(ses.activadas == "all",
        "al abrir la sesión se activan TODAS las entidades del usuario, envueltas en `input`",
        repr(ses.activadas))
     ok("/changeActiveEntities" in ses.pedidos or ses.activadas is not None,
-       "y se pide en cada apertura, no una sola vez")
+       "y se pide con CADA sesión nueva, no una sola vez en todo el proceso")
+    # Y el otro lado de lo mismo: con la sesión YA viva, `abrir()` la REUSA y no vuelve a pedir
+    # nada. Antes tiraba la sesión y pedía initSession + changeActiveEntities otra vez, así que
+    # cada acción sobre un ticket costaba cuatro viajes a la mesa de ayuda para hacer uno.
+    ses2 = _Sesion()
+    G.GLPIClient.reabrir(ses2)
+    antes = len(ses2.pedidos)
+    G.GLPIClient.abrir(ses2)
+    G.GLPIClient.abrir(ses2)
+    ok(len(ses2.pedidos) == antes,
+       "con la sesión viva, abrir() la REUSA (no vuelve a pedir initSession)",
+       f"{len(ses2.pedidos) - antes} peticiones de más")
 
     print("\n=== 2 · Un ticket que entra por otra área SE VE ===")
     _limpiar_cache()

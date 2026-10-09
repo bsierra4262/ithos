@@ -32,27 +32,25 @@ log = logging.getLogger("proactivo")
 BASE = os.path.dirname(os.path.abspath(__file__))
 
 
-def _estado_path(cliente):
-    seguro = "".join(ch if ch.isalnum() else "_" for ch in (cliente or "cliente"))
-    return os.path.join(BASE, f"proactivo_estado_{seguro}.json")
-
-
+# El estado va al VOLUMEN y se escribe atómico (comun/estado.py). Antes se guardaba al lado de
+# este archivo, que en el servidor está DENTRO de la imagen del contenedor: cada deploy lo borraba
+# y los avisos que ya se habían mandado volvían a salir.
 def _cargar(cliente):
-    try:
-        return json.load(open(_estado_path(cliente), encoding="utf-8"))
-    except Exception:  # noqa: BLE001
-        return {}
+    from comun import estado as _E
+    return _E.cargar("proactivo_estado", cliente)
 
 
 def _guardar(cliente, st):
-    try:
-        json.dump(st, open(_estado_path(cliente), "w", encoding="utf-8"))
-    except Exception:  # noqa: BLE001
-        pass
+    from comun import estado as _E
+    _E.guardar("proactivo_estado", cliente, st)
 
 
-def _texto_alerta(en_riesgo, para=""):
-    hoy = datetime.now().strftime("%H:%M")
+def _texto_alerta(en_riesgo, para="", zona=None):
+    # La hora que LEE EL CLIENTE tiene que ser la SUYA. El servidor corre en UTC: la alerta decía
+    # "21:40" cuando para él eran las 18:40, y encima la clave anti-spam "una vez por día" rotaba
+    # a las 21:00 de su hora, así que la misma alerta podía salir dos veces esa noche.
+    from comun.horario import ahora_zona
+    hoy = ahora_zona({"zona_horaria": zona}).strftime("%H:%M")
     venc = [t for t in en_riesgo if t.get("vencido")]
     porv = [t for t in en_riesgo if not t.get("vencido")]
     lineas = [f"⚠️ *SLA en riesgo* — {hoy}" + (f" · asignados a {para}" if para else "")]
@@ -100,7 +98,8 @@ async def vigilar_sla(conf, notif, stop=None):
     log.info("Proactivo SLA activo para %s (aviso <= %sh, cada %smin).",
              cliente, aviso_horas, revisar // 60)
 
-    from comun.horario import en_horario_atencion
+    from comun.horario import en_horario_atencion, ahora_local
+    zona = conf.get("zona_horaria")
 
     while stop is None or not stop.is_set():
         try:
@@ -111,7 +110,9 @@ async def vigilar_sla(conf, notif, stop=None):
                          if en_horario_atencion(conf) else [])
             if en_riesgo:
                 st = _cargar(cliente)
-                hoy = datetime.now().strftime("%Y-%m-%d")
+                # El "día" es el del CLIENTE: con la fecha del servidor (UTC) el contador se
+                # reiniciaba a las 21:00 de su hora y la misma alerta podía repetirse esa noche.
+                hoy = ahora_local(conf).strftime("%Y-%m-%d")
                 if st.get("dia") != hoy:                # nuevo día -> reset avisos
                     st = {"dia": hoy, "avisados": []}
                 nuevos = [t for t in en_riesgo if t["id"] not in st["avisados"]]
@@ -120,7 +121,7 @@ async def vigilar_sla(conf, notif, stop=None):
                         # Un aviso POR TÉCNICO ASIGNADO, @mencionándolo (WhatsApp) para que le
                         # SUENE a él; los tickets sin asignado configurado van en un aviso normal.
                         for nombres, tels, ts in _por_tecnico(conf, nuevos):
-                            texto = _texto_alerta(ts, nombres)
+                            texto = _texto_alerta(ts, nombres, zona)
                             if tels and hasattr(notif, "enviar_mencion"):
                                 await asyncio.to_thread(
                                     lambda t=texto, x=tels: AMB.llamar(

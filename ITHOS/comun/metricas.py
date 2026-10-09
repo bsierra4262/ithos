@@ -14,6 +14,27 @@ BASE = os.path.dirname(os.path.abspath(__file__))
 _LOCK = threading.Lock()
 
 
+def _escribir_atomico(ruta, datos):
+    """Escribe JSON sin dejarlo a medias: a un temporal y recién ahí se renombra.
+
+    Escribir directo sobre el archivo lo TRUNCA antes de empezar: si el proceso muere en el
+    medio —un deploy, un reinicio— queda cortado, y como todas las lecturas tienen un `except` que
+    devuelve vacío, el archivo roto se lee como "no hay nada" y el estado se pierde EN SILENCIO."""
+    import json as _j
+    import os as _o
+    tmp = str(ruta) + ".tmp"
+    try:
+        with open(tmp, "w", encoding="utf-8") as f:
+            _j.dump(datos, f, ensure_ascii=False)
+        _o.replace(tmp, ruta)
+    except OSError:
+        try:
+            _o.remove(tmp)
+        except OSError:
+            pass
+        raise
+
+
 def _archivo(cliente):
     # DEMO/PRUEBA escribe y lee su PROPIO archivo (metricas_demo_*), AISLADO de producción:
     # así la actividad real de la demo se VE en su panel sin contaminar los números reales del
@@ -38,7 +59,7 @@ def registrar(cliente, tipo, n=1):
         d.setdefault(mes, {})
         d[mes][tipo] = d[mes].get(tipo, 0) + n
         try:
-            json.dump(d, open(_archivo(cliente), "w", encoding="utf-8"))
+            _escribir_atomico(_archivo(cliente), d)
         except Exception:  # noqa: BLE001
             pass
 

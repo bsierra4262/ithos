@@ -75,3 +75,8 @@ class Registro:
 
     def total(self):
         return len(self._por_key)
+
+    def todos(self):
+        """Todos los clientes ACTIVOS. El Gestor les arranca los servicios de fondo al iniciar,
+        sin esperar a que se conecte el agente de cada uno (ver `main.arrancar_servicios`)."""
+        return list(self._por_key.values())

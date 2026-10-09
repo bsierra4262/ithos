@@ -163,6 +163,27 @@ def listar_instructivos(cliente):
 
 
 # ------------------------------------------------------------------ auto-regeneración semanal
+def _escribir_atomico(ruta, datos):
+    """Escribe JSON sin dejarlo a medias: a un temporal y recién ahí se renombra.
+
+    Escribir directo sobre el archivo lo TRUNCA antes de empezar: si el proceso muere en el
+    medio —un deploy, un reinicio— queda cortado, y como todas las lecturas tienen un `except` que
+    devuelve vacío, el archivo roto se lee como "no hay nada" y el estado se pierde EN SILENCIO."""
+    import json as _j
+    import os as _o
+    tmp = str(ruta) + ".tmp"
+    try:
+        with open(tmp, "w", encoding="utf-8") as f:
+            _j.dump(datos, f, ensure_ascii=False)
+        _o.replace(tmp, ruta)
+    except OSError:
+        try:
+            _o.remove(tmp)
+        except OSError:
+            pass
+        raise
+
+
 def _auto_estado_path(cliente):
     return os.path.join(kb_dir(cliente), "_auto_estado.json")
 
@@ -178,7 +199,7 @@ def _auto_cargar(cliente):
 def _auto_guardar(cliente, st):
     import json
     try:
-        json.dump(st, open(_auto_estado_path(cliente), "w", encoding="utf-8"))
+        _escribir_atomico(_auto_estado_path(cliente), st)
     except Exception:  # noqa: BLE001
         pass
 

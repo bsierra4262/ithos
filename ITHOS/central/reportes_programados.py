@@ -25,23 +25,16 @@ log = logging.getLogger("reportes-prog")
 BASE = os.path.dirname(os.path.abspath(__file__))
 
 
-def _estado_path(cliente):
-    seguro = "".join(ch if ch.isalnum() else "_" for ch in (cliente or "cliente"))
-    return os.path.join(BASE, f"reporte_estado_{seguro}.json")
-
-
+# El estado va al VOLUMEN y se escribe atómico (comun/estado.py). Guardado al lado del código, se
+# perdía en cada deploy y el reporte del día se REENVIABA después de cada actualización.
 def _cargar(cliente):
-    try:
-        return json.load(open(_estado_path(cliente), encoding="utf-8"))
-    except Exception:  # noqa: BLE001
-        return {}
+    from comun import estado as _E
+    return _E.cargar("reporte_estado", cliente)
 
 
 def _guardar(cliente, st):
-    try:
-        json.dump(st, open(_estado_path(cliente), "w", encoding="utf-8"))
-    except Exception:  # noqa: BLE001
-        pass
+    from comun import estado as _E
+    _E.guardar("reporte_estado", cliente, st)
 
 
 def texto_reporte(cfg_glpi, entidad, periodo="mensual", zona="America/Argentina/Buenos_Aires",

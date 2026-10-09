@@ -53,9 +53,12 @@ def _sys_voz(idioma="es-AR"):
 # MULTI-IDIOMA: la transcripción usa el idioma CONFIGURADO por cada cliente (soporta todos
 # los idiomas). El vocabulario de dominio son NOMBRES PROPIOS iguales en cualquier idioma,
 # así mejora la precisión sin atar a un idioma. La clave de admin va incluida.
+# Vocabulario de dominio para que el transcriptor acierte los nombres propios. NO se pone acá la
+# frase-clave de administrador: este texto viaja al proveedor de transcripción en CADA audio, y una
+# contraseña no se le manda a un tercero una y otra vez (ni se versiona en el repositorio).
 HINT_TRANSCRIPCION = (
     "ITHOS, ticket, SLA, GLPI, Zendesk, Jira, Freshservice, HikCentral, BioStar, "
-    "fichaje, Brian Sierra, Ayala, Kanerito4262.")
+    "fichaje, molinete, legajo, entrepiso.")
 
 # Nombres de idioma para instruir a Gemini (los más comunes; el resto usa el código ISO,
 # que los modelos entienden igual). Sirve para CUALQUIER idioma del mundo.
@@ -138,6 +141,27 @@ def _planes_archivo():
     return os.path.join(base, "planes_ia.json")
 
 
+def _escribir_atomico(ruta, datos):
+    """Escribe JSON sin dejarlo a medias: a un temporal y recién ahí se renombra.
+
+    Escribir directo sobre el archivo lo TRUNCA antes de empezar: si el proceso muere en el
+    medio —un deploy, un reinicio— queda cortado, y como todas las lecturas tienen un `except` que
+    devuelve vacío, el archivo roto se lee como "no hay nada" y el estado se pierde EN SILENCIO."""
+    import json as _j
+    import os as _o
+    tmp = str(ruta) + ".tmp"
+    try:
+        with open(tmp, "w", encoding="utf-8") as f:
+            _j.dump(datos, f, ensure_ascii=False)
+        _o.replace(tmp, ruta)
+    except OSError:
+        try:
+            _o.remove(tmp)
+        except OSError:
+            pass
+        raise
+
+
 def _plan_cache_leer():
     import json
     try:
@@ -150,7 +174,7 @@ def _plan_cache_guardar(d):
     import json
     try:
         os.makedirs(os.path.dirname(_planes_archivo()), exist_ok=True)
-        json.dump(d, open(_planes_archivo(), "w", encoding="utf-8"))
+        _escribir_atomico(_planes_archivo(), d)
     except Exception:  # noqa: BLE001
         pass
 

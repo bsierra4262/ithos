@@ -245,13 +245,22 @@ def mensaje_inicio(empresa="la empresa", ia_disponible=True, panorama=None, zona
     return msg
 
 
+def _ahora_cliente(zona):
+    """AHORA en la zona del cliente (la misma fuente que usan el ciclo y los reportes)."""
+    from comun.horario import ahora_zona
+    return ahora_zona({"zona_horaria": zona})
+
+
 class Asistente:
     def __init__(self, ia, herramientas, kb_dir=None, empresa="la empresa",
-                 memoria=None, acciones=None, zona=ZONA_DEFAULT, gestor=None):
+                 memoria=None, acciones=None, zona=ZONA_DEFAULT, gestor=None,
+                 cfg_cliente=None):
         """ia: ProveedorIA. herramientas: lectura {nombre:{desc,fn}}. acciones: escritura
         {nombre:{desc,fn}} (cerrar/asignar/responder/crear). memoria: Memoria del CLIENTE
         (aislada). empresa: nombre del cliente. zona: zona horaria del cliente (para horarios).
-        gestor: GestorCuota del cliente (para mensajes de cuota con datos REALES)."""
+        gestor: GestorCuota del cliente (para mensajes de cuota con datos REALES).
+        cfg_cliente: su configuración completa, para saber QUIÉNES son sus técnicos sin
+        nombrar a nadie en el código."""
         self.ia = ia
         self.zona = zona or ZONA_DEFAULT
         self.herramientas = herramientas or {}
@@ -260,10 +269,14 @@ class Asistente:
         self.empresa = empresa
         self.memoria = memoria
         self.gestor = gestor
+        self.cfg_cliente = cfg_cliente or {}
         self._admin = {}          # sesiones admin one-shot: clave -> vence (epoch)
 
     def _alcance(self):
-        hoy = datetime.now().strftime("%d/%m/%Y")
+        # La fecha es la del CLIENTE, no la del servidor. El Gestor corre en UTC: entre las 21:00 y
+        # la medianoche de su hora, ITHOS le contestaba con la fecha de MAÑANA —y con eso calculaba
+        # "ayer", "esta semana" y los vencimientos que le informa.
+        hoy = _ahora_cliente(self.zona).strftime("%d/%m/%Y")
         base = ALCANCE_ITHOS.format(empresa=self.empresa) + f"\n(Fecha de hoy: {hoy}.)"
         # DATOS REALES de la IA de ESTE cliente (cadena configurada + cuota actual). Si te
         # preguntan qué IAs usás o cuánta cuota tenés, respondé EXACTAMENTE con esto: es tu
@@ -330,23 +343,48 @@ class Asistente:
         self._pan_ts = time.time()
         return self._pan
 
-    def _admin_voz_ok(self, canal, audio):
-        """En el MICRÓFONO (canal 'voz') el modo administrador exige, ADEMÁS de la frase-clave, que
-        la VOZ coincida con la del dueño (voz-id). Así, aunque alguien sepa la contraseña, si no es tu
-        voz NO entra a admin. En otros canales (WhatsApp con número autorizado) no aplica. Si todavía
-        no hay perfil de voz entrenado, no bloquea (se sigue juntando tu voz por WhatsApp)."""
-        if canal not in ("voz", "microfono", "mic"):
-            return True
+    def _responsables_txt(self):
+        """A quién se le puede asignar un ticket, leído de la CONFIGURACIÓN del cliente.
+
+        El prompt nombraba a dos personas concretas de un cliente ("bsierra o jayala"). Con el
+        equipo ampliado, el modelo seguía proponiendo sólo a esos dos —los que de verdad estaban
+        cargados no existían para él— y para cualquier otra empresa el texto directamente mentía."""
         try:
-            from comun import vozid
-            if not vozid.perfil_listo():
-                return True                      # sin perfil aún -> no bloquear (fallback seguro)
-            if audio is None:
-                return False                     # admin por voz sin audio para verificar -> no
-            es_dueno, _ = vozid.verificar(audio)
-            return bool(es_dueno)
+            from comun import tickets as TK
+            logins = [str(t.get("glpi_login") or t.get("login") or t.get("nombre"))
+                      for t in TK.tecnicos(self.cfg_cliente or {}) if t]
+            logins = [x for x in logins if x and x != "None"]
+            if logins:
+                return " (uno de: " + ", ".join(logins) + ")"
         except Exception:  # noqa: BLE001
-            return True
+            pass
+        return ""
+
+    def _admin_voz_ok(self, canal, audio):
+        """¿Se puede confirmar que QUIEN habla es el dueño? Para el micrófono, por su voz (voz-id).
+
+        Este control fallaba ABIERTO por tres caminos distintos, y los tres daban admin total:
+          · si el perfil de voz todavía no estaba entrenado, devolvía True;
+          · si `vozid` levantaba cualquier excepción, devolvía True;
+          · y en cualquier canal que no fuera el micrófono devolvía True sin mirar nada, así que
+            por WhatsApp la frase-clave SOLA abría el modo administrador: cualquiera del grupo que
+            la escuchara una vez quedaba con acceso al conocimiento propietario y a las acciones
+            sobre los tickets.
+        Un control de identidad que ante la duda dice que sí no es un control. Ahora, ante la duda,
+        dice que no: sin forma de verificar quién es, no hay admin. La frase-clave es el SEGUNDO
+        factor, nunca el único."""
+        if canal in ("voz", "microfono", "mic"):
+            try:
+                from comun import vozid
+                if not vozid.perfil_listo() or audio is None:
+                    return False                 # no hay con qué verificar -> no se concede
+                return bool(vozid.verificar(audio)[0])
+            except Exception as e:  # noqa: BLE001
+                log.warning("voz-id no pudo verificar (no se concede admin): %s", e)
+                return False
+        # Resto de los canales: la identidad es el REMITENTE (su número/identidad autorizada), que
+        # ya se evaluó en `responder_texto`. Acá no hay nada más que verificar.
+        return True
 
     def responder_texto(self, texto, canal="chat", remitente=None, audio=None, ambito=None):
         import re
@@ -374,9 +412,17 @@ class Asistente:
             except Exception:  # noqa: BLE001
                 pass
         if conocimiento.detectar_clave_admin(texto):
-            # Por VOZ: además de la clave, la voz debe ser la del dueño (voz-id). Si no, no hay admin.
+            # La frase-clave es un SEGUNDO factor, no una llave sola. Hace falta, además, poder
+            # decir QUIÉN está hablando: por micrófono, su voz (voz-id); por los demás canales, que
+            # el remitente sea uno de los autorizados. Antes, por WhatsApp, decir la frase alcanzaba.
             if not self._admin_voz_ok(canal, audio):
                 return "No reconozco tu voz. El acceso de administrador por voz es solo para el dueño."
+            if not es_admin and canal not in ("voz", "microfono", "mic"):
+                log.warning("Clave de administrador usada desde un remitente NO autorizado (%s/%s).",
+                            canal, remitente)
+                return ("La clave de administrador sola no alcanza: tengo que poder confirmar quién "
+                        "sos. Escribime desde tu número o usá el micrófono para que te reconozca "
+                        "por la voz.")
             consulta = conocimiento.quitar_frase_admin(texto)
             # Solo es "clave + consulta juntas" si queda una consulta REAL (>=3 palabras).
             # Si no (p. ej. la frase llegó mal transcripta del micrófono), es solo el
@@ -539,9 +585,8 @@ class Asistente:
             "ponele SLA, asigná al técnico, dale la primera respuesta y dejalo en espera'), usá "
             "UNA sola acción 'aplicar_ciclo' con args:{id, categoria, prioridad, responsable, "
             "primera_respuesta, necesita_info}. LEÉ el contenido real del ticket y decidí: la "
-            "CATEGORÍA (para no poder fichar / lector / terminal es TERMINALES; molinete MOLINETES; "
-            "HikCentral HIK-CENTRAL), la PRIORIDAD (fichada individual = baja/media, nunca urgente), "
-            "el RESPONSABLE (bsierra o jayala) y la PRIMERA_RESPUESTA: profesional y basada en lo que "
+            "CATEGORÍA, la PRIORIDAD (el caso de UNA persona = baja/media, nunca urgente), "
+            "el RESPONSABLE" + self._responsables_txt() + " y la PRIMERA_RESPUESTA: profesional y basada en lo que "
             "REALMENTE dice el ticket. ⛔ Si el dato YA figura en el ticket (p. ej. el LEGAJO ya está "
             "en la descripción), NO lo pidas: dale acuse y próximos pasos con necesita_info=false "
             "(EN CURSO). Pedí datos SOLO si de verdad faltan (necesita_info=true, EN ESPERA). Jamás "

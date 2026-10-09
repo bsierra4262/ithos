@@ -96,8 +96,24 @@ def remitente_dueno():
 #   "ITHOS, código de seguridad de acceso Kanerito4262, autorización de administrador."
 # ⚠️ A futuro se suma IDENTIFICACIÓN POR VOZ: si sabe la clave pero NO es la voz del dueño,
 # no la acepta.
-CLAVE_ADMIN = "kanerito4262"
-_RATIO_KANERITO = 0.68   # similitud mínima para aceptar una variante fonética de 'kanerito'
+def clave_admin() -> str:
+    """La frase-clave de administrador. Sale de `ITHOS_CLAVE_ADMIN` (el .env del servidor).
+
+    Estaba escrita acá adentro, en el código: la MISMA para todos los clientes, versionada junto
+    al repositorio y —peor— metida en el vocabulario que se le manda al transcriptor en CADA audio,
+    o sea viajando a un tercero todo el tiempo. Una contraseña no se versiona ni se comparte entre
+    empresas. Se deja el valor histórico como respaldo para no dejar a nadie afuera al actualizar;
+    fijando la variable de entorno queda fuera del código."""
+    import os
+    return (os.environ.get("ITHOS_CLAVE_ADMIN") or _CLAVE_HISTORICA).strip().lower()
+
+
+_CLAVE_HISTORICA = "kanerito4262"      # respaldo: compatibilidad con lo ya desplegado
+CLAVE_ADMIN = _CLAVE_HISTORICA         # compat para quien la importe directo
+# Qué tan parecida puede sonar la palabra para aceptarla. El micrófono transcribe mal y hay que
+# tolerarlo, pero 0.68 sobre ocho letras deja pasar tres caracteres distintos: "canelito",
+# "panerito" o "kanerita" entraban. Se sube, y además el NÚMERO pasa a ser obligatorio (abajo).
+_RATIO_KANERITO = 0.86
 
 _RE_FRASE_ADMIN = re.compile(
     r"(ithos|ithos|c[oó]digo de seguridad|de acceso|autorizaci[oó]n de administrador|"
@@ -110,25 +126,27 @@ def _norm_txt(t):
 
 
 def detectar_clave_admin(texto):
-    """True si el texto trae la CLAVE de administrador. Tolera espacios/mayúsculas y, para el
-    MICRÓFONO, transcripciones imperfectas: acepta una variante fonética de 'kanerito' cuando
-    la acompaña el número del código O la frase de seguridad ('código de seguridad de acceso'
-    / 'autorización de administrador'). Así no falla si el audio pierde el número."""
+    """True si el texto trae la CLAVE de administrador COMPLETA.
+
+    Tolera espacios, mayúsculas y una transcripción imperfecta de la PALABRA —el micrófono se come
+    letras y eso hay que aguantarlo—, pero el NÚMERO es obligatorio siempre.
+
+    Antes alcanzaba con algo que sonara parecido a la palabra MÁS una frase genérica como
+    "administrador" o "acceso". Dicho de otro modo: media contraseña y una palabra de uso común.
+    Y como la tolerancia fonética estaba en 0.68 sobre ocho letras, "canelito", "panerito" o
+    "kanerita" pasaban. La parte difícil de adivinar de una contraseña es justamente la que no se
+    puede aflojar."""
     import difflib
+    clave = clave_admin()
     n = _norm_txt(texto)
-    if CLAVE_ADMIN in n:                           # exacto: kanerito4262
+    if clave and clave in n:                       # exacta: palabra + número, pegados o no
         return True
-    palabra = re.sub(r"[0-9]", "", CLAVE_ADMIN)    # 'kanerito'
-    digitos = re.sub(r"[^0-9]", "", CLAVE_ADMIN)   # '4262'
-    tiene_palabra = any(
-        difflib.SequenceMatcher(None, w, palabra).ratio() >= _RATIO_KANERITO
-        for w in re.findall(r"[a-zá-ú]+", (texto or "").lower()))
-    if not tiene_palabra:
-        return False
-    tiene_digitos = bool(digitos) and digitos in n
-    tiene_frase = any(k in n for k in ("seguridaddeacceso", "codigodeseguridad",
-                                       "autorizacion", "administrador", "codigodeacceso"))
-    return tiene_digitos or tiene_frase            # palabra-clave + (número O frase)
+    palabra = re.sub(r"[0-9]", "", clave)
+    digitos = re.sub(r"[^0-9]", "", clave)
+    if not digitos or digitos not in n:
+        return False                               # sin el número NO hay clave, se diga lo que se diga
+    return any(difflib.SequenceMatcher(None, w, palabra).ratio() >= _RATIO_KANERITO
+               for w in re.findall(r"[a-zá-ú]+", (texto or "").lower()))
 
 
 # Consulta TÉCNICA = pregunta sobre ITHOS MISMO (cómo está hecho/programado, sus versiones,
@@ -174,8 +192,8 @@ def quitar_frase_admin(texto):
     código numérico) y deja SOLO la consulta real, si la hay."""
     import difflib
     t = _RE_FRASE_ADMIN.sub(" ", texto or "")
-    palabra = re.sub(r"[0-9]", "", CLAVE_ADMIN)       # 'kanerito'
-    digitos = re.sub(r"[^0-9]", "", CLAVE_ADMIN)      # '4262'
+    palabra = re.sub(r"[0-9]", "", clave_admin())
+    digitos = re.sub(r"[^0-9]", "", clave_admin())
     limpio = []
     for w in re.split(r"\s+", t):
         wl = re.sub(r"[^0-9a-zá-ú]", "", w.lower())

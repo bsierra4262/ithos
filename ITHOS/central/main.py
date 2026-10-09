@@ -237,13 +237,328 @@ async def wa_desvincular(request: Request):
 
 
 
+# ===================== SERVICIOS DE FONDO POR CLIENTE =========================
+# Tickets, reportes, alerta de SLA, base de conocimiento y reactivación de pospuestos: TODO esto
+# vivía adentro del handler del WebSocket y se cancelaba al desconectarse el agente.
+#
+# O sea: la mesa de ayuda dejaba de triagear cuando el cliente apagaba la PC. Un ticket que entraba
+# a la noche o un fin de semana no se categorizaba, no se asignaba, no recibía primera respuesta y
+# no corría su SLA hasta que alguien encendiera la computadora del lunes. Eso no es un detalle de
+# implementación: es que el producto deja de hacer su trabajo por algo que no tiene nada que ver.
+#
+# Ahora los servicios son del CLIENTE, no de la conexión: arrancan cuando arranca el Gestor y
+# siguen corriendo esté o no el agente. El agente sólo aporta la voz y el control de acceso; si no
+# está, lo que no se puede entregar es la voz, y nada más.
+servicios = {}            # nombre de cliente -> {"tareas": [...], "wa":…, "asistente":…, "gestor":…}
+
+
+async def enviar_a_agente(cliente, cmd):
+    """Manda un COMANDO al agente del cliente. True si se entregó; False si no hay agente."""
+    ws = conexiones.get(cliente)
+    if ws is None:
+        return False
+    try:
+        await ws.send_json({"tipo": P.COMANDO, **cmd})
+        return True
+    except Exception:  # noqa: BLE001
+        return False
+
+
+async def arrancar_servicios(conf):
+    """Arranca (UNA sola vez por cliente) todo lo que ITHOS hace por su cuenta. Idempotente."""
+    cliente = conf.get("nombre", "cliente")
+    if cliente in servicios:
+        return servicios[cliente]
+    loop = asyncio.get_running_loop()
+    tarea = None
+    tareas_extra = []
+    async def enviar(cmd):
+        """Manda un comando (voz) al agente del cliente. Si no hay agente conectado, se descarta:
+        el resto de los servicios —tickets, reportes, SLA— NO dependen de eso."""
+        await enviar_a_agente(cliente, cmd)
+
+    # Canales de notificación del cliente (los que ELIGIÓ: whatsapp/telegram/
+    # email/teams/slack). Un solo objeto que manda a todos.
+    from comun import notificadores as NOTIF
+    from comun import ambitos as AV      # tipos de aviso -> a qué grupo va cada uno
+    # Sesión de WhatsApp ESTABLE y AISLADA por cliente (multi-tenant): el runtime usa EXACTAMENTE
+    # el mismo archivo que la vinculación por QR del panel/alta. Sin esto, dos clientes chocarían
+    # sobre 'wa_session.sqlite3' y lo vinculado no serviría para enviar.
+    try:
+        from comun import whatsapp_link as _WL
+        _archivo_wa = _WL.archivo_sesion(_WL.sesion_de_cliente(conf))
+        if isinstance(conf.get("whatsapp"), dict):
+            conf["whatsapp"]["session"] = _archivo_wa
+        for _n in conf.get("notificaciones", []) or []:
+            if (_n.get("tipo") or "").lower() in ("whatsapp", "whatsapp_no_oficial"):
+                _n["session"] = _archivo_wa
+    except Exception:  # noqa: BLE001
+        pass
+    # En DEMO, el proceso de la demo maneja los canales externos (WhatsApp/Telegram/Email)
+    # de forma interactiva; el central NO los abre para no chocar con la MISMA sesión
+    # (p.ej. dos clientes neonize sobre el mismo WhatsApp). Sigue haciendo tickets/voz/consultas.
+    wa = None if os.environ.get("ITHOS_DEMO") else NOTIF.crear_notificadores(conf)
+    # Si la sesión de WhatsApp NO-OFICIAL se cierra/caduca (inactividad), avisamos por los OTROS
+    # canales + por voz, y el panel del cliente mostrará "sesión caducada" + "Volver a vincular".
+    if wa and not os.environ.get("ITHOS_DEMO"):
+        def _aviso_wa_cerrada():
+            msg = ("Se cerró la sesión de WhatsApp de ITHOS (probablemente por inactividad). "
+                   "Entrá al panel y tocá 'Volver a vincular' para escanear el QR de nuevo.")
+            log.warning("[WA %s] sesión cerrada: avisando por otros canales", cliente)
+            try:
+                # El canal WhatsApp está caído (limpiamos _listo en el logout), así que enviar()
+                # salta WhatsApp y entrega por los OTROS canales (email/telegram/etc).
+                wa.enviar(msg, tipo=AV.SISTEMA)
+            except Exception:  # noqa: BLE001
+                pass
+            try:
+                asyncio.run_coroutine_threadsafe(
+                    enviar({"accion": "decir", "texto": msg, "cachear": False}), loop)
+            except Exception:  # noqa: BLE001
+                pass
+        try:
+            for _c in getattr(wa, "canales", []):
+                if _c.__class__.__name__ == "WhatsAppNoOficial":
+                    _c.on_sesion_cerrada = _aviso_wa_cerrada
+        except Exception:  # noqa: BLE001
+            pass
+
+    # MANTENIMIENTO: registramos los canales del cliente (para avisar 'mantenimiento' si el Gestor se
+    # detiene) y, si venimos de un mantenimiento (flag pendiente), le avisamos que YA está disponible.
+    if wa and not os.environ.get("ITHOS_DEMO"):
+        notificadores_activos[cliente] = wa
+
+    # Aviso de cuota: por voz (el agente cae a edge si Gemini está caído) + canales.
+    def notificar_cuota(nivel, mensaje):
+        log.warning("[CUOTA %s] %s: %s", nivel, cliente, mensaje)
+        if wa:
+            try:
+                wa.enviar(mensaje, tipo=AV.SISTEMA)
+            except Exception:  # noqa: BLE001
+                pass
+        try:
+            asyncio.run_coroutine_threadsafe(
+                enviar({"accion": "decir", "texto": mensaje, "cachear": False}), loop)
+        except Exception:  # noqa: BLE001
+            pass
+
+    # IA + gestor de cuota del cliente (compartidos por triage y asistente).
+    gestor = ia_texto = asistente = None
+    ia = conf.get("ia")
+    gl = conf.get("integrador_glpi")
+    if ia:
+        gestor = Cuota.GestorCuota(
+            cliente, limite_diario=ia.get("limite_diario", 250),
+            avisar_en=ia.get("avisar_en", 15),
+            ilimitada=ia.get("ilimitada", False), notificar=notificar_cuota,
+            zona=conf.get("zona_horaria", "America/Argentina/Buenos_Aires"),
+            cadena=Cuota.cadena_cfg(ia))    # cadena REAL del cliente (gemini→cerebras→groq…), NO hardcodeada
+        from comun import ia as IA
+        ia_texto = IA.crear_texto({**ia, "idioma": conf.get("idioma", "es-AR")},
+                                  gestor=gestor)
+        # Asistente conversacional (voz/ITHOS + audio de WhatsApp). Multi-sistema:
+        # herramientas/acciones sobre el sistema de tickets del cliente (el que sea)
+        # + KB automática por cliente (aislada). Se arma si el cliente tiene tickets.
+        tiene_tickets = bool((conf.get("tickets") or {}).get("tipo") or
+                             (gl and gl.get("glpi_ithos_token")))
+        if tiene_tickets:
+            from comun import conversacion
+            from comun import memoria as MEM
+            herr = conversacion.herramientas_tickets(conf)
+            # avisar: cuando el admin cambia el estado de un ticket por voz/chat (en espera/cerrar/
+            # reabrir/posponer), se notifica al grupo de WhatsApp/canales (igual que el ciclo automático).
+            acc = conversacion.acciones_tickets(
+                conf, avisar=((lambda m: wa.enviar(m, tipo=AV.TICKETS)) if wa else None))
+            kb_dir = conf.get("kb_dir")
+            try:
+                import kb_auto
+                kb_dir = kb_dir or kb_auto.kb_dir(cliente)
+                kb_auto.refrescar_async(conf, cliente)   # regenera en background
+            except Exception:  # noqa: BLE001
+                pass
+            asistente = conversacion.Asistente(
+                ia_texto, herr, kb_dir=kb_dir, empresa=cliente,
+                memoria=MEM.Memoria(cliente), acciones=acc,
+                zona=conf.get("zona_horaria", "America/Argentina/Buenos_Aires"),
+                gestor=gestor, cfg_cliente=conf)
+
+            # Conversación en TODOS los canales del cliente (Telegram/Email/WhatsApp
+            # oficial), además del WhatsApp no-oficial. Misma mención, remitente y gateo.
+            def _voz(txt):
+                try:
+                    asyncio.run_coroutine_threadsafe(
+                        enviar({"accion": "decir", "texto": txt, "cachear": False}), loop)
+                except Exception:  # noqa: BLE001
+                    pass
+            if not os.environ.get("ITHOS_DEMO"):     # en demo los canales los maneja la demo
+                # WhatsApp NO-OFICIAL conversacional: engancha el asistente para que RESPONDA los
+                # mensajes/audios del grupo (antes SOLO posteaba tickets/reportes) y ENTRENE la voz
+                # del dueño (voz-id). Esto solo estaba en la demo -> en producción no contestaba.
+                def _wa_on_consulta(tipo, contenido, mime=None, remitente=None, ambito=None):
+                    try:
+                        if tipo == "audio" and hasattr(asistente, "responder_audio"):
+                            r = asistente.responder_audio(contenido, mime or "audio/ogg",
+                                                          canal="whatsapp", remitente=remitente,
+                                                          ambito=ambito)
+                            return r.get("respuesta", "") if isinstance(r, dict) else (r or "")
+                        return asistente.responder_texto(contenido, canal="whatsapp",
+                                                         remitente=remitente, ambito=ambito)
+                    except Exception as e:  # noqa: BLE001
+                        log.warning("WhatsApp consulta %s: %s", cliente, e)
+                        return ""
+
+                def _wa_entrenar_voz(audio_bytes, mime, remitente):
+                    # Solo los NÚMEROS del dueño entrenan la voz (voz-id). El grupo no.
+                    try:
+                        from comun import conocimiento as _K
+                        if not _K.esta_autorizado(remitente, "whatsapp"):
+                            return
+                        from comun import audio as _AUD, vozid as _V
+                        pcm = _AUD.decodificar(audio_bytes, mime, fs=16000)
+                        if len(pcm) == 0:
+                            return
+                        n, _suf, recien = _V.enrolar(pcm, fs=16000)
+                        log.info("[voz-id %s] muestra %d/%d de la voz del dueño", cliente, n,
+                                 _V.MIN_MUESTRAS)
+                        if recien:
+                            try:
+                                wa.enviar("Ya tengo suficientes muestras de tu voz. Reconocimiento "
+                                          "por voz ACTIVO: de acá en más verifico que seas vos.",
+                                          tipo=AV.VOZ)
+                            except Exception:  # noqa: BLE001
+                                pass
+                    except Exception as e:  # noqa: BLE001
+                        log.warning("voz-id %s: %s", cliente, e)
+
+                # PLANKA (solo INTELLIHELP): el asistente de WhatsApp primero intenta MOVER una
+                # tarjeta del tablero del equipo; si el mensaje no es sobre tareas, sigue el
+                # asistente normal. El trigger "ithos" ya lo aplicó el handler del grupo.
+                _planka = None
+                if conf.get("planka") and ia_texto:
+                    try:
+                        import planka_integrador as _PKI
+                        _planka = _PKI.PlankaIntegrador(
+                            conf["planka"], ia_texto,   # el OBJETO de IA (tiene .chat), no el dict de config
+                            zona=conf.get("zona_horaria", "America/Argentina/Buenos_Aires"))
+                    except Exception as e:  # noqa: BLE001
+                        log.warning("Planka integrador %s: %s", cliente, e)
+
+                def _consulta(tipo, contenido, mime, remitente=None, nombre=None, ambito=None,
+                              _orig=_wa_on_consulta, _pk=_planka):
+                    # Cada grupo tiene su ÁMBITO: en el del tablero sólo se habla de tareas, en el
+                    # de soporte sólo de tickets, y en el de consultas se puede todo. Así nadie
+                    # recibe lo que no le sirve ni pregunta donde no le van a contestar.
+                    from comun import ambitos as AMB
+                    tema = AMB.responde(ambito)
+                    # Planka primero: identifica al remitente por teléfono o, si WhatsApp lo ocultó
+                    # con un LID, por nombre (PushName). Si no es sobre el tablero, sigue el asistente.
+                    if (_pk is not None and tipo == "texto" and contenido
+                            and (remitente or nombre) and tema in (AMB.PLANKA, AMB.TODO)):
+                        try:
+                            r = _pk.interpretar(remitente, contenido, nombre)
+                            if r:
+                                return r
+                        except Exception as e:  # noqa: BLE001
+                            log.warning("Planka interpretar %s: %s", cliente, e)
+                    if tema == AMB.PLANKA:
+                        # Grupo del tablero: si el mensaje no era una orden de tareas, se dice
+                        # dónde preguntar en vez de contestar cualquier cosa.
+                        return AMB.fuera_de_alcance(AMB.PLANKA, getattr(_wa_canal, "grupos", []))
+                    return _orig(tipo, contenido, mime, remitente, ambito)
+
+                _wa_canal = None
+                try:
+                    for _c in getattr(wa, "canales", []):
+                        if _c.__class__.__name__ == "WhatsAppNoOficial":
+                            _wa_canal = _c
+                            _c.on_consulta = _consulta             # Planka primero, luego el asistente
+                            _c.on_audio = _wa_entrenar_voz         # entrena la voz del dueño
+                            _c.transcribir = asistente.ia.transcribir  # gatea audios por "ithos"
+                            _c.ia_cfg = conf.get("ia")             # nota de voz Charon->edge
+                            log.info("WhatsApp no-oficial CONVERSACIONAL activo para %s.", cliente)
+                except Exception as e:  # noqa: BLE001
+                    log.warning("No se pudo activar WhatsApp conversacional %s: %s", cliente, e)
+                if _planka is not None and _wa_canal is not None:
+                    tareas_extra.append(asyncio.create_task(
+                        _planka.vigilar(lambda t, tels: _wa_canal.enviar_mencion(
+                            t, tels, tipo=AV.PLANKA))))
+                    log.info("Planka integrador ARRANCADO para %s.", cliente)
+
+    # Integrador GLPI + triage (lado central).
+    if gl and gl.get("ubicacion", "central") == "central":
+        tri = None
+        if gl.get("glpi_ithos_token") and ia:
+            import triage as T
+            # El triage necesita la ZONA y el HORARIO de atención del cliente (tickets fuera de
+            # horario -> En espera + reapertura automática) y el NOMBRE (para agendar la reapertura).
+            gl["zona_horaria"] = conf.get("zona_horaria", "America/Argentina/Buenos_Aires")
+            gl["nombre_cliente"] = conf.get("nombre", "cliente")
+            if conf.get("horario_atencion"):
+                gl["horario_atencion"] = conf["horario_atencion"]
+            # TÉCNICOS del cliente: para @MENCIONAR por WhatsApp al que quedó ASIGNADO (solo a
+            # él) en los avisos del ticket y en la escalada por falta de respuesta del cliente.
+            if conf.get("tecnicos"):
+                gl["tecnicos"] = conf["tecnicos"]
+            tri = T.Triage(gl, ia, gestor=gestor)
+        tarea = asyncio.create_task(
+            integrador_glpi.vigilar(gl, enviar, triage=tri, wa=wa,
+                                    nombre_cliente=cliente))
+
+    # Reportes proactivos (diario/semanal/mensual) por los canales del cliente.
+    if conf.get("reportes", {}).get("enabled") and gl:
+        import reportes_programados as RP
+        tareas_extra.append(asyncio.create_task(RP.vigilar_reportes(conf, wa)))
+
+    # Proactivo: alerta de SLA por vencer (por cliente, por sus canales). OFF por defecto.
+    if conf.get("proactivo", {}).get("sla_enabled"):
+        import proactivo as PRO
+        tareas_extra.append(asyncio.create_task(PRO.vigilar_sla(conf, wa)))
+
+    # Base de conocimiento: se regenera SOLA una vez por semana (después de la semana laboral),
+    # sin que el cliente tenga que apretar el botón. ON por defecto (se apaga con kb.auto=false).
+    try:
+        import kb_auto as KB
+        tareas_extra.append(asyncio.create_task(KB.vigilar(conf)))
+    except Exception:  # noqa: BLE001
+        pass
+
+    # Anomalías de acceso por horario (por cliente). OFF por defecto; solo si el
+    # sistema de acceso hace control horario (HikCentral/BioStar2, autoconfig por API).
+    if conf.get("anomalias", {}).get("enabled"):
+        import anomalias as ANO
+        tareas_extra.append(asyncio.create_task(ANO.vigilar_anomalias(conf, wa)))
+
+
+    # Reactivador de tickets POSPUESTOS: pasa a EN CURSO los que llegaron a su día/hora.
+    try:
+        from comun import agenda as AGENDA
+        AGENDA.iniciar_reactivador(conf, avisar=lambda m: notificar_cuota("info", m))
+    except Exception:  # noqa: BLE001
+        pass
+
+    servicios[cliente] = {"tareas": [t for t in ([tarea] + tareas_extra) if t],
+                          "wa": wa, "asistente": asistente, "gestor": gestor}
+    log.info("Servicios de %s arrancados (%d tareas de fondo).",
+             cliente, len(servicios[cliente]["tareas"]))
+    return servicios[cliente]
+
+
+@app.on_event("startup")
+async def _arrancar_servicios_de_todos():
+    """Al arrancar el Gestor, le pone en marcha los servicios a CADA cliente registrado, sin
+    esperar a que se conecte su agente."""
+    for conf in registro.todos():
+        try:
+            await arrancar_servicios(conf)
+        except Exception as e:  # noqa: BLE001
+            log.warning("No pude arrancar los servicios de %s: %s", conf.get("nombre"), e)
+
+
 @app.websocket("/ws")
 async def ws(websocket: WebSocket):
     await websocket.accept()
     cliente = None
-    tarea = None
-    tareas_extra = []
-    loop = asyncio.get_running_loop()
+    tareas_extra = []          # SOLO tareas de esta conexión (saludo de inicio / 'disponible')
     try:
         auth = json.loads(await websocket.receive_text())
         if auth.get("tipo") != P.AUTH:
@@ -299,299 +614,47 @@ async def ws(websocket: WebSocket):
                  cliente, ag_ver, ag_proto, VER.GESTOR_VERSION,
                  "" if VER.compat_protocolo(ag_proto) else " · PROTOCOLO INCOMPATIBLE, actualizar agente")
 
+        # Los servicios del cliente (tickets, reportes, SLA, KB) ya están corriendo desde que
+        # arrancó el Gestor: acá sólo se engancha el agente para la voz y el control de acceso.
+        srv = await arrancar_servicios(conf)
+        wa, asistente = srv["wa"], srv["asistente"]
+
         async def enviar(cmd):
-            await websocket.send_json({"tipo": P.COMANDO, **cmd})
+            await enviar_a_agente(cliente, cmd)
 
-        # Canales de notificación del cliente (los que ELIGIÓ: whatsapp/telegram/
-        # email/teams/slack). Un solo objeto que manda a todos.
-        from comun import notificadores as NOTIF
-        from comun import ambitos as AV      # tipos de aviso -> a qué grupo va cada uno
-        # Sesión de WhatsApp ESTABLE y AISLADA por cliente (multi-tenant): el runtime usa EXACTAMENTE
-        # el mismo archivo que la vinculación por QR del panel/alta. Sin esto, dos clientes chocarían
-        # sobre 'wa_session.sqlite3' y lo vinculado no serviría para enviar.
-        try:
-            from comun import whatsapp_link as _WL
-            _archivo_wa = _WL.archivo_sesion(_WL.sesion_de_cliente(conf))
-            if isinstance(conf.get("whatsapp"), dict):
-                conf["whatsapp"]["session"] = _archivo_wa
-            for _n in conf.get("notificaciones", []) or []:
-                if (_n.get("tipo") or "").lower() in ("whatsapp", "whatsapp_no_oficial"):
-                    _n["session"] = _archivo_wa
-        except Exception:  # noqa: BLE001
-            pass
-        # En DEMO, el proceso de la demo maneja los canales externos (WhatsApp/Telegram/Email)
-        # de forma interactiva; el central NO los abre para no chocar con la MISMA sesión
-        # (p.ej. dos clientes neonize sobre el mismo WhatsApp). Sigue haciendo tickets/voz/consultas.
-        wa = None if os.environ.get("ITHOS_DEMO") else NOTIF.crear_notificadores(conf)
-        # Si la sesión de WhatsApp NO-OFICIAL se cierra/caduca (inactividad), avisamos por los OTROS
-        # canales + por voz, y el panel del cliente mostrará "sesión caducada" + "Volver a vincular".
-        if wa and not os.environ.get("ITHOS_DEMO"):
-            def _aviso_wa_cerrada():
-                msg = ("Se cerró la sesión de WhatsApp de ITHOS (probablemente por inactividad). "
-                       "Entrá al panel y tocá 'Volver a vincular' para escanear el QR de nuevo.")
-                log.warning("[WA %s] sesión cerrada: avisando por otros canales", cliente)
-                try:
-                    # El canal WhatsApp está caído (limpiamos _listo en el logout), así que enviar()
-                    # salta WhatsApp y entrega por los OTROS canales (email/telegram/etc).
-                    wa.enviar(msg, tipo=AV.SISTEMA)
-                except Exception:  # noqa: BLE001
-                    pass
-                try:
-                    asyncio.run_coroutine_threadsafe(
-                        enviar({"accion": "decir", "texto": msg, "cachear": False}), loop)
-                except Exception:  # noqa: BLE001
-                    pass
-            try:
-                for _c in getattr(wa, "canales", []):
-                    if _c.__class__.__name__ == "WhatsAppNoOficial":
-                        _c.on_sesion_cerrada = _aviso_wa_cerrada
-            except Exception:  # noqa: BLE001
-                pass
-
-        # MANTENIMIENTO: registramos los canales del cliente (para avisar 'mantenimiento' si el Gestor se
-        # detiene) y, si venimos de un mantenimiento (flag pendiente), le avisamos que YA está disponible.
-        if wa and not os.environ.get("ITHOS_DEMO"):
-            notificadores_activos[cliente] = wa
-            if cliente in _flags_mantenimiento():
-                # 'Disponible' se avisa cuando algún canal esté REALMENTE activo (WhatsApp tarda ~10s en
-                # conectar): si lo mandáramos ya, en un cliente WhatsApp-only se perdería. Espera hasta 30s.
-                async def _avisar_disponible():
-                    for _ in range(30):
-                        try:
-                            if wa.hay_activo():
-                                break
-                        except Exception:  # noqa: BLE001
-                            pass
-                        await asyncio.sleep(1)
-                    try:
-                        await asyncio.to_thread(lambda: wa.enviar(MSG_DISPONIBLE, tipo=AV.SISTEMA))
-                        log.info("Mantenimiento: avisado 'disponible' a %s.", cliente)
-                    except Exception:  # noqa: BLE001
-                        pass
-                    _set_flag_mantenimiento(cliente, False)
-                tareas_extra.append(asyncio.create_task(_avisar_disponible()))
-
-        # Aviso de cuota: por voz (el agente cae a edge si Gemini está caído) + canales.
-        def notificar_cuota(nivel, mensaje):
-            log.warning("[CUOTA %s] %s: %s", nivel, cliente, mensaje)
-            if wa:
-                try:
-                    wa.enviar(mensaje, tipo=AV.SISTEMA)
-                except Exception:  # noqa: BLE001
-                    pass
-            try:
-                asyncio.run_coroutine_threadsafe(
-                    enviar({"accion": "decir", "texto": mensaje, "cachear": False}), loop)
-            except Exception:  # noqa: BLE001
-                pass
-
-        # IA + gestor de cuota del cliente (compartidos por triage y asistente).
-        gestor = ia_texto = asistente = None
-        ia = conf.get("ia")
-        gl = conf.get("integrador_glpi")
-        if ia:
-            gestor = Cuota.GestorCuota(
-                cliente, limite_diario=ia.get("limite_diario", 250),
-                avisar_en=ia.get("avisar_en", 15),
-                ilimitada=ia.get("ilimitada", False), notificar=notificar_cuota,
-                zona=conf.get("zona_horaria", "America/Argentina/Buenos_Aires"),
-                cadena=Cuota.cadena_cfg(ia))    # cadena REAL del cliente (gemini→cerebras→groq…), NO hardcodeada
-            from comun import ia as IA
-            ia_texto = IA.crear_texto({**ia, "idioma": conf.get("idioma", "es-AR")},
-                                      gestor=gestor)
-            # Asistente conversacional (voz/ITHOS + audio de WhatsApp). Multi-sistema:
-            # herramientas/acciones sobre el sistema de tickets del cliente (el que sea)
-            # + KB automática por cliente (aislada). Se arma si el cliente tiene tickets.
-            tiene_tickets = bool((conf.get("tickets") or {}).get("tipo") or
-                                 (gl and gl.get("glpi_ithos_token")))
-            if tiene_tickets:
-                from comun import conversacion
-                from comun import memoria as MEM
-                herr = conversacion.herramientas_tickets(conf)
-                # avisar: cuando el admin cambia el estado de un ticket por voz/chat (en espera/cerrar/
-                # reabrir/posponer), se notifica al grupo de WhatsApp/canales (igual que el ciclo automático).
-                acc = conversacion.acciones_tickets(
-                    conf, avisar=((lambda m: wa.enviar(m, tipo=AV.TICKETS)) if wa else None))
-                kb_dir = conf.get("kb_dir")
-                try:
-                    import kb_auto
-                    kb_dir = kb_dir or kb_auto.kb_dir(cliente)
-                    kb_auto.refrescar_async(conf, cliente)   # regenera en background
-                except Exception:  # noqa: BLE001
-                    pass
-                asistente = conversacion.Asistente(
-                    ia_texto, herr, kb_dir=kb_dir, empresa=cliente,
-                    memoria=MEM.Memoria(cliente), acciones=acc,
-                    zona=conf.get("zona_horaria", "America/Argentina/Buenos_Aires"),
-                    gestor=gestor)
-
-                # Conversación en TODOS los canales del cliente (Telegram/Email/WhatsApp
-                # oficial), además del WhatsApp no-oficial. Misma mención, remitente y gateo.
-                def _voz(txt):
-                    try:
-                        asyncio.run_coroutine_threadsafe(
-                            enviar({"accion": "decir", "texto": txt, "cachear": False}), loop)
-                    except Exception:  # noqa: BLE001
-                        pass
-                if not os.environ.get("ITHOS_DEMO"):     # en demo los canales los maneja la demo
-                    # WhatsApp NO-OFICIAL conversacional: engancha el asistente para que RESPONDA los
-                    # mensajes/audios del grupo (antes SOLO posteaba tickets/reportes) y ENTRENE la voz
-                    # del dueño (voz-id). Esto solo estaba en la demo -> en producción no contestaba.
-                    def _wa_on_consulta(tipo, contenido, mime=None, remitente=None, ambito=None):
-                        try:
-                            if tipo == "audio" and hasattr(asistente, "responder_audio"):
-                                r = asistente.responder_audio(contenido, mime or "audio/ogg",
-                                                              canal="whatsapp", remitente=remitente,
-                                                              ambito=ambito)
-                                return r.get("respuesta", "") if isinstance(r, dict) else (r or "")
-                            return asistente.responder_texto(contenido, canal="whatsapp",
-                                                             remitente=remitente, ambito=ambito)
-                        except Exception as e:  # noqa: BLE001
-                            log.warning("WhatsApp consulta %s: %s", cliente, e)
-                            return ""
-
-                    def _wa_entrenar_voz(audio_bytes, mime, remitente):
-                        # Solo los NÚMEROS del dueño entrenan la voz (voz-id). El grupo no.
-                        try:
-                            from comun import conocimiento as _K
-                            if not _K.esta_autorizado(remitente, "whatsapp"):
-                                return
-                            from comun import audio as _AUD, vozid as _V
-                            pcm = _AUD.decodificar(audio_bytes, mime, fs=16000)
-                            if len(pcm) == 0:
-                                return
-                            n, _suf, recien = _V.enrolar(pcm, fs=16000)
-                            log.info("[voz-id %s] muestra %d/%d de la voz del dueño", cliente, n,
-                                     _V.MIN_MUESTRAS)
-                            if recien:
-                                try:
-                                    wa.enviar("Ya tengo suficientes muestras de tu voz. Reconocimiento "
-                                              "por voz ACTIVO: de acá en más verifico que seas vos.",
-                                              tipo=AV.VOZ)
-                                except Exception:  # noqa: BLE001
-                                    pass
-                        except Exception as e:  # noqa: BLE001
-                            log.warning("voz-id %s: %s", cliente, e)
-
-                    # PLANKA (solo INTELLIHELP): el asistente de WhatsApp primero intenta MOVER una
-                    # tarjeta del tablero del equipo; si el mensaje no es sobre tareas, sigue el
-                    # asistente normal. El trigger "ithos" ya lo aplicó el handler del grupo.
-                    _planka = None
-                    if conf.get("planka") and ia_texto:
-                        try:
-                            import planka_integrador as _PKI
-                            _planka = _PKI.PlankaIntegrador(
-                                conf["planka"], ia_texto,   # el OBJETO de IA (tiene .chat), no el dict de config
-                                zona=conf.get("zona_horaria", "America/Argentina/Buenos_Aires"))
-                        except Exception as e:  # noqa: BLE001
-                            log.warning("Planka integrador %s: %s", cliente, e)
-
-                    def _consulta(tipo, contenido, mime, remitente=None, nombre=None, ambito=None,
-                                  _orig=_wa_on_consulta, _pk=_planka):
-                        # Cada grupo tiene su ÁMBITO: en el del tablero sólo se habla de tareas, en el
-                        # de soporte sólo de tickets, y en el de consultas se puede todo. Así nadie
-                        # recibe lo que no le sirve ni pregunta donde no le van a contestar.
-                        from comun import ambitos as AMB
-                        tema = AMB.responde(ambito)
-                        # Planka primero: identifica al remitente por teléfono o, si WhatsApp lo ocultó
-                        # con un LID, por nombre (PushName). Si no es sobre el tablero, sigue el asistente.
-                        if (_pk is not None and tipo == "texto" and contenido
-                                and (remitente or nombre) and tema in (AMB.PLANKA, AMB.TODO)):
-                            try:
-                                r = _pk.interpretar(remitente, contenido, nombre)
-                                if r:
-                                    return r
-                            except Exception as e:  # noqa: BLE001
-                                log.warning("Planka interpretar %s: %s", cliente, e)
-                        if tema == AMB.PLANKA:
-                            # Grupo del tablero: si el mensaje no era una orden de tareas, se dice
-                            # dónde preguntar en vez de contestar cualquier cosa.
-                            return AMB.fuera_de_alcance(AMB.PLANKA, getattr(_wa_canal, "grupos", []))
-                        return _orig(tipo, contenido, mime, remitente, ambito)
-
-                    _wa_canal = None
-                    try:
-                        for _c in getattr(wa, "canales", []):
-                            if _c.__class__.__name__ == "WhatsAppNoOficial":
-                                _wa_canal = _c
-                                _c.on_consulta = _consulta             # Planka primero, luego el asistente
-                                _c.on_audio = _wa_entrenar_voz         # entrena la voz del dueño
-                                _c.transcribir = asistente.ia.transcribir  # gatea audios por "ithos"
-                                _c.ia_cfg = conf.get("ia")             # nota de voz Charon->edge
-                                log.info("WhatsApp no-oficial CONVERSACIONAL activo para %s.", cliente)
-                    except Exception as e:  # noqa: BLE001
-                        log.warning("No se pudo activar WhatsApp conversacional %s: %s", cliente, e)
-                    if _planka is not None and _wa_canal is not None:
-                        tareas_extra.append(asyncio.create_task(
-                            _planka.vigilar(lambda t, tels: _wa_canal.enviar_mencion(
-                                t, tels, tipo=AV.PLANKA))))
-                        log.info("Planka integrador ARRANCADO para %s.", cliente)
-
-        # Integrador GLPI + triage (lado central).
-        if gl and gl.get("ubicacion", "central") == "central":
-            tri = None
-            if gl.get("glpi_ithos_token") and ia:
-                import triage as T
-                # El triage necesita la ZONA y el HORARIO de atención del cliente (tickets fuera de
-                # horario -> En espera + reapertura automática) y el NOMBRE (para agendar la reapertura).
-                gl["zona_horaria"] = conf.get("zona_horaria", "America/Argentina/Buenos_Aires")
-                gl["nombre_cliente"] = conf.get("nombre", "cliente")
-                if conf.get("horario_atencion"):
-                    gl["horario_atencion"] = conf["horario_atencion"]
-                # TÉCNICOS del cliente: para @MENCIONAR por WhatsApp al que quedó ASIGNADO (solo a
-                # él) en los avisos del ticket y en la escalada por falta de respuesta del cliente.
-                if conf.get("tecnicos"):
-                    gl["tecnicos"] = conf["tecnicos"]
-                tri = T.Triage(gl, ia, gestor=gestor)
-            tarea = asyncio.create_task(
-                integrador_glpi.vigilar(gl, enviar, triage=tri, wa=wa,
-                                        nombre_cliente=cliente))
-
-        # Reportes proactivos (diario/semanal/mensual) por los canales del cliente.
-        if conf.get("reportes", {}).get("enabled") and gl:
-            import reportes_programados as RP
-            tareas_extra.append(asyncio.create_task(RP.vigilar_reportes(conf, wa)))
-
-        # Proactivo: alerta de SLA por vencer (por cliente, por sus canales). OFF por defecto.
-        if conf.get("proactivo", {}).get("sla_enabled"):
-            import proactivo as PRO
-            tareas_extra.append(asyncio.create_task(PRO.vigilar_sla(conf, wa)))
-
-        # Base de conocimiento: se regenera SOLA una vez por semana (después de la semana laboral),
-        # sin que el cliente tenga que apretar el botón. ON por defecto (se apaga con kb.auto=false).
-        try:
-            import kb_auto as KB
-            tareas_extra.append(asyncio.create_task(KB.vigilar(conf)))
-        except Exception:  # noqa: BLE001
-            pass
-
-        # Anomalías de acceso por horario (por cliente). OFF por defecto; solo si el
-        # sistema de acceso hace control horario (HikCentral/BioStar2, autoconfig por API).
-        if conf.get("anomalias", {}).get("enabled"):
-            import anomalias as ANO
-            tareas_extra.append(asyncio.create_task(ANO.vigilar_anomalias(conf, wa)))
-
-        # AVISO PROACTIVO de INICIO: apenas conecta el agente, ITHOS saluda solo por los
-        # canales del cliente (WhatsApp/Telegram/Email), sin que se lo pidan.
+        # AVISO PROACTIVO de INICIO: apenas conecta el agente, ITHOS saluda por los canales.
         async def _aviso_inicio():
             await asyncio.sleep(12)          # dar tiempo a que WhatsApp se vincule
             try:
                 from comun import conversacion as CV
+                from comun import ambitos as AV
                 texto_inicio = CV.mensaje_inicio(
                     cliente, ia_disponible=True,
-                    zona=conf.get("zona_horaria", "America/Argentina/Buenos_Aires"), gestor=gestor)
+                    zona=conf.get("zona_horaria", "America/Argentina/Buenos_Aires"),
+                    gestor=srv["gestor"])
                 await asyncio.to_thread(lambda: wa.enviar(texto_inicio, tipo=AV.SISTEMA))
             except Exception:  # noqa: BLE001
                 pass
         if wa:
             tareas_extra.append(asyncio.create_task(_aviso_inicio()))
-
-        # Reactivador de tickets POSPUESTOS: pasa a EN CURSO los que llegaron a su día/hora.
-        try:
-            from comun import agenda as AGENDA
-            AGENDA.iniciar_reactivador(conf, avisar=lambda m: notificar_cuota("info", m))
-        except Exception:  # noqa: BLE001
-            pass
+        # Si veníamos de un MANTENIMIENTO, avisarle que ya está disponible.
+        if wa and not os.environ.get("ITHOS_DEMO") and cliente in _flags_mantenimiento():
+            async def _avisar_disponible():
+                from comun import ambitos as AV
+                for _ in range(30):
+                    try:
+                        if wa.hay_activo():
+                            break
+                    except Exception:  # noqa: BLE001
+                        pass
+                    await asyncio.sleep(1)
+                try:
+                    await asyncio.to_thread(lambda: wa.enviar(MSG_DISPONIBLE, tipo=AV.SISTEMA))
+                    log.info("Mantenimiento: avisado 'disponible' a %s.", cliente)
+                except Exception:  # noqa: BLE001
+                    pass
+                _set_flag_mantenimiento(cliente, False)
+            tareas_extra.append(asyncio.create_task(_avisar_disponible()))
 
         while True:
             msg = json.loads(await websocket.receive_text())
@@ -656,8 +719,9 @@ async def ws(websocket: WebSocket):
     except Exception as e:  # noqa: BLE001
         log.warning("Error en sesión %s: %s", cliente, e)
     finally:
-        if tarea:
-            tarea.cancel()
+        # Se cancelan SOLO las tareas propias de esta conexión (el saludo de inicio, el aviso de
+        # 'disponible'). Los servicios del cliente —tickets, reportes, SLA, KB— siguen corriendo:
+        # no tienen nada que ver con que su agente esté prendido.
         for t in tareas_extra:
             t.cancel()
         if cliente and conexiones.get(cliente) is websocket:
