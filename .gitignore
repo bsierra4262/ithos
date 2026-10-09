@@ -15,6 +15,7 @@ ITHOS/agente/config.json
 ITHOS/agente/config.json.bak-*
 **/_gestor_admin.token
 **/_gestor_admin.hash
+**/_gestor_sesiones.corte
 **/_gestor_master.key
 **/_alta_tokens.json
 **/alta_tokens.json
