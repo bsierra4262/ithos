@@ -7,6 +7,13 @@ y el versionado, [SemVer](https://semver.org/lang/es/).
 ## [Unreleased]
 
 ### Fixed
+- **Cada cliente nuevo nacía consultando la mesa de ayuda cada 5 segundos.** El valor estaba fijo en
+  el panel (`_armar_cliente`), en el ejemplo de configuración y en la de INTELLIHELP: **17.280
+  vueltas por día** contra GLPI para atender un puñado de tickets, y cada vuelta lee los tickets,
+  sus seguimientos y consulta la IA. Ese ritmo, además, hacía que GLPI escribiera una fila de
+  registro por cada llamada a su API: su base llegó a **2.045 MB de log (9,4 millones de filas)**
+  para 577 tickets, y ya se había llenado una vez. Ahora el valor por defecto —en el panel, en el
+  ejemplo y en el propio integrador— es de **60 segundos**.
 - **El ciclo leía sólo los 50 primeros seguimientos de un ticket, y eso derivó en 19.555
   recordatorios duplicados.** La API de GLPI devuelve **50 ítems** cuando no se le pasa `range`, y
   lo hace **sin avisar**: no hay error ni bandera de "hay más". El ciclo pedía
