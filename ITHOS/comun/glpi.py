@@ -141,6 +141,47 @@ class GLPIClient:
         return out
 
 
+# ------------------------------------------------- lectura COMPLETA (la API de GLPI capa en 50)
+def pagina_todo(cliente, recurso, tam=500, tope=100000):
+    """TODO un recurso (o sub-recurso) paginando hasta el final.
+
+    POR QUÉ EXISTE: la API de GLPI devuelve **50 ítems** cuando no se le pasa `range`, y lo hace
+    SIN avisar —no hay error ni bandera de 'hay más'—. Un `/Ticket/<id>/ITILFollowup` a secas trae
+    los 50 seguimientos MÁS VIEJOS y oculta el resto. Eso rompió el ciclo de vida en producción:
+    pasados los 50 seguimientos, ITHOS dejaba de ver lo último que había pasado en el ticket
+    —incluida su propia respuesta del día— y repetía el recordatorio diario en CADA vuelta del
+    ciclo. En seis horas escribió 1.269 comentarios en un mismo ticket, y 10.525 en otro.
+
+    Toma el CLIENTE por parámetro (no es un método) a propósito: le sirve a cualquier cosa que
+    sepa hacer `request()`, sin obligar a quien lo llame a tener una clase en particular.
+
+    Se avanza por lo que DEVUELVE la página, no por lo que se pidió: si GLPI acota el rango por
+    configuración, dar el salto por sentado dejaría el histórico cortado a la mitad en silencio."""
+    sep = "&" if "?" in recurso else "?"
+    out, inicio = [], 0
+    while True:
+        chunk = cliente.request(f"{recurso}{sep}range={inicio}-{inicio + tam - 1}")
+        if not isinstance(chunk, list) or not chunk:
+            break
+        out.extend(chunk)
+        if len(chunk) < tam:                 # última página incompleta -> no hay más
+            break
+        inicio += len(chunk)                 # por lo DEVUELTO, no por lo pedido
+        if inicio >= tope:                   # red de seguridad (nunca un bucle infinito)
+            log.warning("pagina_todo(%s): corté en %d ítems (tope).", recurso, inicio)
+            break
+    return out
+
+
+def followups(cliente, tid):
+    """TODOS los seguimientos del ticket, no los 50 que devuelve GLPI por omisión.
+
+    El ciclo de vida DECIDE con esta lista (si el cliente respondió, si ya se pidió la
+    confirmación, cuándo salió el último recordatorio): tiene que estar COMPLETA, o las decisiones
+    se toman sobre un ticket congelado en el pasado."""
+    return [f for f in pagina_todo(cliente, f"/Ticket/{int(tid)}/ITILFollowup")
+            if isinstance(f, dict)]
+
 # ---------------------------------------------------------------- POOL de sesiones
 # Se mantiene UNA sesión VIVA por (URL, token/rol) y se REUSA siempre (no se abre/cierra en
 # cada llamada -> más rápido y no se agotan sesiones). Si expira, request() la reabre sola.

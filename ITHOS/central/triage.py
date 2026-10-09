@@ -505,15 +505,24 @@ class Triage:
             self.cli.cerrar()
 
     def _followup(self, tid, texto):
-        # NO FATAL: si GLPI rechaza el followup (p. ej. el usuario MySQL de GLPI sin permiso INSERT en
-        # glpi_itilfollowups), NO abortamos el cambio de estado que hace el caller (en espera / cerrar /
-        # etc.). El comentario no se agrega, pero el ESTADO del ticket igual queda correcto.
+        """Agrega el comentario. Devuelve True si GLPI lo ACEPTÓ, False si lo rechazó.
+
+        NO FATAL: si GLPI rechaza el followup (p. ej. el usuario MySQL de GLPI sin permiso INSERT en
+        glpi_itilfollowups), NO abortamos el cambio de estado que hace el caller (en espera / cerrar /
+        etc.). El comentario no se agrega, pero el ESTADO del ticket igual queda correcto.
+
+        PERO EL RESULTADO SE DEVUELVE, y eso importa: los avisos al cliente se espacian mirando el
+        ÚLTIMO comentario que quedó EN EL TICKET. Si acá se traga el error y el caller contesta que
+        mandó algo que nunca se escribió, el ciclo cree que el aviso salió, el ticket no cambia, y en
+        la vuelta siguiente lo vuelve a intentar. Para siempre. Que el caller sepa la verdad."""
         try:
             self.cli.request("/ITILFollowup", "POST",
                              {"input": {"itemtype": "Ticket", "items_id": tid, "content": texto}})
+            return True
         except Exception as e:  # noqa: BLE001
             log.warning("No pude agregar el comentario a #%s (¿permiso INSERT de GLPI en "
                         "glpi_itilfollowups?): %s", tid, str(e)[:120])
+            return False
 
     def nota_interna(self, tid, texto):
         """Followup PRIVADO (is_private=1): SOLO lo ven los TÉCNICOS (el cliente no). Abre y cierra su
@@ -538,8 +547,7 @@ class Triage:
         eso. Mantiene el ticket EN ESPERA (SLA pausado)."""
         try:
             self.cli.abrir()
-            self._followup(tid, _texto_recordatorio_espera(motivo))
-            return True
+            return self._followup(tid, _texto_recordatorio_espera(motivo))
         except Exception:  # noqa: BLE001
             return False
         finally:
@@ -555,11 +563,10 @@ class Triage:
         """Ticket resuelto: ITHOS pide al cliente que confirme antes de cerrar."""
         try:
             self.cli.abrir()
-            self._followup(tid, "Le informamos que su solicitud fue resuelta. Por "
-                           "favor, confírmenos si ya puede fichar con normalidad para "
-                           "cerrar el ticket; si el inconveniente persiste, respóndanos "
-                           "y lo reabrimos de inmediato. Saludos, Soporte ITH.")
-            return True
+            return self._followup(
+                tid, "Le informamos que su solicitud fue resuelta. Por favor, confírmenos si ya "
+                     "puede fichar con normalidad para cerrar el ticket; si el inconveniente "
+                     "persiste, respóndanos y lo reabrimos de inmediato. Saludos, Soporte ITH.")
         except Exception:  # noqa: BLE001
             return False
         finally:
@@ -571,10 +578,10 @@ class Triage:
         de los recordatorios falsos de 'EN ESPERA de datos' que no se envían."""
         try:
             self.cli.abrir()
-            self._followup(tid, "Le recordamos que su ticket figura como resuelto. Por favor "
-                           "confírmenos si ya puede fichar con normalidad para cerrarlo; si el "
-                           "inconveniente continúa, respóndanos y lo reabrimos. Soporte ITH.")
-            return True
+            return self._followup(
+                tid, "Le recordamos que su ticket figura como resuelto. Por favor confírmenos si "
+                     "ya puede fichar con normalidad para cerrarlo; si el inconveniente continúa, "
+                     "respóndanos y lo reabrimos. Soporte ITH.")
         except Exception:  # noqa: BLE001
             return False
         finally:

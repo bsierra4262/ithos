@@ -117,7 +117,7 @@ class _ClienteFalso:
     session = "s"
 
     def request(self, path, *a, **k):
-        if path.endswith("/ITILFollowup"):
+        if "/ITILFollowup" in path:
             return COMENTARIO
         if path.startswith("/Ticket/674"):
             return TICKET
@@ -278,7 +278,7 @@ PEND = [{"id": 910, "users_id": 7, "is_private": 0,
 
 class _ClientePend(_ClienteFalso):
     def request(self, path, *a, **k):
-        if path.endswith("/ITILFollowup"):
+        if "/ITILFollowup" in path:
             return PEND
         return super().request(path, *a, **k)
 
@@ -316,10 +316,10 @@ class _ClienteSol_:
         self.estado_sol, self.status = estado_sol, status
 
     def request(self, path, *a, **k):
-        if path.endswith("/ITILSolution"):
+        if "/ITILSolution" in path:
             return [{"id": 7, "users_id": 28, "status": ESTADO_SOL_[self.estado_sol],
                      "content": "Se recalibró el lector."}]
-        if path.endswith("/ITILFollowup"):
+        if "/ITILFollowup" in path:
             return [{"id": 800, "users_id": 28, "is_private": 0,
                      "content": "Confírmenos si ya puede fichar. " + CI._MARCA_CONFIRMACION
                                 + " " + CI._MARCA_ESPERA_CLIENTE,
@@ -344,7 +344,7 @@ class _SinSolucion(_ClienteSol_):
         super().__init__("pendiente")
 
     def request(self, path, *a, **k):
-        if path.endswith("/ITILSolution"):
+        if "/ITILSolution" in path:
             return []
         return super().request(path, *a, **k)
 
@@ -454,10 +454,10 @@ class _ClienteSol:
         self.estado_sol = estado_sol
 
     def request(self, path, *a, **k):
-        if path.endswith("/ITILSolution"):
+        if "/ITILSolution" in path:
             return [{"id": 7, "users_id": 7, "status": ESTADO_SOL[self.estado_sol],
                      "content": "Se recalibró el lector."}]
-        if path.endswith("/ITILFollowup"):
+        if "/ITILFollowup" in path:
             return [{"id": 800, "users_id": 28, "is_private": 0,
                      "content": "Le informamos que su solicitud fue resuelta. "
                                 + CI._MARCA_CONFIRMACION,

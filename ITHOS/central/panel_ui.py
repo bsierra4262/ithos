@@ -135,7 +135,7 @@ function formHTML(c,admin){
    <div class="f full" id=tkHost></div>
 
    <div class=sec><span>Canales · dónde te habla y le hablás</span><button class="btn sm" type=button onclick="addCanal()">＋ Agregar canal</button></div>
-   <div class="f full hint">Por dónde ITHOS te avisa y vos le escribís o le mandás un audio: WhatsApp, Telegram, Email, Microsoft Teams, Slack o Matrix/Element. En WhatsApp, Telegram, Email y Matrix también podés <b>pedirle acciones</b> (leer, cerrar, asignar o posponer un ticket).</div>
+   <div class="f full hint">Por dónde ITHOS te avisa y vos le escribís o le mandás un audio. Hoy el canal disponible es <b>WhatsApp</b>, con un grupo por tema: ahí mismo podés <b>pedirle acciones</b> (leer, cerrar, asignar o posponer un ticket) por texto o por audio.</div>
    <div class="f full" id=canalesHost></div>
 
    <div class=sec><span>Control de acceso · portero por voz</span></div>

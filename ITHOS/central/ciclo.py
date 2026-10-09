@@ -174,6 +174,34 @@ def _espera_pendiente(fu, tecs=None):
     return fechas[0], fechas[-1], motivo
 
 
+# Tope ABSOLUTO de recordatorios que ITHOS puede dejarle a un cliente en UN MISMO ticket.
+# El espaciado real es "uno por día hábil" y la escalada al técnico salta a los 5 días: un ticket
+# sano nunca se acerca a este número. Es una red, no una regla de negocio — existe porque el
+# espaciado depende de leer bien el ticket, y cuando esa lectura falló (la API de GLPI devolvía
+# sólo los 50 seguimientos más viejos) el ciclo escribió 1.269 comentarios en seis horas y 10.525
+# en otro. Pase lo que pase río arriba, de acá no pasa: se deja de insistir y se avisa al equipo.
+_TOPE_RECORDATORIOS = 30
+
+
+def _cuantos_recordatorios(fu, tecs=None):
+    """Cuántos recordatorios (de espera o de confirmación) lleva ya el ticket."""
+    return sum(1 for f in fu
+               if int(f.get("users_id") or 0) in (tecs or TECNICOS)
+               and not int(f.get("is_private") or 0)
+               and (_MARCA_RECORDATORIO_ESPERA in str(f.get("content", "")).lower()
+                    or _MARCA_RECORDATORIO in str(f.get("content", "")).lower()))
+
+
+def _puede_recordar(fu, tid, tecs=None):
+    """False si el ticket YA superó el tope de recordatorios. Se loguea una sola vez por vuelta."""
+    n = _cuantos_recordatorios(fu, tecs)
+    if n < _TOPE_RECORDATORIOS:
+        return True
+    log.error("Ciclo #%s: %d recordatorios en el ticket (tope %d). NO le escribo más al cliente — "
+              "revisar por qué el espaciado diario no está funcionando.", tid, n, _TOPE_RECORDATORIOS)
+    return False
+
+
 def _ya_escalo_espera(fu):
     """True si ITHOS ya avisó al técnico (nota interna) que el cliente no responde. Lee GLPI, no la
     memoria -> no se repite la escalada tras un reinicio."""
@@ -292,7 +320,7 @@ def _followups_por_ticket(cliente, tam=2000):
                     mapa.setdefault(int(f.get("items_id") or 0), []).append(f)
         if len(chunk) < tam:                 # última página incompleta -> no hay más
             break
-        inicio += tam
+        inicio += len(chunk)                 # por lo DEVUELTO, no por lo pedido (GLPI puede acotar)
         if inicio > 1000000:                 # tope de seguridad
             break
     # Red de seguridad: si vimos followups pero NINGUNO mapeó a un Ticket (campos inesperados),
@@ -360,8 +388,9 @@ def gestionar_ciclo(cliente, triage, entidad, estado):
             fu = fu_map.get(int(t["id"]), [])
         else:
             try:
-                fu = [f for f in cliente.request(f"/Ticket/{t['id']}/ITILFollowup")
-                      if isinstance(f, dict)]
+                # `followups()` PAGINA: sin `range` la API de GLPI devuelve sólo los 50 más VIEJOS
+                # y el ciclo decidía sobre un ticket congelado en el pasado (ver comun/glpi.py).
+                fu = G.followups(cliente, t["id"])
             except Exception:  # noqa: BLE001
                 continue
         st = estado.setdefault(tid, {})
@@ -533,7 +562,8 @@ def gestionar_ciclo(cliente, triage, entidad, estado):
                     ahora = _ahora_local(cfg)
                     # El recordatorio sale DENTRO del horario de atención del cliente (default
                     # Lun-Vie 09:00-18:00, su zona): nunca de noche ni un fin de semana. Uno por día.
-                    if en_horario_atencion(cfg) and ultimo.date() < ahora.date():
+                    if (en_horario_atencion(cfg) and ultimo.date() < ahora.date()
+                            and _puede_recordar(fu, t["id"], tecs)):
                         if triage.recordar_espera(t["id"], motivo):
                             log.info("Ciclo #%s: recordatorio diario al cliente (%s; en espera "
                                      "desde %s).", t["id"], motivo, primero.date())
@@ -620,6 +650,7 @@ def gestionar_ciclo(cliente, triage, entidad, estado):
                 # cerrar (status 6) el ticket sale del ciclo y no se recuerda más.
                 ult = _ultimo_aviso_confirmacion(fu)
                 if (ult and en_horario_atencion(cfg)
-                        and ult.date() < _ahora_local(cfg).date()):
+                        and ult.date() < _ahora_local(cfg).date()
+                        and _puede_recordar(fu, t["id"], tecs)):
                     triage.recordar_confirmacion(t["id"])
     return anuncios

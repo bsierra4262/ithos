@@ -6,6 +6,35 @@ y el versionado, [SemVer](https://semver.org/lang/es/).
 
 ## [Unreleased]
 
+### Fixed
+- **El ciclo leía sólo los 50 primeros seguimientos de un ticket, y eso derivó en 19.555
+  recordatorios duplicados.** La API de GLPI devuelve **50 ítems** cuando no se le pasa `range`, y
+  lo hace **sin avisar**: no hay error ni bandera de "hay más". El ciclo pedía
+  `/Ticket/<id>/ITILFollowup` a secas, así que mientras el ticket tenía menos de 50 seguimientos
+  todo funcionaba —un recordatorio por día hábil, que es lo diseñado— pero **el día que cruzaba los
+  50**, la API empezaba a devolver siempre los 50 **más viejos**. Desde ahí el "último aviso" que
+  calculaba el ciclo quedaba congelado en el pasado, el control de "uno por día" daba siempre que
+  sí, y salía un recordatorio **en cada vuelta del ciclo** (cada 5 segundos); cada uno empujaba la
+  ventana más lejos, así que se realimentaba solo. En producción escribió **1.269 comentarios en un
+  ticket en seis horas**, y **10.525** en otro, todos visibles para el cliente. Peor todavía: el
+  ciclo decide **todo** con esa misma lista —si el cliente respondió, si ya se pidió la
+  confirmación, si ya se escaló—, así que pasados los 50 seguimientos **ITHOS dejaba de ver lo que
+  contestaba el cliente** y el ticket no podía avanzar nunca más. Ahora los seguimientos se leen
+  **paginados y completos** (`comun/glpi.py: followups()` / `pagina_todo()`, que avanzan por lo que
+  GLPI **devuelve** y no por lo que se pidió) y hay un **tope absoluto de 30 recordatorios por
+  ticket**: una red para que ningún error futuro en el espaciado pueda volver a inundar al cliente
+  —se deja de insistir y se avisa al equipo en el log—.
+- **`recordar_espera()` decía que había enviado un aviso que GLPI había rechazado.** El envío del
+  comentario es "no fatal" a propósito (si GLPI lo rechaza, el ticket igual tiene que quedar con el
+  estado correcto), pero el error se tragaba **y además se devolvía `True`**. El ciclo entonces
+  registraba "recordatorio enviado", el ticket no cambiaba, y en la vuelta siguiente lo volvía a
+  intentar; para siempre. Se vio con GLPI caído tres horas: 187 recordatorios "enviados" por hora
+  que nunca existieron. Ahora `_followup()` devuelve si GLPI **aceptó** la escritura, y
+  `recordar_espera()`, `recordar_confirmacion()` y `pedir_confirmacion()` propagan esa verdad.
+- **El texto del panel prometía canales que no existen.** La ayuda del formulario decía que ITHOS
+  avisa por WhatsApp, Telegram, Email, Teams, Slack o Matrix; el único canal implementado —y el
+  único que el formulario ofrece— es **WhatsApp**. El texto ahora dice lo que el software hace.
+
 ### Added
 - **Los grupos por tema se configuran desde el panel.** Hasta ahora los grupos de WhatsApp y su
   ámbito había que escribirlos a mano en la configuración. La tarjeta del canal ahora deja agregar,

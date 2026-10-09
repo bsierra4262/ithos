@@ -423,7 +423,7 @@ try:
         def abrir(self): pass
         def cerrar(self): pass
         def request(self, path, method=None, data=None):
-            if path == "/Ticket/597/ITILFollowup":
+            if path.startswith("/Ticket/597/ITILFollowup"):
                 return [{"id": 9, "users_id": 7,
                          "content": "Estimados, el caso quedó solucionado, ya puede fichar."}]
             if path.startswith("/User/"):
@@ -465,7 +465,7 @@ try:
         def abrir(self): pass
         def cerrar(self): pass
         def request(self, path, method=None, data=None):
-            if path == "/Ticket/597/ITILFollowup":
+            if path.startswith("/Ticket/597/ITILFollowup"):
                 return [{"id": 20, "users_id": 28,
                          "content": "Le informamos que su solicitud fue resuelta. Por favor, "
                                     "confírmenos si ya puede fichar."}]
@@ -559,7 +559,7 @@ try:
             def abrir(self): pass
             def cerrar(self): pass
             def request(self, path, method=None, data=None):
-                if path == "/Ticket/7/ITILFollowup": return fu_list
+                if path.startswith("/Ticket/7/ITILFollowup"): return fu_list
                 if path.startswith("/User/"): return {"firstname": "Cli", "realname": "Ente"}
                 return {}
 
@@ -618,7 +618,7 @@ try:
         def abrir(self): pass
         def cerrar(self): pass
         def request(self, path, method=None, data=None):
-            if path == "/Ticket/7/ITILFollowup":
+            if path.startswith("/Ticket/7/ITILFollowup"):
                 return [{"id": 1, "users_id": 28, "content": CONF, "date_creation": viejo}]
             if path.startswith("/User/"): return {"firstname": "Cli", "realname": "Ente"}
             return {}

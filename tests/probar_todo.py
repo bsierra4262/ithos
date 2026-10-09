@@ -61,8 +61,11 @@ def t_registro():
 def t_ia_factory():
     from comun import ia as IA
     vz = IA.crear_voz(IA_CFG)
-    assert vz.voz == "Charon" and vz.modelo_voz == "gemini-2.5-flash-native-audio-latest"
-    return "texto + voz(Charon, modelo actualizado)"
+    # El TTS DEDICADO, no el conversacional 'native-audio': ese se comía los nombres propios y por
+    # eso se cambió (H68/H69). Este test tenía congelado el modelo VIEJO y contradecía a la batería.
+    assert vz.voz == "Charon", vz.voz
+    assert vz.modelo_voz == "gemini-2.5-flash-preview-tts", vz.modelo_voz
+    return f"texto + voz(Charon, {vz.modelo_voz})"
 
 
 def t_cuota():
@@ -78,12 +81,16 @@ def t_cuota():
 
 
 def t_notificadores():
+    """Hoy el ÚNICO canal implementado es WhatsApp (el panel sólo ofrece ese). Telegram/Teams/
+    Email quedaron en la rama `saas`: un canal que no existe NO se inventa acá, se ignora en
+    silencio, y el test lo deja escrito para que la diferencia no se vuelva a perder de vista."""
     from comun import notificadores
     n = notificadores.crear_notificadores({"notificaciones": [
         {"tipo": "telegram", "bot_token": "x", "chat_ids": []},
         {"tipo": "teams", "webhook_url": "x"}, {"tipo": "email", "usuario": "x"}]})
-    assert len(n.canales) == 3
-    return "telegram+teams+email"
+    assert len(n.canales) == 0, f"canales inesperados: {n.canales}"
+    assert n.hay_activo() is False
+    return "sin canales (telegram/teams/email no implementados)"
 
 
 def t_glpi_reportes():
@@ -158,7 +165,8 @@ def t_conversacional_ia():
 
 def t_ciclo_ia():
     import runpy
-    runpy.run_path("probar_ciclo.py", run_name="__main__")
+    runpy.run_path(os.path.join(os.path.dirname(os.path.abspath(__file__)), "probar_ciclo.py"),
+                   run_name="__main__")
     return "ciclo completo ejecutado (ver arriba)"
 
 
