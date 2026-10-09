@@ -33,8 +33,20 @@ _LOGIN_VENTANA = 300        # en 5 minutos -> después se bloquea temporalmente
 
 
 def _ip_cliente(request):
+    """IP REAL del que llama, para contar intentos de login.
+
+    OJO con `X-Forwarded-For`: lo puede escribir el cliente. Si se toma el PRIMER valor —lo
+    habitual— cualquiera manda uno distinto en cada intento y el anti fuerza-bruta no cuenta nunca
+    dos veces lo mismo: deja de existir. Detrás de UN proxy de confianza (nuestro Caddy, el único
+    que publica puertos) la IP real es la ÚLTIMA de la lista: la que agregó el proxy. Lo que haya
+    antes lo puso el cliente y no vale nada."""
     xff = request.headers.get("x-forwarded-for", "")
-    return (xff.split(",")[0].strip() if xff else "") or (request.client.host if request.client else "?")
+    directa = request.client.host if request.client else ""
+    if xff:
+        partes = [p.strip() for p in xff.split(",") if p.strip()]
+        if partes:
+            return partes[-1]
+    return directa or "?"
 
 
 def _login_bloqueado(ip):
@@ -70,27 +82,46 @@ from panel_ui import HTML, HTML_ALTA, portal_html   # noqa: E402
 # Al GESTOR (superadmin `/` + APIs de gestión) accede SOLO INTELLIHELP (cookie de
 # admin). El CLIENTE solo a su dashboard `/panel/<api_key>` (la api_key es su
 # credencial). El ALTA `/alta` es un enlace temporal de un solo uso (token que caduca).
+# Rutas que NO exigen sesión de superadmin. Es una lista de EXCEPCIONES, y el resto queda cerrado:
+# al revés —enumerando lo privado— cada ruta nueva nacía PÚBLICA sin que nadie lo notara, que es
+# justo el error que no se puede permitir en la puerta de entrada.
+#   · el login y el alta por enlace temporal se validan ellos mismos,
+#   · el PORTAL del cliente y sus APIs se autorizan con su `api_key` (su credencial),
+#   · los catálogos del formulario no tienen datos de nadie.
+_PUBLICAS_EXACTAS = {
+    "/login", "/logout", "/alta", "/favicon.ico",
+    "/api/integradores", "/api/ia_proveedores", "/api/tickets", "/api/canales", "/api/alta",
+}
+_PUBLICAS_PREFIJO = (
+    "/panel/",                 # dashboard del cliente (su api_key en la ruta)
+    "/api/cliente/",           # su config (REDACTADA si no es admin — ver `uno()`)
+    "/api/salud/", "/api/metricas/", "/api/sla/", "/api/terminales/",
+    "/api/config_agente/", "/api/reporte_ahora/", "/api/reporte_itil/",
+    "/api/kb_subir/", "/api/kb_outline/", "/api/kb_generar/",
+    "/api/whatsapp/",          # vincular/estado/desvincular: autoriza _resolver_sesion_wa
+)
+
+
 def _requiere_admin(method: str, path: str) -> bool:
-    if path == "/":
-        return True
-    if path in ("/api/estado", "/api/resumen", "/api/generar_key", "/api/alta_link",
-                "/api/alta_revocar", "/api/cambiar_password"):
-        return True
-    if path == "/api/clientes" and method == "GET":
-        return True
-    if path.startswith("/api/clientes/") and method == "DELETE":
-        return True
-    return False
+    """DENEGAR POR DEFECTO: todo exige superadmin salvo lo declarado público arriba."""
+    if path in _PUBLICAS_EXACTAS:
+        return False
+    if any(path.startswith(pre) for pre in _PUBLICAS_PREFIJO):
+        # El alta/edición del propio cliente va por POST /api/clientes, que valida adentro
+        # (sin cookie sólo puede editar una empresa que YA existe, con su api_key).
+        return False
+    if path == "/api/clientes" and method == "POST":
+        return False               # lo valida `upsert` (admin, o el propio cliente con su api_key)
+    return True
 
 
 @app.middleware("http")
 async def _auth_mw(request: Request, call_next):
     path, method = request.url.path, request.method
-    # Auto-login por ?k=<token> (enlace de acceso / la demo lo usa para entrar sola).
-    if path in ("/", "/login") and AUTH.token_ok(request.query_params.get("k", "")):
-        resp = RedirectResponse("/", status_code=303)
-        AUTH.set_cookie(resp)
-        return resp
+    # NO hay auto-login por query string. Existía un `?k=<ITHOS_ADMIN_TOKEN>` que entraba sin
+    # formulario (lo usaba la demo): la contraseña del Gestor terminaba escrita en los logs de
+    # acceso de Caddy, en el historial del navegador y en la cabecera `Referer` de cualquier
+    # recurso externo. Se entra por el formulario, que manda la contraseña en el cuerpo del POST.
     if path == "/login":                       # el form de login siempre pasa
         return await call_next(request)
     if _requiere_admin(method, path) and not AUTH.es_admin(request):
@@ -399,6 +430,38 @@ def _armar_cliente(b, api_key):
     }
 
 
+def _fusionar_cliente(previo: dict, nuevo: dict) -> dict:
+    """Mezcla lo que mandó el formulario SOBRE lo que ya estaba guardado.
+
+    POR QUÉ NO SE PISA Y LISTO: `_armar_cliente` arma el registro con los campos del formulario, y
+    el formulario no tiene todos los campos. Guardar su salida tal cual BORRABA todo lo que se
+    configura por fuera de esa pantalla —el bloque `tecnicos` del cliente, los tokens de GLPI de
+    cada técnico, `planka`, `empresa_saludo`, `abreviatura`, `horario_atencion`, `microfono`—. Una
+    edición inocente para cambiar un correo dejaba al equipo sin sus tokens y al ciclo leyendo los
+    comentarios de los técnicos como si fueran del cliente.
+
+    Reglas:
+      · lo que el formulario NO trae, se CONSERVA tal como estaba;
+      · un secreto que llega ENMASCARADO (el portal nunca recibe los de verdad) o VACÍO no pisa al
+        guardado: sólo se reemplaza cuando mandan uno nuevo de verdad;
+      · las listas sí se reemplazan enteras (son la edición completa de esa lista: canales,
+        terminales), porque quitar un elemento tiene que poder quitarlo."""
+    from comun import cifrado as CIF
+    if not isinstance(previo, dict):
+        return nuevo
+    out = copy.deepcopy(previo)
+    for k, v in (nuevo or {}).items():
+        if isinstance(v, dict):
+            out[k] = _fusionar_cliente(out.get(k) if isinstance(out.get(k), dict) else {}, v)
+        elif isinstance(v, str) and CIF._es_sensible(k) and k != "api_key":
+            if v and not es_oculto(v):
+                out[k] = v                   # secreto NUEVO de verdad
+            # vacío o enmascarado -> se conserva el que ya estaba
+        else:
+            out[k] = v
+    return out
+
+
 # ---------------------------------------------------------------- vistas HTML
 @app.get("/", response_class=HTMLResponse)
 def home():
@@ -447,12 +510,58 @@ def listar():
     return _cargar()
 
 
+# Marca de "valor oculto": lo que ve el cliente en lugar de un secreto. Es el MISMO formato que
+# ya usaba la pantalla (`mask()` en panel_ui), así no cambia nada visualmente. Al guardar, un valor
+# con esta marca significa "no lo toques" (ver `_fusionar_cliente`).
+_OCULTO = "••••"
+
+
+def _enmascarar(valor: str) -> str:
+    v = str(valor or "")
+    if len(v) <= 10:
+        return _OCULTO
+    return v[:6] + _OCULTO + v[-4:]
+
+
+def es_oculto(valor) -> bool:
+    """True si el valor que llega es la MÁSCARA de un secreto (no un secreto nuevo)."""
+    return isinstance(valor, str) and _OCULTO in valor
+
+
+def _redactar(obj, raiz=True):
+    """Copia del cliente con TODOS los secretos enmascarados (tokens, claves, contraseñas).
+
+    El portal del cliente necesita su configuración para mostrarla y editarla, pero NO necesita
+    —ni debe— recibir los secretos en claro: la `api_key` viaja en la URL del portal, así que
+    termina en los logs del proxy, en el historial y en el `Referer`. Cualquiera con ese enlace
+    se llevaba los tokens de GLPI (incluido el de super admin), las claves de IA, la contraseña
+    del agente y la de la base de fichajes. Con esto, el enlace sólo sirve para ver y editar lo
+    suyo; los secretos no salen del servidor. El superadmin sí los recibe completos.
+    Se reusa el criterio de `comun/cifrado.py`: una sola definición de "esto es un secreto"."""
+    from comun import cifrado as CIF
+    if isinstance(obj, dict):
+        out = {}
+        for k, v in obj.items():
+            if raiz and k == "api_key":
+                out[k] = v                       # es el IDENTIFICADOR, no un secreto
+            elif isinstance(v, (dict, list)):
+                out[k] = _redactar(v, raiz=False)
+            elif isinstance(v, str) and v and CIF._es_sensible(k):
+                out[k] = _enmascarar(v)
+            else:
+                out[k] = v
+        return out
+    if isinstance(obj, list):
+        return [_redactar(x, raiz=False) for x in obj]
+    return obj
+
+
 @app.get("/api/cliente/{api_key}")
-def uno(api_key: str):
+def uno(api_key: str, request: Request):
     c = _cliente_por_key(api_key)
     if not c:
         return JSONResponse({"error": "no encontrado"}, status_code=404)
-    return c
+    return c if AUTH.es_admin(request) else _redactar(c)
 
 
 @app.get("/api/terminales/{api_key}")
@@ -834,7 +943,10 @@ async def upsert(request: Request):
     if not api_key:
         slug = "".join(ch for ch in b["nombre"].upper() if ch.isalnum())[:8] or "CLI"
         api_key = f"{slug}-{secrets.token_hex(6)}"
-    cli = _armar_cliente(b, api_key)
+    previo = next((c for c in data.get("clientes", []) if c.get("api_key") == api_key), None)
+    # Se FUSIONA sobre lo guardado: el formulario no tiene todos los campos y pisarlo entero
+    # borraba la configuración que se hace por fuera de esa pantalla (ver `_fusionar_cliente`).
+    cli = _fusionar_cliente(previo, _armar_cliente(b, api_key)) if previo         else _armar_cliente(b, api_key)
     data["clientes"] = [c for c in data.get("clientes", []) if c.get("api_key") != api_key]
     data["clientes"].append(cli)
     _guardar(data)

@@ -39,3 +39,27 @@ def agente_desactualizado(agente_version):
     if not agente_version:
         return False
     return _tupla(agente_version) < _tupla(AGENTE_MIN_VERSION)
+
+
+# --------------------------------------------------------------- qué hay DESPLEGADO de verdad
+# El servidor no es un checkout de git (el paquete se descomprime sobre la carpeta), así que no hay
+# forma de preguntarle "¿qué commit estás corriendo?". Sin eso, diagnosticar es adivinar: cuando algo
+# falla en producción, lo primero que hay que saber es SI el arreglo llegó. El deploy deja un archivo
+# con la revisión y acá se lee; si no está, se dice que no se sabe, que es la verdad.
+_ARCHIVO_REVISION = "REVISION"
+
+
+def revision_desplegada():
+    """Revisión (commit corto + fecha) del código que está corriendo, o 'desconocida'."""
+    import os
+    for base in (os.path.dirname(os.path.dirname(os.path.abspath(__file__))),        # ITHOS/
+                 os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+                 "/app"):
+        try:
+            with open(os.path.join(base, _ARCHIVO_REVISION), encoding="utf-8") as f:
+                rev = f.read().strip()
+            if rev:
+                return rev
+        except OSError:
+            continue
+    return "desconocida"

@@ -15,6 +15,7 @@ persiste en `_gestor_admin.token` (y conviene fijar uno propio en producción).
 import os
 import json
 import time
+import threading
 import hmac
 import base64
 import hashlib
@@ -107,11 +108,39 @@ def _secreto_login() -> str:
     return _leer_hash() or admin_token()
 
 
-def _cookie_val() -> str:
-    # La cookie deriva del secreto de login VIGENTE: si cambiás la contraseña, las sesiones viejas
-    # dejan de valer solas.
-    base = "ithos-gestor:" + admin_user() + ":" + _secreto_login()
+MAX_EDAD_SESION = 8 * 3600          # una sesión del panel dura, como mucho, 8 horas
+
+
+def _corte_file() -> str:
+    """Marca de 'lo emitido ANTES de este instante ya no vale' (la fija /logout)."""
+    d = (os.environ.get("ITHOS_DATA") or "").strip()
+    return os.path.join(d or BASE, "_gestor_sesiones.corte")
+
+
+def _corte_sesiones() -> float:
+    try:
+        with open(_corte_file(), encoding="utf-8") as f:
+            return float(f.read().strip() or 0)
+    except (OSError, ValueError):
+        return 0.0
+
+
+def _firmar(emitida: int) -> str:
+    base = f"ithos-gestor:{admin_user()}:{_secreto_login()}:{emitida}"
     return hashlib.sha256(base.encode("utf-8")).hexdigest()
+
+
+def _cookie_val() -> str:
+    """Cookie de sesión FIRMADA y con fecha de emisión.
+
+    Antes era un SHA-256 fijo de usuario+secreto: el MISMO valor para todas las sesiones y para
+    siempre. Así no se podía vencer ni revocar nada —`max_age` sólo le pide al navegador que la
+    olvide; el servidor la seguía aceptando— y `/logout` apenas borraba la copia del navegador:
+    una cookie copiada servía hasta cambiar la contraseña. Ahora lleva CUÁNDO se emitió, firmada:
+    el servidor la vence a las 8 horas y `/logout` invalida todas las anteriores. Sigue valiendo
+    lo de antes: al cambiar la contraseña, las sesiones viejas se caen solas."""
+    emitida = int(time.time())
+    return f"{emitida}.{_firmar(emitida)}"
 
 
 def token_ok(k) -> bool:
@@ -152,8 +181,18 @@ def cambiar_password(actual: str, nueva: str):
 
 
 def cookie_ok(request) -> bool:
-    """True si el request trae la cookie de sesión válida del superadmin."""
-    return hmac.compare_digest(request.cookies.get(COOKIE, ""), _cookie_val())
+    """True si la cookie es válida: firma correcta, NO vencida y posterior al último /logout."""
+    emitida_txt, _, firma = request.cookies.get(COOKIE, "").partition(".")
+    try:
+        emitida = int(emitida_txt)
+    except (TypeError, ValueError):
+        return False
+    if not hmac.compare_digest(firma, _firmar(emitida)):
+        return False
+    ahora = time.time()
+    if emitida > ahora + 60 or ahora - emitida > MAX_EDAD_SESION:
+        return False                               # emitida en el futuro, o vencida
+    return emitida >= _corte_sesiones()            # revocada por un /logout posterior
 
 
 def header_ok(request) -> bool:
@@ -171,15 +210,32 @@ def set_cookie(response) -> None:
     # navegador no la manda y el login entra en loop. httponly: no accesible por JS (anti-XSS).
     seguro = not os.environ.get("ITHOS_DEMO")
     response.set_cookie(COOKIE, _cookie_val(), httponly=True, samesite="lax",
-                        secure=seguro, max_age=8 * 3600)
+                        secure=seguro, max_age=MAX_EDAD_SESION)
 
 
 def borrar_cookie(response) -> None:
-    """Cierra la sesión: borra la cookie del superadmin."""
+    """Cierra la sesión DE VERDAD: borra la cookie del navegador y deja asentado en el servidor que
+    todo lo emitido hasta ahora deja de valer. Sin esto, una cookie copiada antes del 'cerrar
+    sesión' seguía entrando."""
+    try:
+        # En SEGUNDOS ENTEROS, igual que la marca de la cookie: si el corte se guardara con
+        # decimales sería SIEMPRE mayor que la cookie emitida en ese mismo segundo, y el login
+        # inmediatamente posterior al logout quedaría rechazado.
+        with open(_corte_file(), "w", encoding="utf-8") as f:
+            f.write(str(int(time.time())))
+    except OSError:
+        pass
     response.delete_cookie(COOKIE)
 
 
 # --------------------------------------------------- enlaces de alta de un solo uso
+# Un enlace de alta vale UNA sola vez. Leer-modificar-escribir sin candado es una carrera: dos
+# envíos a la vez (el doble clic de siempre) leían los dos "sin usar" y los dos pasaban. Y una
+# escritura no atómica deja el archivo a medias si el proceso muere en el medio: al leerlo se cae
+# al `except` y se pierden TODOS los enlaces vigentes, en silencio.
+_ALTA_LOCK = threading.Lock()
+
+
 def _alta_cargar() -> dict:
     try:
         with open(_alta_path(), encoding="utf-8") as f:
@@ -190,21 +246,26 @@ def _alta_cargar() -> dict:
 
 def _alta_guardar(d: dict) -> None:
     try:
-        with open(_alta_path(), "w", encoding="utf-8") as f:
-            json.dump(d, f)
-    except OSError:
-        pass
+        from comun import cifrado as CIF
+        CIF.escribir_json(_alta_path(), d)         # atómica: la misma que usa clientes.json
+    except Exception:  # noqa: BLE001
+        try:
+            with open(_alta_path(), "w", encoding="utf-8") as f:
+                json.dump(d, f)
+        except OSError:
+            pass
 
 
 def nuevo_alta_token(nombre: str = "", horas: int = 48) -> str:
     """Crea un token de alta de un solo uso que caduca en `horas`. De paso limpia los viejos."""
-    ahora = time.time()
-    d = {k: v for k, v in _alta_cargar().items()
-         if not v.get("usado") and v.get("exp", 0) > ahora}
-    t = secrets.token_urlsafe(18)
-    d[t] = {"nombre": nombre, "exp": ahora + horas * 3600, "usado": False}
-    _alta_guardar(d)
-    return t
+    with _ALTA_LOCK:
+        ahora = time.time()
+        d = {k: v for k, v in _alta_cargar().items()
+             if not v.get("usado") and v.get("exp", 0) > ahora}
+        t = secrets.token_urlsafe(18)
+        d[t] = {"nombre": nombre, "exp": ahora + horas * 3600, "usado": False}
+        _alta_guardar(d)
+        return t
 
 
 def alta_valido(t) -> bool:
@@ -213,36 +274,42 @@ def alta_valido(t) -> bool:
 
 
 def alta_consumir(t) -> None:
-    d = _alta_cargar()
-    if t in d:
-        d[t]["usado"] = True
-        _alta_guardar(d)
+    with _ALTA_LOCK:
+        d = _alta_cargar()
+        if t in d:
+            d[t]["usado"] = True
+            _alta_guardar(d)
 
 
 def revocar_alta(t) -> bool:
     """Revoca (elimina) un token de alta generado: si te equivocaste al generarlo, deja de valer YA.
     Devuelve True si existía y se sacó."""
-    tid = str(t or "")
-    d = _alta_cargar()
-    if tid in d:
-        del d[tid]
-        _alta_guardar(d)
-        return True
-    return False
+    with _ALTA_LOCK:
+        tid = str(t or "")
+        d = _alta_cargar()
+        if tid in d:
+            del d[tid]
+            _alta_guardar(d)
+            return True
+        return False
 
 
 def consumir_si_valido(t) -> bool:
     """ATÓMICO: si el token de alta es válido y NO usado, lo marca usado y devuelve True (una sola
     vez). Si ya se usó / venció / no existe → False. Se llama al ENVIAR el formulario: el enlace
-    queda consumido en el acto (no se puede reusar) y evita la carrera del doble submit."""
-    tid = str(t or "")
-    d = _alta_cargar()
-    x = d.get(tid)
-    if not x or x.get("usado") or time.time() >= x.get("exp", 0):
-        return False
-    d[tid]["usado"] = True
-    _alta_guardar(d)
-    return True
+    queda consumido en el acto (no se puede reusar) y evita la carrera del doble submit.
+
+    El candado es lo que lo hace atómico DE VERDAD: sin él, dos envíos simultáneos leían los dos
+    el mismo "sin usar" y los dos pasaban, que es exactamente lo que este enlace no puede permitir."""
+    with _ALTA_LOCK:
+        tid = str(t or "")
+        d = _alta_cargar()
+        x = d.get(tid)
+        if not x or x.get("usado") or time.time() >= x.get("exp", 0):
+            return False
+        d[tid]["usado"] = True
+        _alta_guardar(d)
+        return True
 
 
 # ------------------------------------------------------------------- login HTML

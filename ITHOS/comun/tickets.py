@@ -113,6 +113,23 @@ _ADMINISTRATIVO = (
 )
 
 
+# Avisos que ITHOS escribe SOLO (recordatorios, pedido de confirmación, cierre automático). Son
+# mensajes del circuito, no resoluciones técnicas: si se los toma como "así se resolvió", la base
+# de conocimiento termina proponiendo "le recordamos que su ticket está a la espera" como arreglo
+# de un problema de fichaje. Pasó: un error de espaciado llenó los tickets de recordatorios y la
+# resolución se tomaba del ÚLTIMO comentario.
+_AVISO_AUTOMATICO = (
+    "le recordamos que su ticket", "le informamos que su solicitud fue resuelta",
+    "quedamos a la espera de su respuesta", "el cliente confirmo la solucion",
+    "el cliente indica que el inconveniente continua",
+)
+
+
+def _es_aviso_automatico(texto):
+    t = _normalizar(texto)
+    return any(_normalizar(m) in t for m in _AVISO_AUTOMATICO)
+
+
 def _cierre_administrativo(texto):
     t = _normalizar(texto)
     return any(_normalizar(m) in t for m in _ADMINISTRATIVO)
@@ -133,6 +150,31 @@ def _sin_html(s):
     t = _re.sub(r"<\s*br\s*/?>|</\s*p\s*>", "\n", t, flags=_re.I)
     t = _re.sub(r"<[^>]+>", " ", t)                       # resto de etiquetas
     return _re.sub(r"[ \t]+", " ", t).strip()
+
+
+def _uid_tecnico(cli_cfg, quien):
+    """El id de GLPI del técnico que nombraron, buscando en la CONFIG del cliente por nombre,
+    nombre de pila, apellido, login, email o id. None si no está configurado."""
+    clave = _normalizar(quien).strip()
+    if not clave:
+        return None
+    for t in tecnicos(cli_cfg):
+        formas = {_normalizar(x) for x in _claves_tecnico(t)}
+        nombre = _normalizar(t.get("nombre") or "")
+        formas |= set(nombre.split())                 # "laura", "zaltron"
+        if clave in formas or (nombre and clave == nombre):
+            try:
+                return int(t.get("glpi_id") or t.get("id"))
+            except (TypeError, ValueError):
+                return None
+    uid = _TECNICOS.get(str(quien).lower().strip())   # respaldo histórico (SRT/ITH)
+    return uid
+
+
+def _nombres_tecnicos(cli_cfg):
+    """Nombres de los técnicos configurados, para poder decir a quién SÍ se puede asignar."""
+    return [t.get("nombre") for t in tecnicos({"tecnicos": (cli_cfg or {}).get("tecnicos")})
+            if t.get("nombre")]
 
 
 class _GLPI:
@@ -175,14 +217,20 @@ class _GLPI:
                 for t in ts if int(t.get("status", 0)) in (1, 2, 4)]
 
     def resueltos(self, n=80):
+        """Los tickets ya resueltos con su solución, para alimentar la base de conocimiento.
+
+        Las soluciones y los seguimientos se leen de UNA (dos peticiones en total), no una por
+        ticket: con 80 tickets eran hasta 160 viajes a la mesa de ayuda para armar una lista."""
         c = self._c()
         out = []
         try:
             ts = self._ent(c.tickets_recientes(n))
+            sol_map = self._soluciones_masivo(c)
+            fu_map = self._followups_masivo(c)
             for t in ts:
                 if int(t.get("status", 0)) not in (5, 6):
                     continue
-                sol = self._solucion(c, t["id"])
+                sol = self._mejor_solucion(int(t.get("id") or 0), t, sol_map, fu_map)
                 if not sol:
                     continue
                 out.append({"id": t["id"], "asunto": t.get("name", ""),
@@ -191,14 +239,42 @@ class _GLPI:
             c.cerrar()
         return out
 
+    def _mejor_solucion(self, tid, ticket, sol_map, fu_map):
+        """La RESOLUCIÓN real del ticket: la solución documentada o, si no hay, la última respuesta
+        que escribió SOPORTE.
+
+        Dos cosas que NO son una resolución y antes entraban igual:
+          · lo que escribió el propio SOLICITANTE (es parte del problema, no de la solución), y
+          · los avisos AUTOMÁTICOS de ITHOS —recordatorios, pedidos de confirmación—. Esto no es
+            teórico: un error de espaciado llenó los tickets de recordatorios y, como la solución
+            se tomaba del ÚLTIMO comentario, la base de conocimiento aprendió "Le recordamos que
+            su ticket está a la espera…" como la forma de resolver un problema de fichaje."""
+        for s in reversed(sol_map.get(tid, [])):
+            txt = _sin_html(s.get("texto", "")).strip()
+            if txt and not _cierre_administrativo(txt):
+                return txt
+        solicitante = int(ticket.get("users_id_recipient") or 0)
+        for f in reversed(fu_map.get(tid, [])):
+            if int(f.get("autor") or 0) == solicitante:
+                continue
+            txt = _sin_html(f.get("texto", "")).strip()
+            if txt and not _cierre_administrativo(txt) and not _es_aviso_automatico(txt):
+                return txt
+        return ""
+
     def _solucion(self, c, tid):
+        """La solución de UN ticket puntual (uso suelto). Para listas, `_mejor_solucion`, que no
+        hace una petición por ticket. Nunca devuelve un aviso automático de ITHOS como solución."""
         try:
-            s = c.request(f"/Ticket/{tid}/ITILSolution")
-            if s:
-                return s[-1].get("content", "")
-            f = c.request(f"/Ticket/{tid}/ITILFollowup")
-            if f:
-                return f[-1].get("content", "")
+            for s in reversed(c.request(f"/Ticket/{tid}/ITILSolution") or []):
+                txt = _sin_html(s.get("content", "")).strip()
+                if txt:
+                    return txt
+            from comun import glpi as _G
+            for f in reversed(_G.followups(c, tid)):
+                txt = _sin_html(f.get("content", "")).strip()
+                if txt and not _es_aviso_automatico(txt):
+                    return txt
         except Exception:  # noqa: BLE001
             pass
         return ""
@@ -280,10 +356,18 @@ class _GLPI:
         return f"Ticket #{tid} → prioridad {prio}."
 
     def asignar(self, tid, tecnico):
+        """Asigna el ticket al técnico que le nombren (por nombre, apodo, login, email o id).
+
+        Antes salía de un diccionario FIJO en el código con dos personas. Cuando el equipo creció,
+        pedirle "asigná el #123 a Laura" contestaba «No reconozco al técnico 'Laura'», aunque Laura
+        estuviera cargada en la configuración del cliente y el triage automático sí la usara. El
+        equipo se declara en la config (`tecnicos`), que es la única fuente de verdad."""
         tid = _norm_id(tid)
-        uid = _TECNICOS.get(str(tecnico).lower().strip())
+        uid = _uid_tecnico({"integrador_glpi": self.gl, "tecnicos": self.gl.get("tecnicos")}, tecnico)
         if not uid:
-            return f"No reconozco al técnico '{tecnico}'."
+            conocidos = ", ".join(_nombres_tecnicos(self.gl)) or "ninguno cargado"
+            return (f"No reconozco al técnico '{tecnico}'. Los que tengo configurados son: "
+                    f"{conocidos}.")
         c = self._c()
         # Como la demo: además del técnico, ITHOS queda asignado al ticket.
         for u in (self.ithos_id, uid):

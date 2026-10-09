@@ -1875,14 +1875,20 @@ try:
     pnl44 = leer(os.path.join(APP, "central", "panel.py"))
     ui_ok = ("Contraseña agente" in pui44 and "revocarAlta(" in pui44 and "cambiarPass(" in pui44
              and "atok" in pui44 and "key atok" in pui44)   # contraseña con cuadro dorado copiable (.key)
-    ep_ok = ("/api/alta_revocar" in pnl44 and "/api/cambiar_password" in pnl44
-             and '"/api/alta_revocar", "/api/cambiar_password"' in pnl44)   # en la lista blanca admin
+    ep_ok = "/api/alta_revocar" in pnl44 and "/api/cambiar_password" in pnl44
     # protegidos: sin admin -> 401
     from fastapi.testclient import TestClient as _TC44
     import panel as _P44
     _c44 = _TC44(_P44.app, base_url="https://testserver", follow_redirects=False)
     prot = (_c44.post("/api/alta_revocar", json={"token": "x"}).status_code == 401 and
             _c44.post("/api/cambiar_password", json={"actual": "x", "nueva": "y"}).status_code == 401)
+    # Y, sobre todo, que el modelo sea DENEGAR POR DEFECTO: una ruta que nadie declaró como
+    # pública tiene que exigir admin SOLA, sin que haya que acordarse de agregarla a una lista.
+    # Antes era al revés —se enumeraba lo privado— y cada endpoint nuevo nacía abierto a internet.
+    prot = prot and _P44._requiere_admin("GET", "/api/una-ruta-que-todavia-no-existe") is True
+    prot = prot and _P44._requiere_admin("POST", "/api/clientes/borrar-todo") is True
+    prot = prot and _P44._requiere_admin("GET", "/login") is False          # el login se valida solo
+    prot = prot and _P44._requiere_admin("GET", "/panel/UNA-API-KEY") is False   # portal del cliente
     if revoc_ok and ui_ok and ep_ok and prot:
         ok("revocar enlace de alta (deja de valer YA) + contraseña de agente visible/copiable en la tarjeta; "
            "endpoints admin protegidos (401 sin sesión)")

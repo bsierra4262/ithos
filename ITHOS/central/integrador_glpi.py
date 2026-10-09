@@ -40,7 +40,13 @@ async def vigilar(cfg_glpi, enviar_comando, triage=None, wa=None, stop=None,
     # sus seguimientos y consulta la IA. A 5s eran 17.280 vueltas por día contra GLPI (y contra la
     # cuota de IA) para atender un puñado de tickets.
     intervalo = cfg_glpi.get("poll_interval", 60)
-    cliente = G.GLPIClient(cfg_glpi)
+    # CON EL TOKEN DE ITHOS, no con el de super admin. `GLPIClient(cfg)` sin token cae a
+    # `glpi_user_token`, que es el usuario administrador: el único que puede BORRAR. Todo el ciclo
+    # de vida —leer, comentar, cambiar estados— estaba corriendo con ese permiso, cuando ITHOS
+    # tiene a propósito un perfil acotado ("Crear y Asignar Tickets") para que un error suyo no
+    # pueda destruir nada. El privilegio mínimo no es un detalle: es el diseño.
+    cliente = G.GLPIClient(cfg_glpi, token=(cfg_glpi.get("glpi_ithos_token")
+                                            or cfg_glpi.get("glpi_user_token")))
     seg_estado = {}
     anunciados = set()          # tickets ya anunciados (para no repetir el aviso de llegada)
     log.info("GLPI integrador iniciado (entidades %s, cada %ss, triage=%s).",

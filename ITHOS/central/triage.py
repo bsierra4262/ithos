@@ -66,11 +66,6 @@ from comun.horario import (ZONA_DEFAULT, HORARIO_DEFAULT as _HORARIO_DEFAULT,  #
                            dias_habiles_entre, horas_habiles_entre)
 
 
-_MARCA_SIN_ATENDER = "el cliente respondió y todavía no le contestamos"
-# Horas HÁBILES que puede quedar sin respuesta del técnico antes de que salte el aviso.
-_HORAS_SIN_ATENDER = 2
-
-
 # El saludo al solicitante vive en comun/glpi.py (compartido con el camino de voz aplicar_ciclo).
 _saludo_solicitante = G.saludo_solicitante
 
@@ -84,7 +79,13 @@ class Triage:
 
     def __init__(self, cfg_glpi, cfg_ia, gestor=None):
         self.cfg_glpi = cfg_glpi
-        self.cli = G.GLPIClient(cfg_glpi, token=cfg_glpi["glpi_ithos_token"])
+        # SESIÓN DEL POOL, reutilizada. Antes era un cliente propio, y como cada método hace
+        # `abrir()` … `cerrar()`, cada acción sobre un ticket costaba CUATRO viajes a GLPI:
+        # initSession + changeActiveEntities + la operación + killSession. Peor: una operación
+        # lógica como "resolver y pedir confirmación" abría y cerraba TRES sesiones. Con el pool,
+        # `abrir()` encuentra la sesión viva y `cerrar()` es un no-op (no la mata), así que queda
+        # UN viaje por operación. Si la sesión expira, `request()` la reabre sola.
+        self.cli = G.sesion(cfg_glpi, cfg_glpi["glpi_ithos_token"])
         # Token de LECTURA para resolver el nombre del SOLICITANTE (el de ithos no puede leer /User).
         self._tok_lect = (cfg_glpi.get("glpi_superadmin_token") or cfg_glpi.get("glpi_user_token")
                           or cfg_glpi["glpi_ithos_token"])

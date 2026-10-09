@@ -181,7 +181,11 @@ def salud_cliente(cliente: str = ""):
 
 @app.get("/")
 def salud():
-    return {"servicio": "ITHOS Central", "version": "0.5",
+    # La versión sale de comun/version.py (la que sube sola en cada deploy), no de un número
+    # escrito a mano que se queda viejo: este endpoint decía "0.5" con el Gestor en 1.1.x.
+    return {"servicio": "ITHOS Central", "version": _VER.GESTOR_VERSION,
+            "protocolo": _VER.PROTOCOL_VERSION,
+            "revision": _VER.revision_desplegada(),
             "clientes_registrados": registro.total(),
             "clientes_conectados": sorted(conexiones.keys())}
 

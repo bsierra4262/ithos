@@ -44,9 +44,22 @@ from textos_ticket import (_MARCA_CONFIRMACION, _MARCA_RECORDATORIO,       # noq
 log = logging.getLogger("ciclo")
 
 
-def _nombre_usuario(cliente, uid):
+def _nombre_usuario(cliente, uid, cfg=None):
+    """Nombre de quien escribió, para nombrarlo en los avisos.
+
+    Lee con el token de LECTURA (super admin / helpdesk), no con el de ITHOS: el perfil de ITHOS
+    es acotado a propósito —crear y asignar tickets— y NO puede leer `/User`. Si se pidiera con su
+    token, GLPI contesta 403 y todos los avisos dirían "usuario 27" en vez del nombre de la
+    persona. Sin token de lectura configurado, se usa la sesión que venga."""
     try:
-        u = cliente.request(f"/User/{uid}")
+        cli = cliente
+        tok = (cfg or {}).get("glpi_superadmin_token") or (cfg or {}).get("glpi_user_token")
+        if tok:
+            try:
+                cli = G.sesion(cfg, tok)
+            except Exception:  # noqa: BLE001
+                cli = cliente
+        u = cli.request(f"/User/{uid}")
         if isinstance(u, list):
             u = u[0] if u else {}
         n = f"{u.get('firstname') or ''} {u.get('realname') or ''}".strip()
@@ -227,52 +240,56 @@ def _ya_pidio_procedimiento(fu):
                and _MARCA_PROCEDIMIENTO in str(f.get("content", "")).lower() for f in fu)
 
 
-def _solucion_resuelta(cliente, tid):
+def _soluciones(cliente, tid, cache):
+    """Las soluciones del ticket, leídas UNA sola vez por vuelta del ciclo.
+
+    Antes se pedía `/Ticket/<id>/ITILSolution` dos veces seguidas para el MISMO ticket —una para
+    saber si espera la confirmación y otra para ver qué botón apretó el cliente—, y una tercera
+    al juntar el texto de la resolución. Multiplicado por cada ticket y por cada vuelta, es tráfico
+    y latencia puro: la respuesta es la misma las tres veces."""
+    tid = int(tid)
+    if tid not in cache:
+        try:
+            sol = cliente.request(f"/Ticket/{tid}/ITILSolution")
+        except Exception:  # noqa: BLE001
+            sol = None
+        cache[tid] = sol if isinstance(sol, list) else []
+    return cache[tid]
+
+
+def _solucion_resuelta(sol):
     """Qué hizo el cliente con la SOLUCIÓN desde la mesa de ayuda: 'aceptada', 'rechazada' o None.
 
     En GLPI el solicitante confirma o rechaza APRETANDO UN BOTÓN sobre la solución, no escribiendo.
     Mientras no la toca, la solución queda 'pendiente' (2) y esto devuelve None. Sin mirar esto, un
     cliente que rechaza y no escribe nada quedaba esperando para siempre: la solución figuraba
     rechazada y el ticket seguía en Resuelto sin que el equipo se enterara."""
-    try:
-        sol = cliente.request(f"/Ticket/{tid}/ITILSolution")
-    except Exception:  # noqa: BLE001
-        return None
-    if not isinstance(sol, list) or not sol:
+    if not sol:
         return None
     ultima = sorted(sol, key=lambda s: int(s.get("id") or 0))[-1]
     return {1: "aceptada", 3: "rechazada"}.get(int(ultima.get("status") or 0))
 
 
-def _espera_confirmacion(cliente, tid):
+def _espera_confirmacion(sol):
     """True si lo que el ticket espera del cliente es que CONFIRME que quedó resuelto.
 
     Se reconoce por tener una SOLUCIÓN cargada y todavía pendiente de su aprobación. Es lo que
     separa las dos esperas: si le pedimos un dato, cuando contesta el ticket vuelve a En curso;
     si le pedimos la confirmación, lo que contesta cierra el ticket o lo reabre."""
-    try:
-        sol = cliente.request(f"/Ticket/{tid}/ITILSolution")
-    except Exception:  # noqa: BLE001
-        return False
-    if not isinstance(sol, list) or not sol:
+    if not sol:
         return False
     ultima = sorted(sol, key=lambda s: int(s.get("id") or 0))[-1]
     return int(ultima.get("status") or 0) == 2          # 2 = pendiente del cliente
 
 
-def _texto_resolucion(cliente, tid, fu, humanos=None):
+def _texto_resolucion(sol, fu, humanos=None):
     """Junta el texto de la RESOLUCIÓN para que la IA juzgue si explica el procedimiento: la
     ITILSolution documentada (si hay) + el último comentario de un técnico HUMANO. '' si no hay nada."""
     partes = []
-    try:
-        sol = cliente.request(f"/Ticket/{tid}/ITILSolution")
-        if isinstance(sol, list):
-            for s in sol:
-                c = _texto_plano(s.get("content"))
-                if c:
-                    partes.append(c)
-    except Exception:  # noqa: BLE001
-        pass
+    for s in (sol or []):
+        c = _texto_plano(s.get("content"))
+        if c:
+            partes.append(c)
     tec = [f for f in fu if int(f.get("users_id") or 0) in (humanos or TECNICOS_HUMANOS)]
     if tec:
         c = _texto_plano(tec[-1].get("content"))
@@ -352,6 +369,7 @@ def gestionar_ciclo(cliente, triage, entidad, estado):
         return anuncios
 
     _cache_asig = {}
+    _cache_sol = {}        # soluciones por ticket: se leen UNA vez por vuelta (ver `_soluciones`)
 
     def asignado(tid):
         """(telefonos, nombres) del TÉCNICO ASIGNADO al ticket, para @mencionarlo SOLO a él. Se
@@ -471,15 +489,16 @@ def gestionar_ciclo(cliente, triage, entidad, estado):
         # figura RESUELTO y ya le pedimos que confirme (un técnico puede marcarlo resuelto a mano,
         # sin cargar solución). Fuera de Resuelto se exige la solución pendiente, que se apaga sola
         # al cerrar o reabrir: así un ticket ya reabierto no vuelve a procesar la misma respuesta.
-        espera_conf = (_espera_confirmacion(cliente, t["id"])
+        sol = _soluciones(cliente, t["id"], _cache_sol)   # UNA lectura, se reusa abajo
+        espera_conf = (_espera_confirmacion(sol)
                        or (status == 5 and _ya_pidio_confirmacion(fu)))
         if status in (2, 4, 5) and espera_conf:
-            veredicto = _solucion_resuelta(cliente, t["id"])   # ¿usó los botones?
+            veredicto = _solucion_resuelta(sol)                # ¿usó los botones?
             respuesta = _respondio_a(fu, _es_aviso_confirmacion, tecs)   # ¿o escribió?
             conf = {"aceptada": True, "rechazada": False}.get(veredicto)
             autor, dijo = "el cliente", ""
             if conf is None and respuesta:
-                autor = _nombre_usuario(cliente, respuesta.get("users_id"))
+                autor = _nombre_usuario(cliente, respuesta.get("users_id"), cfg)
                 dijo = _texto_plano(respuesta.get("content"))
                 conf = triage.cliente_confirma(dijo)
                 if conf is None:
@@ -524,7 +543,7 @@ def gestionar_ciclo(cliente, triage, entidad, estado):
             # (la espera de la CONFIRMACIÓN se resolvió más arriba, sin mirar el estado)
             respuesta = _respondio_a(fu, lambda f: _es_pedido_al_cliente(f, tecs), tecs)
             if respuesta:                      # el cliente respondió
-                autor = _nombre_usuario(cliente, respuesta.get("users_id"))
+                autor = _nombre_usuario(cliente, respuesta.get("users_id"), cfg)
                 dijo = _texto_plano(respuesta.get("content"))
                 # FUERA DE HORARIO: no se pasa a EN CURSO. Si se pasara, el SLA correría toda la
                 # noche o todo el fin de semana contra un equipo que no está trabajando y el lunes
@@ -589,7 +608,7 @@ def gestionar_ciclo(cliente, triage, entidad, estado):
             #  2) Nadie se enteraba de que el cliente había escrito. Ahora se avisa por los canales
             #     con lo que dijo, y si pasan horas HÁBILES sin que le contestemos, el técnico
             #     asignado recibe el aviso —una vez por día hábil— hasta que lo atienda.
-            autor = _nombre_usuario(cliente, nuevos[-1].get("users_id"))
+            autor = _nombre_usuario(cliente, nuevos[-1].get("users_id"), cfg)
             dijo = _texto_plano(nuevos[-1].get("content"))
             ultimo_id = int(nuevos[-1].get("id") or 0)
             if not en_horario_atencion(cfg):
@@ -633,7 +652,7 @@ def gestionar_ciclo(cliente, triage, entidad, estado):
             if not st.get("rev_solucion"):
                 st["rev_solucion"] = True
                 if not _ya_pidio_procedimiento(fu):
-                    resol = _texto_resolucion(cliente, t["id"], fu, humanos)
+                    resol = _texto_resolucion(sol, fu, humanos)
                     explica = triage.explica_procedimiento(resol) if resol else False
                     if explica is False:      # False EXPLÍCITO (no None -> IA caída): no explica -> pedir
                         triage.nota_interna(t["id"], _NOTA_PEDIR_PROCEDIMIENTO)

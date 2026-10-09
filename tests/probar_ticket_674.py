@@ -411,11 +411,11 @@ print("\n=== 7.c · En espera puede estar esperando DOS cosas distintas ===")
 # Un dato que le pedimos -> cuando contesta vuelve a En curso. La confirmación de que quedó
 # resuelto -> lo que contesta CIERRA el ticket o lo REABRE. Se distinguen por si hay una solución
 # pendiente de su aprobación.
-ok(CI._espera_confirmacion(_ClienteSol_("pendiente"), 678) is True,
+ok(CI._espera_confirmacion(CI._soluciones(_ClienteSol_("pendiente"), 678, {})) is True,
    "con una solución pendiente, lo que se espera es la CONFIRMACIÓN")
-ok(CI._espera_confirmacion(_ClienteSol_("aceptada"), 678) is False,
+ok(CI._espera_confirmacion(CI._soluciones(_ClienteSol_("aceptada"), 678, {})) is False,
    "ya aprobada, no se espera confirmación")
-ok(CI._espera_confirmacion(_SinSolucion(), 678) is False,
+ok(CI._espera_confirmacion(CI._soluciones(_SinSolucion(), 678, {})) is False,
    "y sin solución cargada, lo que se espera es un DATO (vuelve a En curso)")
 
 print("\n=== 8 · El SLA no corre cuando la pelota no es nuestra ===")
@@ -500,10 +500,10 @@ class _TriageBotones(_TriageFalso):
         return True            # si todavía no contestó, se le recuerda (no se toca el ticket)
 
 
-ok(CI._solucion_resuelta(_ClienteSol("pendiente"), 678) is None,
+ok(CI._solucion_resuelta(CI._soluciones(_ClienteSol("pendiente"), 678, {})) is None,
    "mientras el cliente no toca nada, la solución sigue pendiente y no se hace nada")
-ok(CI._solucion_resuelta(_ClienteSol("aceptada"), 678) == "aceptada", "se lee la aprobación")
-ok(CI._solucion_resuelta(_ClienteSol("rechazada"), 678) == "rechazada", "y el rechazo")
+ok(CI._solucion_resuelta(CI._soluciones(_ClienteSol("aceptada"), 678, {})) == "aceptada", "se lee la aprobación")
+ok(CI._solucion_resuelta(CI._soluciones(_ClienteSol("rechazada"), 678, {})) == "rechazada", "y el rechazo")
 
 aprob = _TriageBotones()
 list(CI.gestionar_ciclo(_ClienteSol("aceptada"), aprob, 12, {}))

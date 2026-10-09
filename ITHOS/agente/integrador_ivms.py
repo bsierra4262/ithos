@@ -63,6 +63,15 @@ def _evento_de_fila(r):
     return clave, {"nombre": nombre, "device": device, "es_fallo": es_fallo, "tipo": tipo}
 
 
+def _entero(valor, por_defecto, minimo, maximo):
+    """Un entero de la config, acotado. Nunca levanta: si viene cualquier cosa, el valor por defecto."""
+    try:
+        n = int(str(valor).strip())
+    except (TypeError, ValueError):
+        return por_defecto
+    return max(minimo, min(maximo, n))
+
+
 def vigilar(cfg, enviar_evento, stop=None):
     """Poll de la DB. enviar_evento({'evento':'acceso','datos':{...}}). Baseline en
     el arranque (no anuncia el histórico)."""
@@ -72,10 +81,15 @@ def vigilar(cfg, enviar_evento, stop=None):
         log.error("IVMS deshabilitado (falta pyodbc): %s", e)
         return
     intervalo = cfg.get("poll_interval", 2)
-    consulta = (f"SELECT TOP {cfg.get('max_rows', 50)} empleado_id, nombre_persona, "
+    # Los `TOP` se arman con un ENTERO validado, no pegando el valor de la config dentro del SQL.
+    # `max_rows` y `max_precache` se editan desde el panel y llegan como texto: interpolar eso en
+    # la consulta es dejar abierta la puerta a que lo que entre por un formulario termine
+    # ejecutándose contra la base del cliente. Un `int()` acotado cierra el tema de raíz.
+    max_filas = _entero(cfg.get("max_rows"), 50, 1, 5000)
+    consulta = (f"SELECT TOP {max_filas} empleado_id, nombre_persona, "
                 f"fecha_hora, device_name FROM fichajes ORDER BY fecha_hora DESC")
     conn = None
-    vistos = set()
+    vistos = {}          # dict, no set: conserva el orden -> se descartan las MÁS VIEJAS
     baseline = False
     poll_n = 0
     ultimo_reciente = None
@@ -96,14 +110,15 @@ def vigilar(cfg, enviar_evento, stop=None):
             if not baseline:
                 for r in filas:                          # baseline: marca las fichadas actuales
                     clave, _ = _evento_de_fila(r)         # (para NO re-anunciar el histórico)
-                    vistos.add(clave)
+                    vistos[clave] = None
                 baseline = True
                 log.info("IVMS baseline: %d fichajes marcados. Esperando nuevos...", len(vistos))
                 # ROSTER COMPLETO para pre-cachear: TODAS las personas conocidas (no solo las recientes),
                 # así la 1ª fichada de CUALQUIERA sale instantánea. Se cachea en 2do plano (ocioso).
                 nombres = []
                 try:
-                    cur.execute(f"SELECT DISTINCT TOP {cfg.get('max_precache', 1000)} nombre_persona "
+                    max_pre = _entero(cfg.get("max_precache"), 1000, 1, 20000)
+                    cur.execute(f"SELECT DISTINCT TOP {max_pre} nombre_persona "
                                 f"FROM fichajes WHERE nombre_persona IS NOT NULL ORDER BY nombre_persona")
                     for row in cur.fetchall():
                         n = (str(row[0]).strip() if row[0] else "")
@@ -138,9 +153,14 @@ def vigilar(cfg, enviar_evento, stop=None):
                     clave, datos = _evento_de_fila(r)
                     if clave in vistos:
                         continue
-                    vistos.add(clave)
+                    vistos[clave] = None
                     if len(vistos) > 6000:
-                        vistos = set(list(vistos)[-5000:])
+                        # Se descartan las fichadas MÁS VIEJAS. Antes era `set(list(vistos))[-5000:]`
+                        # y un set NO tiene orden: lo que se tiraba era arbitrario, así que podía
+                        # descartar una fichada reciente y volver a anunciarla por los parlantes.
+                        # Un dict conserva el orden de inserción, que acá es el cronológico.
+                        for vieja in list(vistos)[:len(vistos) - 5000]:
+                            vistos.pop(vieja, None)
                     log.info("IVMS: NUEVA fichada -> nombre='%s' device='%s' tipo=%s -> enviada al gestor",
                              datos.get("nombre"), datos.get("device"), datos.get("tipo"))
                     enviar_evento({"evento": "acceso", "datos": datos})

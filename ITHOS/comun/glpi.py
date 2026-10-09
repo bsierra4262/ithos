@@ -54,7 +54,7 @@ class GLPIClient:
                     if code == 401 or "SESSION_TOKEN" in cuerpo or "ERROR_SESSION" in cuerpo:
                         self.session = None                # expiró -> reabrir y reintentar 1 vez
                         try:
-                            self.abrir()
+                            self.reabrir()                 # FORZADA: la de antes ya no sirve
                         except Exception:  # noqa: BLE001
                             raise
                         return self.request(path, method, data, timeout, _reintento_sesion=False)
@@ -77,6 +77,18 @@ class GLPIClient:
         return {}
 
     def abrir(self):
+        """Asegura una sesión viva. Si YA hay una, la reusa.
+
+        Es idempotente a propósito: por todo el código hay un patrón `abrir() … finally: cerrar()`
+        por cada operación. Si `abrir()` tirara siempre la sesión y pidiera otra, cada acción sobre
+        un ticket costaría initSession + changeActiveEntities ADEMÁS de la operación en sí —cuatro
+        viajes a GLPI para hacer uno—. Para forzar una sesión nueva está `reabrir()`."""
+        if self.session:
+            return self
+        return self.reabrir()
+
+    def reabrir(self):
+        """Fuerza una sesión NUEVA (tira la anterior). Se usa cuando GLPI dice que expiró."""
         self.session = None
         self.session = self.request("/initSession", _reintento_sesion=False)["session_token"]
         self._activar_entidades()
