@@ -20,6 +20,11 @@ import triage as T            # noqa: E402
 
 log = logging.getLogger("integrador.glpi")
 
+# Cada cuántas vueltas se revisa el histórico COMPLETO en busca de tickets olvidados en 'Nuevo'.
+# Con el intervalo por defecto (60 s) son ~10 minutos: suficiente para que nada quede colgado y
+# lo bastante espaciado para no leer todo el histórico a cada rato.
+_VUELTAS_BARRIDO = 10
+
 
 def pendientes_triage(recientes):
     """Tickets que NECESITAN primera respuesta / triage: los que están en estado NUEVO (status 1).
@@ -69,11 +74,21 @@ async def vigilar(cfg_glpi, enviar_comando, triage=None, wa=None, stop=None,
             await asyncio.to_thread(lambda: AV.llamar(wa.enviar, mensaje, tipo=AV.TICKETS))
 
     fallos = 0
+    vueltas = 0
     while stop is None or not stop.is_set():
         try:
+            vueltas += 1
+            # BARRIDO COMPLETO cada tanto. El poll normal mira los 30 tickets MÁS NUEVOS, que es lo
+            # que hace falta para atender lo que entra. Pero un ticket que quedó en 'Nuevo' y fue
+            # saliendo de esa ventana a medida que entraban otros no se vuelve a mirar NUNCA: deja
+            # de existir para el circuito. Pasó de verdad —ocho tickets en 'Nuevo' desde mayo y
+            # junio, sin categorizar, sin asignar y sin primera respuesta, y nadie se enteró—.
+            # Cada `_VUELTAS_BARRIDO` se mira el histórico entero para rescatarlos.
             def leer():
                 if cliente.session is None:
                     cliente.abrir()
+                if vueltas % _VUELTAS_BARRIDO == 1:
+                    return G.de_entidad(cliente.todos_tickets(), entidad)
                 return G.de_entidad(cliente.tickets_recientes(30), entidad)
             recientes = await asyncio.to_thread(leer)
             fallos = 0                              # lectura OK -> resetea el backoff

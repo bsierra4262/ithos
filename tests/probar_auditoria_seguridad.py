@@ -296,6 +296,23 @@ ok("fichada-6099" in vistos and "fichada-0" not in vistos,
    "al recortar se descartan las MÁS VIEJAS, no unas cualesquiera",
    f"{len(vistos)} en memoria")
 
+seccion("A20 · un ticket olvidado en 'Nuevo' se rescata, no desaparece")
+import integrador_glpi as IG            # noqa: E402
+# El poll normal mira los 30 más nuevos. Un ticket que quedó en 'Nuevo' y fue saliendo de esa
+# ventana no se volvía a mirar NUNCA: dejaba de existir para el circuito. Pasó de verdad, con ocho
+# tickets sin categorizar ni contestar desde mayo.
+TODOS = [{"id": i, "status": 2, "entities_id": 12} for i in range(1, 300)]
+TODOS += [{"id": 472, "status": 1, "entities_id": 12, "name": "viejo olvidado"}]
+TODOS += [{"id": i, "status": 2, "entities_id": 12} for i in range(700, 730)]
+pend = IG.pendientes_triage(TODOS)
+ok([t["id"] for t in pend] == [472],
+   "el triage reconoce como pendiente al ticket viejo en 'Nuevo'", str([t["id"] for t in pend]))
+_fuente_ig = open(os.path.join(APP, "central", "integrador_glpi.py"), encoding="utf-8").read()
+ok("_VUELTAS_BARRIDO" in _fuente_ig and "todos_tickets()" in _fuente_ig,
+   "y cada tantas vueltas se revisa el histórico COMPLETO, no sólo los 30 últimos")
+ok(IG._VUELTAS_BARRIDO >= 5,
+   "el barrido está espaciado (no lee todo el histórico en cada vuelta)", str(IG._VUELTAS_BARRIDO))
+
 seccion("A18 · la versión que informa el Gestor es la de verdad")
 from comun import version as V          # noqa: E402
 r = cli.get("/api/estado")   # el panel responde; el '/' del central se prueba por su módulo
