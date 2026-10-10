@@ -48,12 +48,14 @@ y el versionado, [SemVer](https://semver.org/lang/es/).
   podía dejar el archivo a medias y perder, en silencio, todos los enlaces vigentes.
 
 ### Fixed
-- **Un ticket que quedaba en "Nuevo" podía no volver a mirarse nunca.** El poll revisa los 30
-  tickets MÁS NUEVOS, que es lo que hace falta para atender lo que entra; pero uno que quedó en
-  "Nuevo" y fue saliendo de esa ventana a medida que entraban otros dejaba de existir para el
-  circuito: sin categoría, sin asignar, sin primera respuesta y sin SLA, y nadie se enteraba.
-  Había **ocho tickets así, desde mayo y junio**. Ahora, cada diez vueltas, se revisa el histórico
-  completo para rescatarlos.
+- **Un ticket que quede en "Nuevo" podía no volver a mirarse nunca.** El poll revisa los 30 tickets
+  MÁS NUEVOS, que es lo que hace falta para atender lo que entra; pero uno que quedara en "Nuevo"
+  —porque su triage falló, o porque entraron 30 más mientras tanto— iba saliendo de esa ventana y
+  dejaba de existir para el circuito: sin categoría, sin asignar, sin primera respuesta y sin SLA
+  corriendo, y nadie se enteraba. Ahora, cada diez vueltas, se revisa el histórico completo. Es un
+  hueco que hoy no se estaba dando (el volumen de tickets no alcanza para llenar la ventana entre
+  dos vueltas), pero no depende de eso: depende de que el triage no falle nunca, y eso no se puede
+  dar por sentado.
 - **La mesa de ayuda dejaba de funcionar cuando el cliente apagaba la PC.** El triage, los reportes,
   la alerta de SLA, la base de conocimiento y la reactivación de tickets pospuestos vivían dentro
   del manejador del WebSocket del agente y se cancelaban al desconectarse. Un ticket que entraba a

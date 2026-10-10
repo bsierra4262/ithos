@@ -79,10 +79,11 @@ async def vigilar(cfg_glpi, enviar_comando, triage=None, wa=None, stop=None,
         try:
             vueltas += 1
             # BARRIDO COMPLETO cada tanto. El poll normal mira los 30 tickets MÁS NUEVOS, que es lo
-            # que hace falta para atender lo que entra. Pero un ticket que quedó en 'Nuevo' y fue
-            # saliendo de esa ventana a medida que entraban otros no se vuelve a mirar NUNCA: deja
-            # de existir para el circuito. Pasó de verdad —ocho tickets en 'Nuevo' desde mayo y
-            # junio, sin categorizar, sin asignar y sin primera respuesta, y nadie se enteró—.
+            # que hace falta para atender lo que entra. Pero un ticket que QUEDE en 'Nuevo' —porque
+            # su triage falló, o porque entraron treinta más mientras tanto— va saliendo de esa
+            # ventana y no se vuelve a mirar NUNCA: deja de existir para el circuito, sin categoría,
+            # sin asignar, sin primera respuesta y sin SLA corriendo. Que hoy no pase depende del
+            # volumen de tickets y de que el triage no falle, y ninguna de las dos es una garantía.
             # Cada `_VUELTAS_BARRIDO` se mira el histórico entero para rescatarlos.
             def leer():
                 if cliente.session is None:

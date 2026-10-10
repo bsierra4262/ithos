@@ -298,9 +298,9 @@ ok("fichada-6099" in vistos and "fichada-0" not in vistos,
 
 seccion("A20 · un ticket olvidado en 'Nuevo' se rescata, no desaparece")
 import integrador_glpi as IG            # noqa: E402
-# El poll normal mira los 30 más nuevos. Un ticket que quedó en 'Nuevo' y fue saliendo de esa
-# ventana no se volvía a mirar NUNCA: dejaba de existir para el circuito. Pasó de verdad, con ocho
-# tickets sin categorizar ni contestar desde mayo.
+# El poll normal mira los 30 más nuevos. Un ticket que QUEDE en 'Nuevo' —porque su triage falló, o
+# porque entraron treinta más mientras tanto— va saliendo de esa ventana y no se vuelve a mirar
+# NUNCA: deja de existir para el circuito.
 TODOS = [{"id": i, "status": 2, "entities_id": 12} for i in range(1, 300)]
 TODOS += [{"id": 472, "status": 1, "entities_id": 12, "name": "viejo olvidado"}]
 TODOS += [{"id": i, "status": 2, "entities_id": 12} for i in range(700, 730)]
