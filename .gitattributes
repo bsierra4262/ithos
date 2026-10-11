@@ -10,6 +10,11 @@ Caddyfile text eol=lf
 # El tema de GLPI se sube a un servidor Linux y se guarda en MySQL: con LF
 # fijo, reaplicarlo da siempre los mismos bytes y el md5 se puede comparar.
 *.css text eol=lf
+# El .htaccess lo lee Apache en Linux: un CRLF deja un \r pegado al valor de
+# cada `php_value` y el ajuste se aplica mal, sin avisar.
+*.htaccess text eol=lf
+*.ico binary
+
 # Solo-Windows
 *.ps1 text eol=crlf
 *.bat text eol=crlf
