@@ -6,6 +6,26 @@ y el versionado, [SemVer](https://semver.org/lang/es/).
 
 ## [Unreleased]
 
+### Changed
+- **La mesa de ayuda de INTELLIHELP pasó de GLPI 10.0.16 a GLPI 12.0.0.** El salto cruza dos
+  versiones mayores, así que antes se ensayó entero —migración incluida— contra una **copia real
+  de la base**, en un entorno aparte. El ensayo atajó tres cosas que habrían roto la actualización
+  de verdad:
+  1. la clave `config/glpicrypt.key` hay que **conservarla**: sin ella, todo lo que GLPI guarda
+     cifrado queda ilegible;
+  2. el optimizador de la base del hosting había agregado tres índices propios (`wdbi_…`) y, con
+     ellos, la migración **se niega a arrancar** por esquema inconsistente;
+  3. GLPI 12 **no trae ningún `.htaccess`**: da por sentado que el servidor web apunta a `public/`.
+     Sin reescritura, Apache devuelve 404 en todo; y sin las reglas que protegían `config/`, la
+     clave de cifrado habría quedado **descargable** por web.
+
+  Para ITHOS no cambia nada: GLPI 12 conserva la ruta `/apirest.php` (ahora servida por
+  `ApiRestController`), y las llamadas que usa el Gestor —`initSession`, `changeActiveEntities`
+  con su envoltorio `input`, `getActiveProfile`, los rangos, los sub-recursos de seguimientos y
+  soluciones, `search`— se probaron una por una contra la versión nueva antes de tocar producción.
+  Requiere **PHP 8.3** (8.2 corta en seco); 8.3 es además la única versión que sirve para las dos,
+  así que el GLPI viejo siguió funcionando mientras se preparaba el cambio.
+
 ### Security
 - **El portal del cliente entregaba TODOS sus secretos.** `GET /api/cliente/<api_key>` devolvía la
   configuración completa y descifrada —los tokens de GLPI (incluido el de **super admin**), las
