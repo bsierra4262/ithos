@@ -174,6 +174,35 @@ for prohibido, motivo in [(".card .card-body a", "las tarjetas del tablero elige
                           (".secondary-bar", "el tema original pedía no tocarla")]:
     ok(prohibido not in selectores, f"ningún selector toca {prohibido}", motivo)
 
+print("\n=== 8 · El favicon también es de ITH, y la regla está en el orden correcto ===")
+# Un favicon NO se puede cambiar por CSS: head.html.twig lo declara fijo como /pics/favicon.ico,
+# y ese archivo lo reescribe cada versión mayor de GLPI. Por eso se desvía con el .htaccess.
+HTACCESS = os.path.join(RAIZ, "docs", "glpi", "public.htaccess")
+ICONO = os.path.join(RAIZ, "docs", "glpi", "ith-favicon.ico")
+ok(os.path.exists(ICONO), "el ícono propio de ITH está versionado en el repo")
+if os.path.exists(ICONO):
+    with open(ICONO, "rb") as fh:
+        cabecera = fh.read(6)
+    # Un .ico real empieza con 00 00 01 00 y después la cantidad de tamaños que trae.
+    tamanos = int.from_bytes(cabecera[4:6], "little") if len(cabecera) >= 6 else 0
+    ok(cabecera[:4] == b"\x00\x00\x01\x00", "es un .ico de verdad")
+    ok(tamanos >= 4, "trae varios tamaños (16px para la pestaña, 256px para accesos directos)",
+       f"{tamanos} tamaños")
+
+with open(HTACCESS, encoding="utf-8") as fh:
+    HT = fh.read()
+reescritura = HT.find("pics/logos/ith-favicon.ico")
+chequeo_archivo = HT.find("REQUEST_FILENAME} -f")
+enrutador = HT.find("RewriteRule ^ index.php")
+ok(reescritura != -1, "el .htaccess desvía el favicon al archivo propio de ITH")
+ok(0 <= reescritura < chequeo_archivo,
+   "y lo hace ANTES del chequeo de archivo existente",
+   "si fuera después, Apache serviría el favicon de GLPI y la regla nunca correría")
+ok(0 < chequeo_archivo < enrutador,
+   "el enrutador de GLPI sigue siendo la última regla (si no, la aplicación no arranca)")
+for ajuste in ["session.cookie_secure 1", "session.cookie_httponly 1", "session.cookie_samesite Lax"]:
+    ok(ajuste in HT, f"no se perdió el endurecimiento de la cookie: {ajuste}")
+
 print("\n" + "=" * 62)
 if FALLAS:
     print(f"  FALLAS: {len(FALLAS)}")

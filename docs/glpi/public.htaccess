@@ -1,0 +1,31 @@
+# GLPI 12 sirve TODO desde public/index.php (enrutador). Sin esta reescritura, Apache busca un
+# archivo por cada URL y devuelve 404 en todo lo que no sea un asset: la aplicacion no arranca.
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+
+    # EL FAVICON ES EL DE ITH, Y SOBREVIVE A LAS ACTUALIZACIONES.
+    # El icono se declara en templates/layout/parts/head.html.twig como /pics/favicon.ico, y ese
+    # archivo lo reescribe cada version mayor de GLPI. Un favicon no se puede cambiar por CSS, asi
+    # que se desvia la ruta al archivo propio, que GLPI no conoce y no puede pisar. Va ANTES del
+    # chequeo de archivo existente: si no, Apache serviria el favicon de GLPI y nunca llegaria aca.
+    RewriteRule ^pics/favicon\.ico$ pics/logos/ith-favicon.ico [L]
+
+    # Si el archivo existe (css, js, imagenes), se sirve tal cual.
+    RewriteCond %{REQUEST_FILENAME} -f
+    RewriteRule ^ - [L]
+    # Todo lo demas -incluido /apirest.php/...- va al enrutador.
+    RewriteRule ^ index.php [QSA,L]
+</IfModule>
+
+# SEGURIDAD DE LA COOKIE DE SESION.
+# El sitio se sirve SOLO por HTTPS, asi que la cookie no tiene por que viajar en claro (secure)
+# ni ser legible desde JavaScript (httponly): sin httponly, un XSS en cualquier parte de la
+# aplicacion se lleva la sesion de un tecnico o del administrador. samesite=Lax evita que otro
+# sitio dispare acciones en GLPI aprovechando una sesion abierta.
+#
+# Va aca y no en un .user.ini porque este hosting los tiene DESHABILITADOS (user_ini.filename
+# esta vacio), asi que ese archivo no lo lee nadie. GLPI lee estos valores del ini -no de la
+# cookie- para su chequeo de seguridad, por eso avisaba aunque la cookie ya saliera protegida.
+php_value session.cookie_secure 1
+php_value session.cookie_httponly 1
+php_value session.cookie_samesite Lax

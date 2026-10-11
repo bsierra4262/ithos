@@ -72,6 +72,38 @@ y el versionado, [SemVer](https://semver.org/lang/es/).
   apunta las seis variables `--glpi-logo-*` a archivos que GLPI no conoce y no puede pisar, con un
   `?v=` para forzar la descarga.
 
+  La marca también llegó a los dos lugares que faltaban. **El favicon** —la pestaña del navegador
+  seguía mostrando la "G" de GLPI— no se puede cambiar por CSS: `head.html.twig` lo declara fijo
+  como `/pics/favicon.ico`, y ese archivo lo reescribe cada versión mayor. Se resolvió desviando la
+  ruta desde el `.htaccess` (que GLPI 12 **no trae**, así que es nuestro) a `ith-favicon.ico`, un
+  `.ico` de seis tamaños generado del logo; la regla va **antes** del chequeo de archivo existente,
+  porque si no Apache sirve el de GLPI y la reescritura nunca corre. Y **el título** decía
+  "— GLPI" porque la clave `app_name` no existía en `glpi_configs` y GLPI caía en su valor por
+  omisión; ahora dice **Mesa de Ayuda ITH**, que es además lo que firma el pie de las
+  notificaciones. Todo queda versionado y explicado en `docs/glpi/`.
+
+### Fixed
+
+- **Un plugin fantasma hacía trabajar a GLPI de más en cada pedido.** La carpeta `plugins/` quedó
+  vacía tras la actualización, pero `glpi_plugins` seguía marcando **mreporting** como *activado*:
+  GLPI intentaba cargarlo en cada petición y dejaba el aviso `Plugin "mreporting" version changed.
+  It has been deactivated` en el log una y otra vez. Desactivado por la vía oficial
+  (`php bin/console plugin:deactivate`), sin borrar la fila, para poder volver atrás.
+
+- **Diagnosticado, no nuestro:** el error *"no se pudo establecer comunicación con la base de
+  datos"* que aparece de vez en cuando y se va al recargar. Sale de
+  `CheckDatabaseStatusListener` cuando `$DB->connected` es falso. Los errores llegan **en ráfagas
+  dentro del mismo segundo** (17 en un día), que es por lo que el mini tablero de tickets es el
+  primero en mostrarlo: dispara sus siete tarjetas en paralelo y las que fallan dejan el spinner
+  girando. **No es un tope nuestro**: 20 pedidos simultáneos pasan los 20. Es el MySQL compartido
+  del hosting rechazando conexiones de a ratos, y GLPI no reintenta. Se arregla en el hosting o
+  mudando GLPI a la VPS.
+
+- **Los husos horarios de GLPI no se pueden activar en este hosting.** `database:enable_timezones`
+  se niega porque las tablas de husos de MySQL no están cargadas, y el usuario de la base no tiene
+  permiso sobre `mysql.time_zone_name` (`ERROR 1142`). Hoy **no rompe nada**: GLPI guarda en hora
+  local de Argentina (`time_offset = -10800`). Lo único que no se puede es tener husos por usuario.
+
 ### Security
 - **El portal del cliente entregaba TODOS sus secretos.** `GET /api/cliente/<api_key>` devolvía la
   configuración completa y descifrada —los tokens de GLPI (incluido el de **super admin**), las
