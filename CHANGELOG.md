@@ -26,6 +26,37 @@ y el versionado, [SemVer](https://semver.org/lang/es/).
   Requiere **PHP 8.3** (8.2 corta en seco); 8.3 es además la única versión que sirve para las dos,
   así que el GLPI viejo siguió funcionando mientras se preparaba el cambio.
 
+- **El tema de ITH dejó de estar hardcodeado y ahora vive en un solo lugar** (`docs/glpi/tema_ith.css`,
+  aplicado al CSS propio de la entidad raíz). Antes era un bloque PHP **copiado a mano en ~100
+  archivos `front/*.php`**: por eso la actualización a GLPI 12 se lo llevó entero, porque trae esos
+  archivos nuevos. El CSS de entidad es el mecanismo que GLPI soporta oficialmente, GLPI lo sirve en
+  el `head` de **todas** las páginas —la de login incluida— y ninguna actualización lo pisa.
+
+  Tres cosas cambian respecto del tema original, y las tres son por legibilidad medida, no por gusto:
+
+  1. **Lo seleccionado es verde, no violeta.** Todos los usuarios están en la paleta `auror_dark`.
+     Ahí el violeta del "activo" (`#653899`) queda a **1.5:1** contra el fondo oscuro: el elemento
+     seleccionado era indistinguible del resto. Ahora cada control seleccionado o bajo el puntero se
+     pinta de `#9acc31` con tinta `#161922` encima —**9.4:1**— y, como el control trae su propio
+     fondo, se lee igual en el tema claro que en el oscuro.
+  2. **El hover ahora funciona en todos lados.** El tema anterior cubría sólo `.nav-link` de la
+     barra; los menús desplegables, el selector de entidad y perfil, las pestañas, las listas, el
+     paginador y los `select2` no estaban contemplados. De ahí que "en varios lados no funcionara".
+  3. **Los enlaces ya visitados dejan de irse al violeta del navegador** (`#551A8B`), que sobre
+     `auror_dark` da **1.3:1**. Se neutralizan sólo en controles y tablas: los enlaces del contenido
+     no se tocan, porque pintarlos dejó las etiquetas de las tarjetas del tablero —que son enlaces—
+     en violeta sobre naranja.
+
+  No se tocan, a propósito, los colores de **SLA, prioridad y estado**: ahí el color es información,
+  no decoración.
+
+- **El logo de ITH pasó a tener nombre propio** (`pics/logos/ith-*.png`). Estaba pisando los PNG de
+  GLPI (`logo-GLPI-*.png`), lo que traía dos problemas: cada actualización mayor los **vuelve a
+  escribir**, y el navegador se queda con la copia vieja en caché —por eso seguía apareciendo el
+  logo de GLPI en la pantalla de login aunque el servidor ya entregaba el de ITH—. Ahora el tema
+  apunta las seis variables `--glpi-logo-*` a archivos que GLPI no conoce y no puede pisar, con un
+  `?v=` para forzar la descarga.
+
 ### Security
 - **El portal del cliente entregaba TODOS sus secretos.** `GET /api/cliente/<api_key>` devolvía la
   configuración completa y descifrada —los tokens de GLPI (incluido el de **super admin**), las

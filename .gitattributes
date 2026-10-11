@@ -7,6 +7,9 @@ Caddyfile text eol=lf
 *.yml text eol=lf
 *.yaml text eol=lf
 .env.example text eol=lf
+# El tema de GLPI se sube a un servidor Linux y se guarda en MySQL: con LF
+# fijo, reaplicarlo da siempre los mismos bytes y el md5 se puede comparar.
+*.css text eol=lf
 # Solo-Windows
 *.ps1 text eol=crlf
 *.bat text eol=crlf

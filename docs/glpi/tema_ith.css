@@ -1,0 +1,285 @@
+@import url('https://fonts.googleapis.com/css2?family=Saira:wght@300;400;500;600;700&display=swap');
+
+/* ====================================================================
+   TEMA ITH - INTELLIHELP  ·  GLPI 12
+   --------------------------------------------------------------------
+   DONDE VIVE. En el CSS propio de la entidad raiz (Entidad ITH ->
+   Interfaz personalizada). GLPI lo sirve en el head de TODAS las
+   paginas, incluida la de login. Es el unico mecanismo que la
+   actualizacion no se lleva puesto: el tema anterior estaba copiado a
+   mano en ~100 archivos front/*.php y se perdio entero al pasar a
+   GLPI 12.
+
+   COLORES DE MARCA
+       #502f76  barra de menu      #161922  tinta
+       #663399  violeta primario   #9acc31  verde (seleccion y acento)
+       Saira    tipografia
+
+   DECISION DE DISENO: EL SELECCIONADO ES VERDE, NO VIOLETA.
+   Todos los usuarios estan en la paleta auror_dark. Ahi el violeta
+   del "activo" (#653899) queda a 1.5:1 contra el fondo oscuro: el
+   elemento seleccionado era indistinguible del resto. Por eso cada
+   control seleccionado o bajo el puntero se pinta de verde #9acc31
+   con tinta #161922 encima: 9.4:1, y como el control trae su propio
+   fondo se lee igual en el tema claro que en el oscuro.
+
+   REGLA DE ALCANCE. Se pintan CONTROLES (menu, desplegables, pestanas,
+   listas, paginador, select2). NO se pintan los enlaces del
+   contenido: una version anterior lo hizo y las etiquetas de las
+   tarjetas del tablero -que son enlaces- quedaron violeta sobre
+   naranja, ilegibles.
+   ==================================================================== */
+
+:root {
+  --ith-barra:   #502f76;
+  --ith-activo:  #653899;
+  --ith-verde:   #9acc31;
+  --ith-tinta:   #161922;
+  --ith-primary-rgb: 102, 51, 153;
+}
+
+/* ====================================================================
+   1 · LOGO DE ITH
+   --------------------------------------------------------------------
+   Los PNG de GLPI (logo-GLPI-*.png) estaban pisados con el logo de
+   ITH, y funcionaba, pero tenia dos problemas: el navegador se queda
+   con la copia vieja en cache -de ahi que siguiera apareciendo el
+   logo de GLPI en el login- y cada actualizacion mayor de GLPI los
+   vuelve a escribir.
+
+   Ahora el logo vive en archivos con NOMBRE PROPIO (ith-*.png). GLPI
+   no los conoce, asi que no los puede pisar, y al ser una URL nueva
+   el navegador esta obligado a bajarla. El ?v= se sube a mano si
+   alguna vez se cambia el arte.
+   ==================================================================== */
+body {
+  --glpi-logo-light:         url("/pics/logos/ith-logo.png?v=2");
+  --glpi-logo-dark:          url("/pics/logos/ith-logo.png?v=2");
+  --glpi-logo-light-reduced: url("/pics/logos/ith-logo-reducido.png?v=2");
+  --glpi-logo-dark-reduced:  url("/pics/logos/ith-logo-reducido.png?v=2");
+  --glpi-logo-light-login:   url("/pics/logos/ith-logo-login.png?v=2");
+  --glpi-logo-dark-login:    url("/pics/logos/ith-logo-login.png?v=2");
+}
+/* El login resuelve el logo con `content:`, no con `background:`, y lo
+   hace en `.page-anonymous .glpi-logo`. Se repite con el id #page para
+   ganar por especificidad sin depender del orden de los estilos. */
+#page.page-anonymous .glpi-logo {
+  --logo: url("/pics/logos/ith-logo-login.png?v=2");
+  content: var(--logo);
+}
+
+/* ====================================================================
+   2 · TIPOGRAFIA
+   ==================================================================== */
+body, .page, .navbar, .btn, .form-control, .form-select,
+input, select, textarea, button, table, .card, .modal, .dropdown-menu,
+h1, h2, h3, h4, h5, h6 {
+  font-family: "Saira", -apple-system, BlinkMacSystemFont, "Segoe UI",
+               Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+/* ====================================================================
+   3 · BARRA DE MENU
+   --------------------------------------------------------------------
+   GLPI 12 expone variables propias: se usan en vez de pelear con
+   selectores, que es lo que obliga a repetir !important.
+   ==================================================================== */
+body {
+  --glpi-mainmenu-bg:        var(--ith-barra);
+  --glpi-mainmenu-fg:        #ffffff;
+  --glpi-mainmenu-fg-muted:  #d9cfe8;
+  --glpi-mainmenu-active-bg: var(--ith-verde);
+}
+.navbar-vertical.sidebar,
+.navbar-dark.topbar {
+  background-color: var(--ith-barra) !important;
+  color: #ffffff;
+}
+/* Color en reposo. Blanco sobre #502f76 da 8.4:1. */
+.navbar-vertical.sidebar .nav-link,
+.navbar-vertical.sidebar .nav-link i,
+.navbar-vertical.sidebar .menu-label,
+.navbar-dark.topbar .navbar-nav .nav-link,
+.navbar-dark.topbar .navbar-nav .nav-link i {
+  color: #ffffff;
+}
+
+/* ====================================================================
+   4 · SELECCIONADO Y BAJO EL PUNTERO  ->  VERDE, EN TODOS LADOS
+   --------------------------------------------------------------------
+   Antes esto cubria solo `.nav-link` de la barra. Por eso "en varios
+   lados el hover no funcionaba": los menus desplegables, las pestanas,
+   las listas, el paginador y los select2 no estaban contemplados.
+   Van todos juntos para que el seleccionado se vea IGUAL en toda la
+   aplicacion, entres donde entres.
+   ==================================================================== */
+.navbar-vertical.sidebar .nav-link:hover,
+.navbar-vertical.sidebar .nav-link:focus,
+.navbar-vertical.sidebar .nav-link.active,
+.navbar-vertical.sidebar .nav-link.show,
+.navbar-vertical.sidebar .nav-item.dropdown.active > .nav-link,
+.navbar-dark.topbar .navbar-nav .nav-link:hover,
+.navbar-dark.topbar .navbar-nav .nav-link:focus,
+.navbar-dark.topbar .navbar-nav .nav-link.active,
+.navbar-dark.topbar .navbar-nav .nav-link.show,
+.navbar-dark.topbar .navbar-nav .nav-item.dropdown.active > .nav-link,
+.dropdown-menu .dropdown-item:hover,
+.dropdown-menu .dropdown-item:focus,
+.dropdown-menu .dropdown-item.active,
+.dropdown-menu .dropdown-item:active,
+.nav-tabs .nav-link:hover,
+.nav-tabs .nav-link:focus,
+.nav-tabs .nav-link.active,
+.nav-pills .nav-link:hover,
+.nav-pills .nav-link:focus,
+.nav-pills .nav-link.active,
+.list-group-item-action:hover,
+.list-group-item-action:focus,
+.list-group-item.active,
+.page-link:hover,
+.page-item.active .page-link,
+.select2-container .select2-results__option--highlighted,
+.select2-container .select2-results__option--selected,
+.select2-container .select2-results__option[aria-selected="true"] {
+  background-color: var(--ith-verde) !important;
+  color: var(--ith-tinta) !important;
+  border-color: var(--ith-verde) !important;
+  --tblr-nav-link-color: var(--ith-tinta);
+  --tblr-list-group-action-active-bg: var(--ith-verde);
+}
+/* Los iconos van del mismo color que el texto del control. */
+.navbar-vertical.sidebar .nav-link:hover i,
+.navbar-vertical.sidebar .nav-link.active i,
+.navbar-vertical.sidebar .nav-link.show i,
+.navbar-dark.topbar .navbar-nav .nav-link:hover i,
+.navbar-dark.topbar .navbar-nav .nav-link.active i,
+.navbar-dark.topbar .navbar-nav .nav-link.show i,
+.dropdown-menu .dropdown-item:hover i,
+.dropdown-menu .dropdown-item.active i {
+  color: var(--ith-tinta) !important;
+}
+/* La franja de la barra, que es la firma del tema original. */
+.navbar-vertical.sidebar .nav-link:hover,
+.navbar-vertical.sidebar .nav-link.active,
+.navbar-vertical.sidebar .nav-link.show {
+  border-left: 4px solid var(--ith-tinta) !important;
+}
+.navbar-dark.topbar .navbar-nav .nav-link:hover,
+.navbar-dark.topbar .navbar-nav .nav-link.active,
+.navbar-dark.topbar .navbar-nav .nav-link.show {
+  border-bottom: 4px solid var(--ith-tinta) !important;
+}
+/* El seleccionado ademas pesa mas que el que esta solo bajo el puntero. */
+.navbar-vertical.sidebar .nav-link.active,
+.navbar-dark.topbar .navbar-nav .nav-link.active,
+.dropdown-menu .dropdown-item.active,
+.nav-tabs .nav-link.active,
+.nav-pills .nav-link.active,
+.list-group-item.active {
+  font-weight: 600;
+}
+
+/* ====================================================================
+   5 · ENLACES YA VISITADOS
+   --------------------------------------------------------------------
+   Un enlace visitado que el autor no pinta se va al violeta por
+   omision del navegador (#551A8B). Sobre el fondo oscuro de
+   auror_dark eso da 1.3:1 y no se lee: es lo que pasaba en los
+   desplegables del menu, en el selector de entidad y en los titulos
+   de la lista de tickets.
+
+   `inherit` toma el color del contenedor, que es el que el tema ya
+   eligio y verifico. Solo se aplica a controles y tablas, nunca al
+   texto del contenido.
+   ==================================================================== */
+.navbar a:visited,
+.navbar-vertical.sidebar a:visited,
+.navbar-dark.topbar a:visited,
+.dropdown-menu a:visited,
+.dropdown-item:visited,
+.nav-tabs a:visited,
+.nav-pills a:visited,
+.list-group a:visited,
+.table a:visited,
+table.tab_cadre_fixehov a:visited,
+.pagination a:visited,
+.breadcrumb a:visited,
+.card-header a:visited {
+  color: inherit;
+}
+
+/* ====================================================================
+   6 · FILAS DE TABLA
+   --------------------------------------------------------------------
+   Una fila es una superficie grande, no un control: pintarla entera
+   de verde taparia los colores de estado y de SLA, que ahi son
+   INFORMACION. Va un tinte que marca la fila sin tocar el texto, y
+   por eso se lee igual en tema claro y oscuro.
+   ==================================================================== */
+.table-hover > tbody > tr:hover > *,
+table.tab_cadre_fixehov tr:hover > td {
+  background-color: rgba(154, 204, 49, 0.16) !important;
+}
+.table tr.selected > *,
+table.tab_cadre_fixehov tr.selected > td {
+  background-color: rgba(154, 204, 49, 0.24) !important;
+  box-shadow: inset 4px 0 0 0 var(--ith-verde);
+}
+
+/* ====================================================================
+   7 · BOTONES
+   ==================================================================== */
+:root, body {
+  --tblr-primary:     #663399;
+  --tblr-primary-rgb: var(--ith-primary-rgb);
+  --tblr-primary-fg:  #ffffff;
+}
+/* #663399 con texto negro da 2.1:1 (ilegible); con blanco, 8.4:1. */
+.btn-primary, .btn-primary:hover, .btn-primary:focus, .btn-primary:active,
+.btn-primary.disabled, .btn-primary:disabled,
+.badge.bg-primary,
+.btn-check:checked + .btn-outline-primary {
+  color: #ffffff !important;
+  --tblr-btn-color: #ffffff;
+  --tblr-btn-hover-color: #ffffff;
+  --tblr-btn-active-color: #ffffff;
+}
+.navbar-vertical.sidebar .btn {
+  background-color: var(--ith-activo);
+  color: #ffffff !important;
+  border-radius: 5px;
+}
+.navbar-vertical.sidebar .btn:hover {
+  background-color: var(--ith-verde) !important;
+  color: var(--ith-tinta) !important;
+}
+/* El foco del teclado tiene que verse: es la unica pista para quien
+   navega sin puntero. */
+.btn:focus-visible,
+.form-control:focus, .form-select:focus,
+.nav-link:focus-visible, .dropdown-item:focus-visible {
+  outline: 2px solid var(--ith-verde) !important;
+  outline-offset: 1px;
+}
+
+/* ====================================================================
+   8 · VERDE DE MARCA: SOLO ESTADOS POSITIVOS
+   ==================================================================== */
+.btn-success, .badge.bg-success {
+  background-color: var(--ith-verde) !important;
+  border-color:     var(--ith-verde) !important;
+  color:            var(--ith-tinta) !important;
+  --tblr-btn-color: var(--ith-tinta);
+  --tblr-btn-hover-color: var(--ith-tinta);
+}
+
+/* ====================================================================
+   9 · LO QUE NO SE TOCA, A PROPOSITO
+   --------------------------------------------------------------------
+   - `.secondary-bar`: el tema original decia "no aplicar estilos para
+     respetar el tema original". Se respeta.
+   - Las TARJETAS del tablero y los graficos: GLPI elige el color del
+     texto segun el fondo de cada una.
+   - Los colores de SLA, prioridad y estado: ahi el color es
+     INFORMACION, no decoracion. Pisarlos seria borrar un dato.
+   ==================================================================== */
