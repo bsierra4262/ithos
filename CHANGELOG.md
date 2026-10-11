@@ -32,20 +32,35 @@ y el versionado, [SemVer](https://semver.org/lang/es/).
   archivos nuevos. El CSS de entidad es el mecanismo que GLPI soporta oficialmente, GLPI lo sirve en
   el `head` de **todas** las páginas —la de login incluida— y ninguna actualización lo pisa.
 
-  Tres cosas cambian respecto del tema original, y las tres son por legibilidad medida, no por gusto:
+  **La regla del tema**, que es de donde salen las tres decisiones de abajo: *todo estado que cambia
+  el fondo tiene que fijar también el texto, y el de todo lo que hay adentro.* Nunca puede quedar
+  oscuro sobre oscuro ni claro sobre claro. Queda verificada en `tests/probar_tema_glpi.py`, que mide
+  los contrastes reales contra la paleta puesta y falla si alguna regla pinta un fondo sin fijar su
+  texto.
 
   1. **Lo seleccionado es verde, no violeta.** Todos los usuarios están en la paleta `auror_dark`.
      Ahí el violeta del "activo" (`#653899`) queda a **1.5:1** contra el fondo oscuro: el elemento
      seleccionado era indistinguible del resto. Ahora cada control seleccionado o bajo el puntero se
-     pinta de `#9acc31` con tinta `#161922` encima —**9.4:1**— y, como el control trae su propio
+     pinta de `#9acc31` con tinta `#161922` encima —**9.2:1**— y, como el control trae su propio
      fondo, se lee igual en el tema claro que en el oscuro.
+
+     Pintar el contenedor no alcanza: los controles de GLPI tienen hijos con **color propio**. El
+     botón de perfil es un `button.nav-link` con dos `div` adentro, y el segundo es
+     `.text-muted-menu`; quedaba verde con el texto blanco, **1.9:1**. Por eso cada regla de
+     selección se repite con ` *`, para alcanzar a los descendientes.
   2. **El hover ahora funciona en todos lados.** El tema anterior cubría sólo `.nav-link` de la
      barra; los menús desplegables, el selector de entidad y perfil, las pestañas, las listas, el
      paginador y los `select2` no estaban contemplados. De ahí que "en varios lados no funcionara".
   3. **Los enlaces ya visitados dejan de irse al violeta del navegador** (`#551A8B`), que sobre
-     `auror_dark` da **1.3:1**. Se neutralizan sólo en controles y tablas: los enlaces del contenido
-     no se tocan, porque pintarlos dejó las etiquetas de las tarjetas del tablero —que son enlaces—
-     en violeta sobre naranja.
+     `auror_dark` da **1.3:1** — era lo que hacía ilegibles los nombres ya abiertos en la lista de
+     usuarios. No se arregla con `color: inherit`: por privacidad, los navegadores **descartan en
+     `:visited` los valores que dependen del entorno** y sólo respetan un color explícito. La forma
+     correcta, y la que se usa, es darle a `:link` y a `:visited` el **mismo** valor explícito, así
+     el estado "ya visitado" no existe visualmente. En la barra va blanco; en tablas y listas, el
+     color de enlace de la paleta activa, para que el arreglo siga valiendo si se cambia de paleta.
+
+     Los enlaces del contenido no se tocan: pintarlos dejó las etiquetas de las tarjetas del tablero
+     —que son enlaces— en violeta sobre naranja.
 
   No se tocan, a propósito, los colores de **SLA, prioridad y estado**: ahí el color es información,
   no decoración.

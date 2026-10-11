@@ -107,11 +107,21 @@ body {
 /* ====================================================================
    4 · SELECCIONADO Y BAJO EL PUNTERO  ->  VERDE, EN TODOS LADOS
    --------------------------------------------------------------------
+   INVARIANTE DEL TEMA: todo estado que cambia el FONDO tiene que fijar
+   tambien el TEXTO, y el de TODO lo que hay adentro. Nunca puede
+   quedar oscuro sobre oscuro ni claro sobre claro.
+
+   Por que hace falta el `*`: los controles de GLPI no son texto suelto.
+   El boton de perfil, por ejemplo, es un `button.nav-link` con dos
+   `div` adentro, y el segundo es `.text-muted-menu`, que trae COLOR
+   PROPIO. Pintar solo el contenedor dejaba esos hijos con su color de
+   antes: texto claro sobre el verde, 1.9:1. Por eso cada regla de
+   seleccion se repite con ` *`.
+
    Antes esto cubria solo `.nav-link` de la barra. Por eso "en varios
-   lados el hover no funcionaba": los menus desplegables, las pestanas,
-   las listas, el paginador y los select2 no estaban contemplados.
-   Van todos juntos para que el seleccionado se vea IGUAL en toda la
-   aplicacion, entres donde entres.
+   lados el hover no funcionaba": los menus desplegables, el selector
+   de perfil y entidad, las pestanas, las listas, el paginador y los
+   select2 no estaban contemplados.
    ==================================================================== */
 .navbar-vertical.sidebar .nav-link:hover,
 .navbar-vertical.sidebar .nav-link:focus,
@@ -147,16 +157,37 @@ body {
   --tblr-nav-link-color: var(--ith-tinta);
   --tblr-list-group-action-active-bg: var(--ith-verde);
 }
-/* Los iconos van del mismo color que el texto del control. */
-.navbar-vertical.sidebar .nav-link:hover i,
-.navbar-vertical.sidebar .nav-link.active i,
-.navbar-vertical.sidebar .nav-link.show i,
-.navbar-dark.topbar .navbar-nav .nav-link:hover i,
-.navbar-dark.topbar .navbar-nav .nav-link.active i,
-.navbar-dark.topbar .navbar-nav .nav-link.show i,
-.dropdown-menu .dropdown-item:hover i,
-.dropdown-menu .dropdown-item.active i {
+/* El invariante: TODO lo que queda adentro de una superficie verde va
+   con la misma tinta oscura -textos, iconos, subtitulos, contadores-.
+   Sin esto, cualquier hijo con color propio queda ilegible. */
+.navbar-vertical.sidebar .nav-link:hover *,
+.navbar-vertical.sidebar .nav-link:focus *,
+.navbar-vertical.sidebar .nav-link.active *,
+.navbar-vertical.sidebar .nav-link.show *,
+.navbar-vertical.sidebar .nav-item.dropdown.active > .nav-link *,
+.navbar-dark.topbar .navbar-nav .nav-link:hover *,
+.navbar-dark.topbar .navbar-nav .nav-link:focus *,
+.navbar-dark.topbar .navbar-nav .nav-link.active *,
+.navbar-dark.topbar .navbar-nav .nav-link.show *,
+.navbar-dark.topbar .navbar-nav .nav-item.dropdown.active > .nav-link *,
+.dropdown-menu .dropdown-item:hover *,
+.dropdown-menu .dropdown-item:focus *,
+.dropdown-menu .dropdown-item.active *,
+.dropdown-menu .dropdown-item:active *,
+.nav-tabs .nav-link:hover *,
+.nav-tabs .nav-link.active *,
+.nav-pills .nav-link:hover *,
+.nav-pills .nav-link.active *,
+.list-group-item-action:hover *,
+.list-group-item-action:focus *,
+.list-group-item.active *,
+.page-link:hover *,
+.page-item.active .page-link *,
+.select2-container .select2-results__option--highlighted *,
+.select2-container .select2-results__option--selected * {
   color: var(--ith-tinta) !important;
+  --tblr-secondary: var(--ith-tinta);
+  --tblr-muted: var(--ith-tinta);
 }
 /* La franja de la barra, que es la firma del tema original. */
 .navbar-vertical.sidebar .nav-link:hover,
@@ -188,24 +219,37 @@ body {
    desplegables del menu, en el selector de entidad y en los titulos
    de la lista de tickets.
 
-   `inherit` toma el color del contenedor, que es el que el tema ya
-   eligio y verifico. Solo se aplica a controles y tablas, nunca al
-   texto del contenido.
+   NO se arregla con `color: inherit`: por privacidad, los navegadores
+   descartan los valores que dependen del entorno en `:visited` y solo
+   respetan un color EXPLICITO. Era el error de la primera version.
+
+   La forma correcta es darle a `:link` y a `:visited` el MISMO valor
+   explicito, para que el estado "ya visitado" no exista visualmente.
+   En la barra va blanco, porque el fondo violeta lo pone este tema; en
+   las tablas y listas va el color de enlace de la PALETA activa, asi
+   el arreglo sigue valiendo si algun dia se cambia de paleta.
+
+   Solo alcanza a controles y tablas, nunca al texto del contenido.
    ==================================================================== */
-.navbar a:visited,
-.navbar-vertical.sidebar a:visited,
-.navbar-dark.topbar a:visited,
-.dropdown-menu a:visited,
-.dropdown-item:visited,
-.nav-tabs a:visited,
-.nav-pills a:visited,
-.list-group a:visited,
-.table a:visited,
-table.tab_cadre_fixehov a:visited,
-.pagination a:visited,
-.breadcrumb a:visited,
-.card-header a:visited {
-  color: inherit;
+.navbar a:link,                      .navbar a:visited,
+.navbar-vertical.sidebar a:link,     .navbar-vertical.sidebar a:visited,
+.navbar-dark.topbar a:link,          .navbar-dark.topbar a:visited {
+  color: #ffffff;
+}
+.dropdown-menu a:link,               .dropdown-menu a:visited,
+.dropdown-menu .dropdown-item:link,  .dropdown-menu .dropdown-item:visited,
+.list-group a:link,                  .list-group a:visited,
+.breadcrumb a:link,                  .breadcrumb a:visited,
+.card-header a:link,                 .card-header a:visited {
+  color: var(--tblr-body-color);
+}
+.table a:link,                       .table a:visited,
+.search-results a:link,              .search-results a:visited,
+table.tab_cadre_fixehov a:link,      table.tab_cadre_fixehov a:visited,
+.nav-tabs a:link,                    .nav-tabs a:visited,
+.nav-pills a:link,                   .nav-pills a:visited,
+.pagination a:link,                  .pagination a:visited {
+  color: rgb(var(--tblr-link-color-rgb));
 }
 
 /* ====================================================================
