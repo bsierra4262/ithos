@@ -150,6 +150,40 @@ y el versionado, [SemVer](https://semver.org/lang/es/).
   **descifrar** los secretos también se avisa (antes los tokens quedaban como `enc:v1:…` y todo
   fallaba después con errores que no se parecían a la causa).
 
+- **La imagen del Gestor se llevaba los secretos en claro.** El `Dockerfile` hace `COPY . .` y no
+  había `.dockerignore`, así que viajaba adentro de la imagen todo lo que quedara al lado del
+  código — y ahí había **cuatro copias viejas del padrón de clientes, tres de ellas ANTERIORES al
+  cifrado en reposo**: los tokens en texto plano, el de super-admin de GLPI incluido. El cifrado
+  AES-256-GCM del padrón actual no protegía nada mientras la versión sin cifrar viajaba al lado.
+  Ahora hay `.dockerignore` y tampoco entra el padrón en uso, que **no hace falta**: en el servidor
+  llega por bind-mount, así que la copia de la imagen quedaba tapada igual. Las copias viejas no se
+  borraron: se movieron a `/root/ithos-backups/padron-historico/` (permisos `600` en una carpeta
+  `700`). Queda verificado en la batería.
+
+- **El conteo de cuota de IA se guardaba en la carpeta del código.** Todo el estado de las tareas de
+  fondo vive en el volumen persistente menos ese, que quedó al lado de su `.py` y sobrevive a los
+  deploys **sólo porque `comun/` está bind-mounteado** — por accidente, no por diseño. Si ese
+  montaje cambiara, el contador volvería a cero en cada deploy y ITHOS gastaría la cuota gratis
+  creyendo que la tiene entera. Ahora va al volumen, y si quedó un archivo viejo se **mueve** para
+  no perder el conteo del día. De paso dejaba archivos sueltos en el árbol del código: los tests
+  escribían los suyos ahí y terminaban viajando al servidor.
+
+- **Tres suites de test no fallaban nunca.** `probar_todo.py`, `probar_ciclo.py` y
+  `probar_produccion.py` imprimían el resultado y salían con **código 0 siempre**, así que una
+  falla real se veía igual que una corrida buena para cualquiera que las ejecutara. Y había una
+  falla real escondida ahí: el test del portero **pasaba la primera vez del día y fallaba el
+  resto**, porque el saludo tiene anti-repetición y el test usaba el archivo de estado real.
+  Arreglado el aislamiento (estado en carpeta temporal) y los tres códigos de salida. La batería
+  ahora verifica que ninguna suite pueda quedarse muda.
+
+- **La prueba de producción daba un falso negativo.** Esperaba 16 segundos fijos, pero cuando la IA
+  primaria está sin cuota la cadena recorre su escalera de modelos antes de pasar al respaldo y no
+  llegaba a tiempo: declaraba que no había pasado nada cuando en producción el ticket **sí** se
+  atiende (el poller sigue dando vueltas). Ahora espera hasta que llega el resultado, y distingue
+  "la cuota gratis del día se agotó" —que no es un defecto— de "hay algo roto". Con la ventana
+  corregida el flujo real quedó verificado punta a punta: aviso por voz, clasificación, asignación
+  y mensajes de WhatsApp.
+
 - **El log operativo era mayoría chatarra de librerías.** `httpx` y el SDK de Google escriben a
   nivel INFO en **cada** llamada a la IA, y el triage llama una vez por ticket. Se los subió a
   WARNING en `comun/ia.py` —no en el Gestor, porque el agente usa la misma capa—, así siguen

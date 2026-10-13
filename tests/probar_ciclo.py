@@ -43,11 +43,18 @@ def main():
         for a in T.gestionar_ciclo(admin, triage, 12, estado):
             p(f"      [ITHOS avisa] {a.get('texto') or a.get('wa')}")
 
+    # Las etapas que NO dieron lo esperado. Antes se imprimía "FALLA" y el guion terminaba con
+    # código 0 igual: quien lo corriera —una persona o una automatización— lo daba por bueno.
+    fallidas = []
+
     def assert_estado(tid, esperado, etapa):
         s = estado_ticket(tid)
-        ok = "OK" if s == esperado else "FALLA"
-        p(f"   [{ok}] {etapa}: estado={s} ({ESTADOS.get(s)}) esperado={esperado} ({ESTADOS.get(esperado)})")
-        return s == esperado
+        bien = s == esperado
+        p(f"   [{'OK' if bien else 'FALLA'}] {etapa}: estado={s} ({ESTADOS.get(s)}) "
+          f"esperado={esperado} ({ESTADOS.get(esperado)})")
+        if not bien:
+            fallidas.append(f"{etapa}: quedó en {ESTADOS.get(s)} y se esperaba {ESTADOS.get(esperado)}")
+        return bien
 
     tid = None
     try:
@@ -62,6 +69,15 @@ def main():
 
         # 2) TRIAGE
         res = triage.procesar({"id": tid, "name": asu, "content": desc})
+        if not res:
+            # El triage devuelve None cuando la IA no pudo clasificar —casi siempre porque se
+            # agotó la cuota gratis del día— o cuando no se pudo leer el estado del ticket. En
+            # ninguno de los dos casos hay un defecto que probar, así que la corrida queda
+            # PENDIENTE en vez de reventar con un AttributeError sobre None, que era lo que
+            # pasaba y no decía nada de lo que realmente ocurrió.
+            p("2) TRIAGE: no se pudo clasificar (cuota de IA agotada o GLPI sin responder).")
+            p("\n  PENDIENTE: el ciclo de vida se valida cuando haya cuota de IA.")
+            return 0
         p(f"2) TRIAGE: {res.get('categoria')} / {res.get('prioridad')} / "
           f"asignado {res.get('responsable_nombre')} / necesita_info={res.get('necesita_info')}")
         tk = admin.request(f"/Ticket/{tid}")
@@ -108,7 +124,10 @@ def main():
         cli.cerrar()
         tecnico.cerrar()
         admin.cerrar()
+    if fallidas:
+        p("\n  FALLAS: " + "; ".join(fallidas))
+    return 1 if fallidas else 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

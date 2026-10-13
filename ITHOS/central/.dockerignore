@@ -1,0 +1,33 @@
+# Qué NO entra en la imagen del Gestor.
+#
+# El contexto de build es esta carpeta entera y el Dockerfile hace `COPY . .`, así que sin este
+# archivo viaja adentro de la imagen TODO lo que haya quedado al lado del código.
+#
+# Lo importante son las COPIAS VIEJAS DEL PADRÓN (clientes.json.bak-*). Tres de ellas son
+# ANTERIORES al cifrado en reposo y traen los secretos EN CLARO —el token de super-admin de GLPI,
+# el del agente—, así que el cifrado AES-256-GCM del padrón actual no servía de nada: la versión
+# sin cifrar viajaba al lado, horneada en cada imagen que se construye.
+#
+# Y no cumplen ninguna función ahí: el padrón real NO sale de la imagen, entra por bind-mount
+# (`./central/clientes.json:/app/clientes.json` en el docker-compose), así que la copia de la
+# imagen queda tapada igual.
+clientes.json.bak*
+*.bak
+*.bak-*
+*.bak.*
+
+# El padrón EN USO tampoco entra. En el servidor entra por bind-mount, así que la copia de la
+# imagen queda tapada y no cumple ninguna función; lo único que hace es que los secretos viajen
+# con la imagen a donde vaya. Y si alguna vez se corriera la imagen SIN el montaje, es preferible
+# que el Gestor avise que no puede leer el padrón —ahora lo registra— y no que atienda con una
+# copia vieja horneada meses atrás. La plantilla (clientes.ejemplo.json) sí viaja.
+clientes.json
+
+# Artefactos de Python: ocupan lugar, invalidan la caché de capas y no sirven dentro de la imagen.
+__pycache__/
+*.pyc
+*.pyo
+
+# Estado local que, si existe, pertenece al host y no a la imagen.
+cuota_*.json
+*.log

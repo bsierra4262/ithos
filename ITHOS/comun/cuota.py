@@ -153,6 +153,39 @@ def parse_duracion(s):
     return h * 3600 + mi * 60 + se
 
 
+def _ruta_conteo(nombre_cliente):
+    """Dónde se guarda el conteo de cuota de IA.
+
+    Va al VOLUMEN persistente (`ITHOS_DATA`), igual que el resto del estado de las tareas de fondo.
+    Antes se guardaba al lado de este `.py`, que en el servidor vive dentro de la imagen del
+    contenedor: hoy sobrevive a los deploys sólo porque `comun/` está bind-mounteado, o sea por
+    accidente y no por diseño. Si ese montaje cambiara, el contador volvería a CERO en cada deploy
+    y ITHOS gastaría la cuota gratis creyendo que la tiene entera. De paso dejaba archivos de
+    estado sueltos en el árbol del código: los tests escribían los suyos ahí y terminaban
+    viajando al servidor.
+
+    Si quedó un archivo viejo al lado del `.py` y todavía no hay uno nuevo, se MUEVE, así no se
+    pierde el conteo del día en curso."""
+    seguro = "".join(ch if ch.isalnum() else "_" for ch in str(nombre_cliente or "cliente"))
+    viejo = os.path.join(os.path.dirname(os.path.abspath(__file__)), f"cuota_{seguro}.json")
+    try:
+        from comun import estado as EST
+    except ImportError:
+        try:
+            import estado as EST          # importado como módulo suelto (agente empaquetado)
+        except ImportError:
+            return viejo                  # sin el ayudante, se queda exactamente como estaba
+    nuevo = EST.ruta("cuota", nombre_cliente)
+    try:
+        if os.path.exists(viejo) and not os.path.exists(nuevo):
+            os.replace(viejo, nuevo)
+            log.info("Cuota: el conteo de %s se movió al volumen persistente.", nombre_cliente)
+    except OSError as e:  # noqa: BLE001
+        log.warning("Cuota: no se pudo mover el conteo viejo (%s); sigo con el de siempre.", e)
+        return viejo
+    return nuevo
+
+
 class GestorCuota:
     """Cuota de las DOS IA gratis (Gemini primaria + Groq secundaria) por cliente."""
 
@@ -168,9 +201,7 @@ class GestorCuota:
         # Cadena REAL de IAs del cliente, en orden (primaria + respaldos). Se REPORTA tal cual;
         # nada cableado. Si no la pasan, back-compat: las 2 gratis (Gemini primaria, Groq respaldo).
         self.cadena = [str(t).lower() for t in (cadena or [])] or ["gemini", "groq"]
-        base = os.path.dirname(os.path.abspath(__file__))
-        seguro = "".join(ch if ch.isalnum() else "_" for ch in nombre_cliente)
-        self.archivo = archivo or os.path.join(base, f"cuota_{seguro}.json")
+        self.archivo = archivo or _ruta_conteo(nombre_cliente)
         # Gemini (conteo local por día del Pacífico)
         self._dia = ""
         self.gem_usados = 0

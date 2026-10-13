@@ -69,13 +69,18 @@ def t_ia_factory():
 
 
 def t_cuota():
+    # El archivo va a una carpeta temporal del sistema, NO al árbol del código: un test no tiene
+    # por qué dejar estado al lado de los .py (terminaba viajando al servidor en el deploy), y la
+    # ruta relativa de antes dependía de desde dónde se corriera el test.
+    import tempfile
     from comun.cuota import GestorCuota
     av = []
-    g = GestorCuota("T", limite_diario=2, avisar_en=1, archivo="ITHOS/comun/_t.json",
-                    notificar=lambda n, m: av.append(n))
-    g.registrar(); g.registrar(); g.marcar_agotada()
-    est = g.estado()
-    [os.remove(f) for f in glob.glob("ITHOS/comun/_t.json")]
+    with tempfile.TemporaryDirectory(prefix="ithos_cuota_") as tmp:
+        g = GestorCuota("T", limite_diario=2, avisar_en=1,
+                        archivo=os.path.join(tmp, "cuota_t.json"),
+                        notificar=lambda n, m: av.append(n))
+        g.registrar(); g.registrar(); g.marcar_agotada()
+        est = g.estado()
     assert len(av) == 2
     return f"avisos={len(av)} gemini_agotada={est['gemini']['agotada']}"
 
@@ -139,10 +144,36 @@ def t_kb():
 
 
 def t_procesador():
+    """El portero saluda a quien entra.
+
+    OJO con el estado: el saludo tiene anti-repetición (a la misma persona no se la saluda dos
+    veces el mismo día) y eso se guarda en disco. Si el test usa el archivo real, saluda la
+    PRIMERA vez y después devuelve vacío para siempre: pasaba una vez y fallaba el resto del día.
+    Como la suite además salía con código 0 aunque hubiera fallas, nadie se enteraba. Por eso el
+    estado va a una carpeta temporal: el test arranca siempre desde cero.
+
+    No alcanza con cambiarle la ruta: `_cargar_saludados()` corre AL IMPORTAR el módulo y deja lo
+    ya saludado en diccionarios en memoria, así que hay que vaciar los dos y después devolverlos
+    como estaban."""
+    import tempfile
     import procesador
     from protocolo import EV_ACCESO
-    c = procesador.procesar(CFG, EV_ACCESO, {"nombre": "Brian Sierra", "tipo": "bienvenida"})
-    assert c and c[0]["accion"] == "decir" and "Brian" in c[0]["texto"]
+    original = procesador._ESTADO_SALUDOS
+    hoy, alguna = dict(procesador._saludados_hoy), dict(procesador._saludados_alguna)
+    with tempfile.TemporaryDirectory(prefix="ithos_portero_") as tmp:
+        procesador._ESTADO_SALUDOS = os.path.join(tmp, "portero_saludados.json")
+        procesador._saludados_hoy.clear()
+        procesador._saludados_alguna.clear()
+        try:
+            c = procesador.procesar(CFG, EV_ACCESO,
+                                    {"nombre": "Brian Sierra", "tipo": "bienvenida"})
+        finally:
+            procesador._ESTADO_SALUDOS = original
+            procesador._saludados_hoy.clear(); procesador._saludados_hoy.update(hoy)
+            procesador._saludados_alguna.clear(); procesador._saludados_alguna.update(alguna)
+    assert c, "el portero no devolvió ningún comando"
+    assert c[0]["accion"] == "decir", f"acción inesperada: {c[0].get('accion')}"
+    assert "Brian" in c[0]["texto"], f"no nombra a quien entra: {c[0]['texto'][:60]}"
     return c[0]["texto"][:40]
 
 
@@ -204,3 +235,9 @@ for nombre, estado, det in R:
     ok += estado == "OK"; fail += estado == "FALLA"; pend += "PENDIENTE" in estado
 p(f"\n  TOTAL: {ok} OK - {pend} pendientes(cuota) - {fail} FALLAS")
 p("=" * 52)
+
+# El suite tiene que FALLAR cuando falla. Antes imprimía el conteo y salía con código 0 siempre:
+# cualquier automatización —y cualquiera que lo corriera en un bucle— lo daba por bueno, así que
+# una falla real podía quedarse ahí sin que nadie se enterara. Los PENDIENTES por cuota de IA no
+# cuentan: eso no es un defecto del código, es que la cuota gratis del día se agotó.
+sys.exit(1 if fail else 0)

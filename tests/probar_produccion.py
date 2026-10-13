@@ -88,7 +88,14 @@ async def main():
     p(f"\n2) CLIENTE crea un ticket REAL en GLPI: #{tid}")
     p("   (el vigilante debería detectarlo, avisar, clasificar y componer WhatsApp)\n")
 
-    await asyncio.sleep(16)          # dejar detectar + triage + seguimiento
+    # Espera ADAPTATIVA, no 16 segundos fijos. Cuando la IA primaria está sin cuota del día, la
+    # cadena recorre su escalera de modelos antes de pasar al respaldo, y eso se come la ventana:
+    # el ticket SÍ se atiende en producción —el poller sigue dando vueltas—, pero el test cortaba
+    # antes y declaraba que no había pasado nada. Ahora corta apenas hay resultado.
+    for _ in range(30):              # hasta ~90 s, pero sale en cuanto llega lo que se espera
+        if VOCES and WAMSGS:
+            break
+        await asyncio.sleep(3)
     stop.set()
     await tarea
 
@@ -103,14 +110,36 @@ async def main():
     p(f"  Avisos por VOZ generados: {len(VOCES)}")
     p(f"  Mensajes de WhatsApp compuestos: {len(WAMSGS)}")
     ok = len(VOCES) >= 1 and len(WAMSGS) >= 1
-    p(f"\n  {'✅ PRODUCCIÓN OK: llegó, clasificó y compuso los mensajes.' if ok else '❌ REVISAR: no se generaron avisos.'}")
+    # Si no salió nada, hay que distinguir DOS cosas que se ven igual y no lo son: que el código
+    # esté roto, o que se haya agotado la cuota gratis de IA del día. Lo segundo no es un defecto,
+    # así que no puede hacer fallar la prueba: una alarma que suena por algo esperable se vuelve
+    # ruido y se termina ignorando, que es justo lo que no queremos.
+    sin_cuota = False
+    if not ok:
+        try:
+            triage.ia.chat("Respondé exactamente: ok", "ok", json_out=False)
+        except Exception as e:  # noqa: BLE001
+            m = str(e).lower()
+            sin_cuota = any(t in m for t in ("429", "resource_exhausted", "rate limit",
+                                             "rate_limited", "quota"))
+    if ok:
+        p("\n  PRODUCCION OK: llego, clasifico y compuso los mensajes.")
+    elif sin_cuota:
+        p("\n  PENDIENTE: la cuota de IA del dia esta agotada en TODA la cadena; no se puede "
+          "validar el triage hoy. No es una falla del codigo.")
+    else:
+        p("\n  REVISAR: no se generaron avisos y la IA responde. Hay algo roto.")
     admin = G.GLPIClient(gl)          # token admin (el del cliente no puede purgar)
     admin.abrir()
     admin.request(f"/Ticket/{tid}?force_purge=1", "DELETE")
     p(f"  [-] Ticket #{tid} purgado.")
     admin.cerrar()
     cli.cerrar()
+    # La prueba tiene que FALLAR cuando falla: antes imprimía el tilde o la cruz y salía con
+    # código 0 igual, así que una corrida mala se veía exactamente igual que una buena para
+    # cualquiera que la ejecutara en un bucle.
+    return 0 if (ok or sin_cuota) else 1
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    sys.exit(asyncio.run(main()))

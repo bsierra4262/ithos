@@ -3553,6 +3553,75 @@ except Exception as e:  # noqa: BLE001
     fail("no se pudo verificar la latencia del reporte (N+1)", repr(e))
 
 
+# ---------------------------------------------------------------------------------------------
+print("\n  J) LA IMAGEN DEL GESTOR NO SE LLEVA SECRETOS NI ESTADO")
+# El Dockerfile hace `COPY . .` sobre ITHOS/central, así que viaja adentro de la imagen todo lo
+# que haya quedado al lado del código. Había cuatro copias viejas del padrón ahí, y TRES eran
+# anteriores al cifrado en reposo: los tokens en claro —el de super-admin de GLPI incluido— se
+# horneaban en cada imagen, con lo cual el cifrado AES-256-GCM del padrón actual no protegía nada.
+try:
+    ctx = os.path.join(APP, "central")
+    di = os.path.join(ctx, ".dockerignore")
+    reglas = open(di, encoding="utf-8").read() if os.path.exists(di) else ""
+    if not reglas:
+        fail("falta ITHOS/central/.dockerignore: la imagen se lleva todo lo que haya en la carpeta")
+    elif not re.search(r"^\s*\*?\.?bak|^\s*clientes\.json\.bak", reglas, re.M):
+        fail(".dockerignore no excluye las copias del padrón (*.bak)")
+    elif "__pycache__" not in reglas:
+        fail(".dockerignore no excluye __pycache__")
+    else:
+        ok("la imagen del Gestor excluye las copias del padrón y los artefactos de Python")
+
+    # Y que no haya quedado NINGÚN archivo con secretos en claro en el contexto de build.
+    import fnmatch as _fn
+    patrones = [l.strip() for l in reglas.splitlines()
+                if l.strip() and not l.strip().startswith("#")]
+    sospechosos = []
+    for f in sorted(os.listdir(ctx)):
+        ruta_f = os.path.join(ctx, f)
+        if not os.path.isfile(ruta_f) or f in ("clientes.ejemplo.json", "clientes.demo.json.example"):
+            continue
+        if any(_fn.fnmatch(f, p.rstrip("/")) for p in patrones):
+            continue                      # no viaja en la imagen
+        txt = open(ruta_f, encoding="utf-8", errors="ignore").read()
+        # un token suelto, sin el prefijo del cifrado en reposo
+        for campo in ("glpi_user_token", "glpi_app_token", "agente_token", "api_key_ia"):
+            for m in re.finditer(rf'"{campo}"\s*:\s*"([^"]+)"', txt):
+                if m.group(1) and not m.group(1).startswith("enc:v1:"):
+                    sospechosos.append(f"{f}:{campo}")
+    if sospechosos:
+        fail("hay secretos SIN cifrar en el contexto de build de la imagen",
+             str(sorted(set(sospechosos))[:6]))
+    else:
+        ok("ningún secreto sin cifrar queda en el contexto de build de la imagen")
+except Exception as e:  # noqa: BLE001
+    fail("no se pudo verificar qué se lleva la imagen del Gestor", repr(e))
+
+
+# ---------------------------------------------------------------------------------------------
+print("\n  K) LAS SUITES DE TEST FALLAN CUANDO FALLAN")
+# probar_todo.py imprimía el conteo de fallas y salía con código 0 SIEMPRE. Cualquier
+# automatización —y cualquiera que las corriera en un bucle— lo daba por bueno, así que una falla
+# real podía quedarse ahí indefinidamente. De hecho pasó: un test del portero fallaba todos los
+# días menos el primero y nadie se enteró.
+try:
+    # Vale cualquier forma de avisar el fracaso al sistema operativo: `sys.exit(1)`, `sys.exit(…)`
+    # con el resultado de la función, o un `assert` que levante la excepción. Lo que NO vale es
+    # imprimir "FALLA" y terminar con código 0.
+    sin_salida = []
+    for f in sorted(_g37.glob(os.path.join(RAIZ, "tests", "probar_*.py"))):
+        txt = open(f, encoding="utf-8", errors="ignore").read()
+        sale_mal = re.search(r"sys\.exit\((?!\s*0\s*\))", txt) or re.search(r"^\s*assert\s", txt, re.M)
+        if not sale_mal:
+            sin_salida.append(os.path.basename(f))
+    if sin_salida:
+        fail("hay suites que NO salen con error cuando fallan (nadie se entera)", str(sin_salida))
+    else:
+        ok("todas las suites salen con código de error cuando algún chequeo falla")
+except Exception as e:  # noqa: BLE001
+    fail("no se pudo verificar el código de salida de las suites", repr(e))
+
+
 print("\n" + "=" * 58)
 if fallas:
     print(f"  REQUERIMIENTOS: {len(fallas)} FALLA(S) / {len(oks)} OK")
