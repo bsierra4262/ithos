@@ -107,6 +107,34 @@ y el versionado, [SemVer](https://semver.org/lang/es/).
   permiso sobre `mysql.time_zone_name` (`ERROR 1142`). Hoy **no rompe nada**: GLPI guarda en hora
   local de Argentina (`time_offset = -10800`). Lo único que no se puede es tener husos por usuario.
 
+- **Una alarma que no se podía apagar tapaba los errores de verdad.** Los tickets #666, #673 y #680
+  arrastran los recordatorios del bucle viejo, así que el tope de 30 quedaba superado para siempre
+  y el ciclo registraba un `ERROR` por ticket **en cada vuelta**: ~1.180 líneas por día por algo ya
+  contenido. El tope no se toca —sigue sin escribirle al cliente—, pero la alarma ahora mide el
+  **espaciado**, que es el síntoma real: por diseño sale un recordatorio por día, así que **dos o
+  más en la misma fecha** es `ERROR` y se avisa cada vez; el tope alcanzado por acumulación
+  histórica se informa **una sola vez por corrida**.
+
+- **El chequeo "cero jarvis" no estaba mirando el código.** Escaneaba `comun/`, `central/` y
+  `agente/` colgando de la raíz, carpetas que dejaron de existir cuando el código se movió bajo
+  `ITHOS/`: abría **cero archivos** y daba verde sin verificar nada. Así sobrevivieron seis
+  "JARVIS" en los `requirements.txt` y uno en `comun/wake.py`. Corregidas las rutas y ampliado el
+  alcance (requirements, instalador `.iss`, configuraciones), ahora abre **107 archivos**; y se le
+  agregó un piso mínimo de archivos leídos, para que **un chequeo que no mira nada falle en vez de
+  pasar**. Las dos únicas excepciones quedan explícitas: la carpeta de deploy `jarvis-cloud` y el
+  usuario del SQL Server de fichadas, que es de un sistema de terceros.
+
+- **El log operativo era mayoría chatarra de librerías.** `httpx` y el SDK de Google escriben a
+  nivel INFO en **cada** llamada a la IA, y el triage llama una vez por ticket. Se los subió a
+  WARNING en `comun/ia.py` —no en el Gestor, porque el agente usa la misma capa—, así siguen
+  apareciendo cuando algo falla de verdad.
+
+- **Diagnosticado, upstream:** las notas de voz de WhatsApp no se generan cuando toca el respaldo
+  gratuito. `edge-tts` 7.2.8 (la última publicada, de marzo 2026) recibe **403 en el handshake**
+  del servicio de Microsoft. **No es el hosting**: falla igual desde una conexión residencial. El
+  aviso igual llega al cliente, porque el código cae a texto. La voz de marca (Charon) no está
+  afectada.
+
 ### Security
 - **El portal del cliente entregaba TODOS sus secretos.** `GET /api/cliente/<api_key>` devolvía la
   configuración completa y descifrada —los tokens de GLPI (incluido el de **super admin**), las

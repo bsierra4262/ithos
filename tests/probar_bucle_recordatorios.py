@@ -169,6 +169,58 @@ pocos = [PEDIDO] + [followup(2000 + i, HOY - timedelta(days=5 - i % 5),
                              _texto_recordatorio_espera("datos")) for i in range(3)]
 ok(CI._puede_recordar(pocos, 666, TECS), "un ticket sano (3 recordatorios) sigue pudiendo recordar")
 
+print("\n=== 4.1 · La alarma del tope mide el ESPACIADO, no el acumulado histórico ===")
+# Los tickets #666, #673 y #680 arrastran los recordatorios del bucle viejo. Como el tope se
+# evalúa sobre el acumulado, la alarma salía como ERROR en CADA vuelta del ciclo: ~1.180 líneas
+# por día por algo ya resuelto. Una alarma que no se puede apagar tapa los errores de verdad.
+import logging  # noqa: E402
+
+
+class Capturador(logging.Handler):
+    def __init__(self):
+        super().__init__()
+        self.registros = []
+
+    def emit(self, r):
+        self.registros.append((r.levelno, r.getMessage()))
+
+
+def que_loguea(fu, tid, ahora):
+    cap = Capturador()
+    CI.log.addHandler(cap)
+    nivel = CI.log.level
+    CI.log.setLevel(logging.DEBUG)
+    try:
+        permite = CI._puede_recordar(fu, tid, TECS, ahora=ahora)
+    finally:
+        CI.log.removeHandler(cap)
+        CI.log.setLevel(nivel)
+    return permite, [n for n, _m in cap.registros]
+
+
+# `completo` son 60 recordatorios, uno por día: el espaciado funciona, el tope viene del arrastre.
+CI._TOPE_INFORMADO.clear()
+permite, niveles = que_loguea(completo, 666, HOY)
+ok(permite is False, "con el tope alcanzado se sigue sin escribirle al cliente")
+ok(logging.ERROR not in niveles,
+   "pero NO es un ERROR: uno por día es el diseño, no una falla", f"niveles={niveles}")
+ok(logging.INFO in niveles, "se informa una vez, al nivel que corresponde")
+_permite, niveles2 = que_loguea(completo, 666, HOY)
+ok(niveles2 == [], "y en la vuelta siguiente ya no repite nada", f"niveles={niveles2}")
+
+# Ahora el síntoma REAL del bucle: varios recordatorios el MISMO día.
+bucle = list(completo) + [followup(9500 + i, HOY, _texto_recordatorio_espera("confirmacion"))
+                          for i in range(3)]
+CI._TOPE_INFORMADO.clear()
+permite, niveles = que_loguea(bucle, 667, HOY)
+ok(permite is False, "tampoco se le escribe")
+ok(logging.ERROR in niveles,
+   "y ESTO sí es ERROR: 4 recordatorios el mismo día es el bucle", f"niveles={niveles}")
+_permite, niveles2 = que_loguea(bucle, 667, HOY)
+ok(logging.ERROR in niveles2, "y se repite mientras siga pasando (no se silencia un fallo vivo)")
+ok(CI._recordatorios_del_dia(completo, TECS, HOY) == 1, "cuenta bien los recordatorios de hoy")
+ok(CI._recordatorios_del_dia(bucle, TECS, HOY) == 4, "y los cuenta bien cuando hay bucle")
+
 print("\n=== 5 · Si GLPI rechaza la escritura, NO se puede decir que se envió ===")
 import triage as T                       # noqa: E402
 

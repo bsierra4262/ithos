@@ -18,7 +18,7 @@ Qué se acepta como llamada, en español o en inglés, en MAYÚSCULAS o minúscu
   mal transcripto: "hey itos / hitos / izos / ithus" · pronunciación inglesa: "hey ethos / aitos / aizos"
 
 SIN dependencias (sólo stdlib): lo importan el Gestor y el AGENTE empaquetado.
-La marca es ITHOS. 'jarvis' no activa nada (ver memoria del proyecto).
+La marca es ITHOS: el nombre anterior del producto no activa nada.
 """
 
 import re

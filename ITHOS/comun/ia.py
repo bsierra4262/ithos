@@ -19,6 +19,15 @@ import logging
 
 log = logging.getLogger("ia")
 
+# RUIDO DE TERCEROS. Los clientes HTTP y el SDK de Google escriben a nivel INFO en CADA llamada
+# ("HTTP Request: POST https://…", "AFC is enabled with max remote calls: 10"), y el triage llama
+# a la IA una vez por ticket: el log operativo termina siendo mayoría chatarra de librerías y los
+# avisos propios se pierden adentro. Se los sube a WARNING, así siguen apareciendo cuando algo
+# falla de verdad. Va acá y no en el central porque el agente usa la misma capa de IA.
+for _ruidoso in ("httpx", "httpcore", "google_genai.models", "google_genai.types",
+                 "google.genai", "openai", "urllib3"):
+    logging.getLogger(_ruidoso).setLevel(logging.WARNING)
+
 # Instrucción para que la voz sea ITHOS, literal, en el idioma del cliente.
 _ACENTOS = {
     "es-AR": "en ESPAÑOL LATINOAMERICANO con acento neutro; NUNCA acento de España",

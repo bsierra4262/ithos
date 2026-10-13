@@ -1,4 +1,4 @@
-# JARVIS Agente (corre en el equipo del cliente: parlantes/mic + control de acceso).
+# Agente de ITHOS (corre en el equipo del cliente: parlantes/mic + control de acceso).
 # Instala: pip install -r requirements.txt
 # Nota: para NOTAS DE VOZ hace falta ffmpeg (sistema); IVMS necesita el driver ODBC de
 # SQL Server. Ver INSTALACION.md.
@@ -6,12 +6,12 @@ websockets>=12.0
 google-genai>=2.7           # Gemini (texto + voz Charon)
 pyodbc>=5.1                 # IVMS: leer la tabla de fichajes (SQL Server)
 sounddevice>=0.4            # capturar el micrófono
-edge-tts>=6.1.10            # voz JARVIS GRATIS + notas de voz
+edge-tts>=6.1.10            # voz GRATIS de respaldo + notas de voz
 pydub>=0.25                 # ajuste de velocidad
 audiotsm>=0.1.2             # time-stretch de audio
 numpy>=1.24                 # audio / VAD
 pygame>=2.5                 # reproducción de audio
-pvporcupine>=3.0            # palabra clave "Jarvis" (wake word)
+pvporcupine>=3.0            # wake-word legacy; hoy se usa Vosk (ver comun/wake.py)
 onnxruntime>=1.17           # Silero VAD (filtro de voz humana) + voz-id
 webrtcvad-wheels>=2.0.14    # VAD de respaldo (import: webrtcvad)
 vosk>=0.3.45              # wake-word "ITHOS" OPEN-SOURCE (STT local, sin registro ni limites)

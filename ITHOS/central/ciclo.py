@@ -196,22 +196,63 @@ def _espera_pendiente(fu, tecs=None):
 _TOPE_RECORDATORIOS = 30
 
 
+# Tickets cuyo tope ya se informó en esta corrida: el acumulado histórico no cambia, así que
+# avisarlo en cada vuelta sólo sirve para tapar los errores de verdad.
+_TOPE_INFORMADO = set()
+
+
+def _recordatorios(fu, tecs=None):
+    """Los recordatorios (de espera o de confirmación) que ya lleva el ticket."""
+    return [f for f in fu
+            if int(f.get("users_id") or 0) in (tecs or TECNICOS)
+            and not int(f.get("is_private") or 0)
+            and (_MARCA_RECORDATORIO_ESPERA in str(f.get("content", "")).lower()
+                 or _MARCA_RECORDATORIO in str(f.get("content", "")).lower())]
+
+
 def _cuantos_recordatorios(fu, tecs=None):
     """Cuántos recordatorios (de espera o de confirmación) lleva ya el ticket."""
-    return sum(1 for f in fu
-               if int(f.get("users_id") or 0) in (tecs or TECNICOS)
-               and not int(f.get("is_private") or 0)
-               and (_MARCA_RECORDATORIO_ESPERA in str(f.get("content", "")).lower()
-                    or _MARCA_RECORDATORIO in str(f.get("content", "")).lower()))
+    return len(_recordatorios(fu, tecs))
 
 
-def _puede_recordar(fu, tid, tecs=None):
-    """False si el ticket YA superó el tope de recordatorios. Se loguea una sola vez por vuelta."""
+def _recordatorios_del_dia(fu, tecs=None, ahora=None):
+    """Cuántos recordatorios salieron HOY. Es la medida del espaciado: por diseño sale UNO por día,
+    así que dos o más en la misma fecha es exactamente el síntoma del bucle que escribió 19.555
+    comentarios. El acumulado histórico, en cambio, no dice nada del estado actual."""
+    hoy = (ahora or datetime.now()).date()
+    fechas = (_parse_fecha(f.get("date_creation") or f.get("date"))
+              for f in _recordatorios(fu, tecs))
+    return sum(1 for d in fechas if d and d.date() == hoy)
+
+
+def _puede_recordar(fu, tid, tecs=None, ahora=None):
+    """False si el ticket YA superó el tope de recordatorios.
+
+    El tope es la red de seguridad y no se toca. Lo que SÍ distingue esta función es por qué se
+    llegó ahí, porque no es lo mismo:
+
+      · varios recordatorios el MISMO día -> el espaciado está fallando AHORA: es un ERROR y hay
+        que mirarlo, y se avisa cada vez que pase;
+      · el tope alcanzado por acumulación histórica -> ya pasó, el ticket arrastra los
+        recordatorios del bucle viejo y lo único correcto es dejar de escribirle al cliente, que
+        es lo que se hace. Eso se informa UNA vez por corrida.
+
+    Antes las dos situaciones salían como ERROR en cada vuelta. Con tres tickets arrastrando el
+    acumulado viejo (#666, #673 y #680), eso eran ~1.180 líneas de ERROR por día por algo que ya
+    estaba resuelto: la alarma no se podía apagar y tapaba los errores reales."""
     n = _cuantos_recordatorios(fu, tecs)
     if n < _TOPE_RECORDATORIOS:
         return True
-    log.error("Ciclo #%s: %d recordatorios en el ticket (tope %d). NO le escribo más al cliente — "
-              "revisar por qué el espaciado diario no está funcionando.", tid, n, _TOPE_RECORDATORIOS)
+    hoy = _recordatorios_del_dia(fu, tecs, ahora)
+    if hoy > 1:
+        log.error("Ciclo #%s: %d recordatorios HOY (y %d en total, tope %d). El espaciado diario "
+                  "NO está funcionando: hay que mirarlo. No le escribo más al cliente.",
+                  tid, hoy, n, _TOPE_RECORDATORIOS)
+    elif tid not in _TOPE_INFORMADO:
+        _TOPE_INFORMADO.add(tid)
+        log.info("Ciclo #%s: %d recordatorios acumulados (tope %d), ninguno repetido hoy. Es el "
+                 "arrastre del bucle viejo: no le escribo más al cliente a este ticket.",
+                 tid, n, _TOPE_RECORDATORIOS)
     return False
 
 

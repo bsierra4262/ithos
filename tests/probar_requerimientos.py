@@ -1574,28 +1574,44 @@ except Exception as e:  # noqa: BLE001
 #   ÚNICA excepción es el nombre de la CARPETA de deploy/dev 'jarvis-cloud' (un path del filesystem del
 #   server y del repo; renombrarlo en vivo es una migración aparte). Regresión: si vuelve a colarse
 #   "jarvis" (nombre, voz, palabra de activación, texto, etc.), falla.
+#   OJO con las RUTAS: este chequeo escaneaba RAIZ/comun, RAIZ/central y RAIZ/agente, carpetas que
+#   dejaron de existir cuando el código se movió bajo ITHOS/. Es decir, no abría NINGÚN archivo de
+#   código y daba verde sin verificar nada: así sobrevivieron seis "JARVIS" en los requirements.
+#   Por eso ahora se cuenta cuántos archivos se abrieron y se exige un mínimo: un chequeo que no
+#   mira nada tiene que FALLAR, no pasar.
 try:
     import glob as _g37
     files37 = []
-    for sub in ("comun", "central", "agente", "build", "instaladores"):
-        for ext in ("*.py", "*.sh", "*.ps1", "*.spec", "*.bat"):
-            files37 += _g37.glob(os.path.join(RAIZ, sub, ext))
-    files37 += (_g37.glob(os.path.join(RAIZ, "*.md")) + _g37.glob(os.path.join(RAIZ, "docs", "*.md")))
-    files37 += [os.path.join(RAIZ, x) for x in ("ITHOS/docker-compose.yml",
-                "Caddyfile", ".env.example", ".gitignore")]
-    ofensores = []
-    for f in files37:
-        if not os.path.exists(f):
+    for sub in ("comun", "central", "agente"):
+        for ext in ("*.py", "*.txt", "*.json", "*.yml"):
+            files37 += _g37.glob(os.path.join(APP, sub, ext))
+    for ext in ("*.py", "*.sh", "*.ps1", "*.spec", "*.bat", "*.iss"):
+        files37 += _g37.glob(os.path.join(RAIZ, "compilador", "build", ext))
+        files37 += _g37.glob(os.path.join(RAIZ, "compilador", "instaladores", ext))
+    files37 += (_g37.glob(os.path.join(RAIZ, "*.md")) + _g37.glob(os.path.join(RAIZ, "docs", "*.md"))
+                + _g37.glob(os.path.join(RAIZ, "docs", "*", "*.md")))
+    files37 += [os.path.join(RAIZ, x) for x in ("ITHOS/docker-compose.yml", "ITHOS/Caddyfile",
+                "Caddyfile", ".env.example", ".gitignore", "requirements.txt")]
+    ofensores, abiertos = [], 0
+    for f in sorted(set(files37)):
+        if not os.path.isfile(f):
             continue
+        abiertos += 1
         txt = open(f, encoding="utf-8", errors="ignore").read()
-        limpio = re.sub(r"jarvis-cloud", "", txt, flags=re.I)   # única excepción permitida
+        limpio = re.sub(r"jarvis-cloud", "", txt, flags=re.I)   # la carpeta de deploy
+        # El usuario del SQL Server de fichadas es de un sistema de TERCEROS: renombrarlo rompería
+        # la conexión del cliente, así que la marca no aplica ahí.
+        limpio = re.sub(r'"db_uid"\s*:\s*"jarvis"', "", limpio, flags=re.I)
         if re.search(r"jarvis", limpio, re.I):
             hits = sorted(set(m.group(0) for m in re.finditer(r"[\w.-]*jarvis[\w.-]*", limpio, re.I)))
-            ofensores.append(f"{os.path.basename(f)}:{hits}")
-    if not ofensores:
-        ok("marca = ITHOS: CERO 'jarvis' en código/docs/config (única excepción: la carpeta de deploy jarvis-cloud)")
-    else:
+            ofensores.append(f"{os.path.relpath(f, RAIZ)}:{hits}")
+    if abiertos < 50:
+        fail("el chequeo cero-jarvis no está mirando el código", f"sólo abrió {abiertos} archivos")
+    elif ofensores:
         fail("apareció 'jarvis' — la marca es ITHOS, nunca más jarvis", str(ofensores[:8]))
+    else:
+        ok(f"marca = ITHOS: CERO 'jarvis' en {abiertos} archivos de código/docs/config "
+           "(excepciones: la carpeta de deploy jarvis-cloud y el usuario del SQL Server ajeno)")
 except Exception as e:  # noqa: BLE001
     fail("no se pudo verificar el requisito cero-jarvis", repr(e))
 
