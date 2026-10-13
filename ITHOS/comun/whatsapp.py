@@ -23,6 +23,11 @@ import threading
 import urllib.request
 
 log = logging.getLogger("whatsapp")
+
+# Si el respaldo gratuito de voz no genera audio, se avisa UNA vez por corrida: es una condición
+# estable (hoy, un corte del servicio de Microsoft), así que repetirla en cada mensaje sólo sirve
+# para tapar los avisos que sí hay que leer.
+_AVISO_VOZ_DADO = False
 BASE = os.path.dirname(os.path.abspath(__file__))
 
 # Silenciar un WARNING RUIDOSO e INOFENSIVO de neonize al leer los metadatos del audio
@@ -545,7 +550,17 @@ class WhatsAppNoOficial:
                     from comun import voz_tts
                     voz = voz_tts.audio(_t, formato="mp3")
                 if not voz:
-                    log.warning("WhatsApp nota de voz: no se pudo generar (edge vacío).")
+                    # Se avisa UNA vez por corrida, no en cada mensaje. Hoy el respaldo gratuito
+                    # (edge-tts) está roto del lado de Microsoft —el servicio rechaza el handshake
+                    # con 403, y la última versión publicada de la librería tampoco entra—, así que
+                    # esto se repetiría en cada aviso y taparía lo que sí hay que mirar. El cliente
+                    # no se queda sin el mensaje: cae a texto.
+                    global _AVISO_VOZ_DADO
+                    if not _AVISO_VOZ_DADO:
+                        _AVISO_VOZ_DADO = True
+                        log.warning("WhatsApp nota de voz: el respaldo gratuito no genera audio "
+                                    "(edge-tts sin servicio). Los avisos salen como TEXTO. "
+                                    "No se repite este aviso.")
                     if self.respuesta == "audio":
                         try:
                             self.client.send_message(chat, con_prefijo(_t))

@@ -253,8 +253,17 @@ def main():
             p("  (cuota IA disponible; el ciclo completo se valida con probar_ciclo.py)")
             check("IA de texto responde (triage disponible)", True)
         except Exception as ex:  # noqa: BLE001
-            check("IA de texto responde", False,
-                  "cuota/429" if "429" in str(ex) or "RESOURCE" in str(ex) else str(ex)[:70])
+            # Que se haya agotado la cuota GRATIS del día no es un defecto del sistema, igual que
+            # en el chequeo de voz de acá arriba, que ya lo trataba así. Antes esto daba FALLA, con
+            # lo cual la suite se ponía roja todos los días a partir del momento en que se agotaba
+            # la cuota: una alarma que suena por algo esperable deja de mirarse, y entonces una
+            # falla de verdad pasa desapercibida.
+            m = str(ex).lower()
+            agotada = any(t in m for t in ("429", "resource_exhausted", "rate limit",
+                                           "rate_limited", "quota"))
+            check("IA de texto disponible (o sin cuota gratis del día)", agotada,
+                  "cuota del día agotada → el triage se valida al resetear" if agotada
+                  else str(ex)[:70])
 
     p("\n[11] BORRADO y verificación")
     req("DELETE", f"/api/clientes/{key}")

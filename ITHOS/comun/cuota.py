@@ -178,7 +178,11 @@ def _ruta_conteo(nombre_cliente):
     nuevo = EST.ruta("cuota", nombre_cliente)
     try:
         if os.path.exists(viejo) and not os.path.exists(nuevo):
-            os.replace(viejo, nuevo)
+            # `shutil.move` y no `os.replace`: el origen vive en el bind-mount del código y el
+            # destino en el volumen, que son sistemas de archivos DISTINTOS. `os.replace` ahí
+            # devuelve EXDEV ("Invalid cross-device link") y la migración no ocurría nunca.
+            import shutil
+            shutil.move(viejo, nuevo)
             log.info("Cuota: el conteo de %s se movió al volumen persistente.", nombre_cliente)
     except OSError as e:  # noqa: BLE001
         log.warning("Cuota: no se pudo mover el conteo viejo (%s); sigo con el de siempre.", e)

@@ -184,6 +184,19 @@ y el versionado, [SemVer](https://semver.org/lang/es/).
   corregida el flujo real quedó verificado punta a punta: aviso por voz, clasificación, asignación
   y mensajes de WhatsApp.
 
+- **Dos avisos que se repetían sin aportar nada.** El traslado del conteo de cuota al volumen
+  fallaba con `EXDEV` ("Invalid cross-device link") porque origen y destino son sistemas de
+  archivos distintos —el bind-mount del código y el volumen—; `os.replace` no cruza dispositivos y
+  `shutil.move` sí. Y el aviso de que el respaldo gratuito de voz no genera audio salía en **cada
+  mensaje**; ahora sale una vez por corrida, que es lo que corresponde para una condición estable
+  (el cliente no se queda sin el mensaje: sale como texto).
+
+- **Una suite se ponía roja todos los días por algo esperable.** `probar_sistema.py` contaba la
+  cuota gratis de IA agotada como FALLA, mientras el chequeo de voz tres líneas más arriba —y
+  `probar_todo.py`— ya la trataban como pendiente. Unificado: sin cuota es *pendiente*, no falla.
+  Una alarma que suena por algo normal deja de mirarse, y es así como una falla de verdad pasa
+  desapercibida.
+
 - **El log operativo era mayoría chatarra de librerías.** `httpx` y el SDK de Google escriben a
   nivel INFO en **cada** llamada a la IA, y el triage llama una vez por ticket. Se los subió a
   WARNING en `comun/ia.py` —no en el Gestor, porque el agente usa la misma capa—, así siguen
