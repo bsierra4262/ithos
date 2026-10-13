@@ -37,6 +37,23 @@ Esa regla tiene que ir **antes** del chequeo `RewriteCond %{REQUEST_FILENAME} -f
 Apache encuentra que `/pics/favicon.ico` existe, lo sirve tal cual, y la reescritura nunca corre.
 `tests/probar_tema_glpi.py` verifica justamente ese orden.
 
+### Y además hay que cambiarle la URL
+
+Con la reescritura sola no alcanza para que lo veas vos: el servidor manda
+`Cache-Control: public, max-age=604800` (**7 días**) y, peor, **Chrome guarda los favicons en una
+base propia que no se refresca ni con Ctrl+Shift+R**. Mientras la URL sea la misma, el navegador
+sigue mostrando el ícono viejo. Por eso `head.html.twig` lleva una versión en la ruta:
+
+```twig
+<link rel="shortcut icon" type="images/x-icon" href="{{ asset_path('/pics/favicon.ico') ~ '?v=2' }}" />
+```
+
+Esta línea es **lo único de la marca que una actualización de GLPI sí pisa**, y a propósito: si se
+pierde, el ícono sigue siendo el de ITH (lo garantiza el `.htaccess`); lo único que se pierde es el
+forzado de descarga, que hace falta una sola vez. Si alguna vez se cambia el arte del ícono, se
+sube el número (`?v=3`). Hay una copia del archivo original en el servidor como
+`head.html.twig.previo`.
+
 ## Cómo se reaplica el tema
 
 El CSS se guarda en la base con una consulta preparada (nunca pegándolo a mano en el editor de

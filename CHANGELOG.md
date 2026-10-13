@@ -77,7 +77,10 @@ y el versionado, [SemVer](https://semver.org/lang/es/).
   como `/pics/favicon.ico`, y ese archivo lo reescribe cada versión mayor. Se resolvió desviando la
   ruta desde el `.htaccess` (que GLPI 12 **no trae**, así que es nuestro) a `ith-favicon.ico`, un
   `.ico` de seis tamaños generado del logo; la regla va **antes** del chequeo de archivo existente,
-  porque si no Apache sirve el de GLPI y la reescritura nunca corre. Y **el título** decía
+  porque si no Apache sirve el de GLPI y la reescritura nunca corre. Con la reescritura sola no
+  alcanzaba para verlo: el servidor manda `Cache-Control: max-age=604800` (**7 días**) y **Chrome
+  guarda los favicons en una base propia que no se refresca ni con Ctrl+Shift+R**, así que mientras
+  la URL no cambie el navegador sigue mostrando el viejo. Por eso la ruta lleva ahora `?v=2`. Y **el título** decía
   "— GLPI" porque la clave `app_name` no existía en `glpi_configs` y GLPI caía en su valor por
   omisión; ahora dice **Mesa de Ayuda ITH**, que es además lo que firma el pie de las
   notificaciones. Todo queda versionado y explicado en `docs/glpi/`.
