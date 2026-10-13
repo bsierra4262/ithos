@@ -108,13 +108,16 @@ class Triage:
 
     def _tecnicos_asignados(self, tid):
         """user-ids de los TÉCNICOS ya asignados (Ticket_User type 2) al ticket. Se usa para RESPETAR
-        una asignación MANUAL: si ya hay un técnico humano, ITHOS no vuelve a auto-asignar el default."""
-        try:
-            us = self.cli.request(f"/Ticket/{tid}/Ticket_User")
-            return {int(u.get("users_id") or 0) for u in us
-                    if isinstance(u, dict) and int(u.get("type") or 0) == 2}
-        except Exception:  # noqa: BLE001
-            return set()
+        una asignación MANUAL: si ya hay un técnico humano, ITHOS no vuelve a auto-asignar el default.
+
+        PROPAGA el error de lectura a propósito. Antes lo atrapaba y devolvía un conjunto vacío,
+        pero vacío significa «no hay nadie asignado», que es indistinguible de «no pude leer».
+        Confundir las dos cosas hacía que una caída pasajera de GLPI se leyera como «ticket sin
+        triagear» y ITHOS volviera a categorizar y asignar un ticket YA trabajado, pisándole la
+        decisión al técnico. Quién llama decide qué hacer cuando no se puede leer."""
+        us = self.cli.request(f"/Ticket/{tid}/Ticket_User")
+        return {int(u.get("users_id") or 0) for u in us
+                if isinstance(u, dict) and int(u.get("type") or 0) == 2}
 
     def _antecedentes(self, tid, ticket):
         """Casos parecidos REALES ya trabajados de este cliente, para que el triage clasifique con
@@ -144,14 +147,23 @@ class Triage:
         # respetar los cambios MANUALES del técnico (categoría/asignación/prioridad); si volvió a 'Nuevo',
         # solo lo sacamos de ahí para que no quede en loop. El PRIMER triage (ITHOS aún NO asignado) SÍ
         # categoriza/asigna aunque el ticket venga MAL CARGADO (esa corrección inicial siempre se hace).
+        # OJO con el caso "no se pudo leer": antes el error se tragaba y `asignados` quedaba VACÍO,
+        # que es exactamente lo mismo que dice un ticket todavía sin triagear. Resultado: una caída
+        # pasajera de GLPI —y el MySQL compartido del hosting rechaza conexiones de a ratos— hacía
+        # que ITHOS re-triageara un ticket YA trabajado y le pisara la categoría y la asignación al
+        # técnico, que es justo lo que no puede pasar. Ante la duda NO se triagea: reintentar en la
+        # vuelta siguiente (~1 minuto) no cuesta nada; pisar el trabajo de una persona, sí.
         asignados = set()
         try:
             self.cli.abrir()
             asignados = self._tecnicos_asignados(tid)
             if ITHOS_ID in asignados and int(ticket.get("status") or 1) == 1:
                 self.cli.request(f"/Ticket/{tid}", "PUT", {"input": {"status": 2}})
-        except Exception:  # noqa: BLE001
-            pass
+        except Exception as e:  # noqa: BLE001
+            log.warning("Triage #%s: no pude leer quién está asignado (%s). NO lo triageo en esta "
+                        "vuelta; si ya estaba trabajado, re-triagearlo pisaría al técnico.",
+                        tid, str(e)[:120])
+            return None
         finally:
             self.cli.cerrar()
         if ITHOS_ID in asignados:
@@ -220,6 +232,7 @@ class Triage:
             a_poner = [ITHOS_ID]
             if not (asignados & humanos):
                 a_poner.extend([resp_id] + acompanan)
+            fallaron = []
             for uid in a_poner:
                 if uid in asignados:
                     continue
@@ -227,8 +240,26 @@ class Triage:
                     self.cli.request("/Ticket_User", "POST",
                                      {"input": {"tickets_id": tid, "users_id": uid,
                                                 "type": 2}})
-                except Exception:  # noqa: BLE001
-                    pass  # ya asignado (ERROR_GLPI_ADD): estado final correcto
+                except Exception as e:  # noqa: BLE001
+                    fallaron.append((uid, str(e)[:90]))
+            # El error ESPERADO acá es que GLPI rechace un alta duplicada (ERROR_GLPI_ADD): el
+            # responsable ya estaba puesto y el estado final es el correcto. Antes se tragaba
+            # cualquier excepción por igual, así que una caída de GLPI dejaba el ticket SIN
+            # responsable y en silencio. En vez de adivinar por el texto del error, se vuelve a
+            # leer QUIÉN quedó asignado: si falta alguno, eso sí es un problema y se avisa.
+            if fallaron:
+                try:
+                    quedaron = self._tecnicos_asignados(tid)
+                except Exception as e:  # noqa: BLE001
+                    # Si tampoco se puede releer, se avisa igual: lo que no puede pasar es que un
+                    # ticket se quede sin responsable y nadie se entere.
+                    log.warning("Triage #%s: no pude verificar la asignación (%s).", tid, str(e)[:90])
+                    quedaron = set()
+                faltan = [uid for uid, _ in fallaron if uid not in quedaron]
+                if faltan:
+                    log.error("Triage #%s: NO se pudo asignar a %s (%s). El ticket queda sin esos "
+                              "responsables: hay que asignarlos a mano.",
+                              tid, faltan, fallaron[0][1])
             self._habilitar_respuesta_del_cliente(tid, humanos)
             # Estado según el HORARIO: si el ticket ENTRÓ fuera del horario de atención y NO necesita datos
             # del cliente, queda EN ESPERA hasta que abra el horario y la agenda lo reabre solo. OJO: el

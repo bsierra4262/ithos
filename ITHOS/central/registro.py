@@ -53,21 +53,43 @@ class Registro:
         self.cargar()
 
     def cargar(self):
+        """Lee el padrón de clientes del disco.
+
+        Un fallo acá NO puede ser silencioso. Antes dejaba `_por_key` vacío sin decir nada, y un
+        padrón vacío es un Gestor que levanta normalmente, acepta la conexión del agente y después
+        no valida a NADIE: ningún cliente existe, ningún servicio arranca, y en el log no hay una
+        sola línea que lo explique. Como `cargar()` corre una única vez al arrancar, eso deja el
+        Gestor inútil hasta que alguien lo note a mano.
+
+        Tampoco se pisa lo que ya estaba cargado: si alguna vez se recarga en caliente y la lectura
+        falla, es preferible seguir atendiendo con el padrón anterior que quedarse sin ninguno."""
         with self._lock:
             try:
                 with open(self.ruta, "r", encoding="utf-8") as f:
                     data = json.load(f)
-                # Los secretos están CIFRADOS en disco: se descifran acá para que el Gestor los use.
-                try:
-                    from comun import cifrado as CIF
-                    data = CIF.descifrar_datos(data)
-                except Exception:  # noqa: BLE001
-                    pass
+            except Exception as e:  # noqa: BLE001
+                log.error("No se pudo leer el padrón de clientes (%s): %s. El Gestor NO va a "
+                          "atender a ningún cliente hasta que esto se resuelva.",
+                          self.ruta, str(e)[:140])
+                return                      # se conserva lo que hubiera cargado antes
+            # Los secretos están CIFRADOS en disco: se descifran acá para que el Gestor los use.
+            try:
+                from comun import cifrado as CIF
+                data = CIF.descifrar_datos(data)
+            except Exception as e:  # noqa: BLE001
+                # Sin descifrar, los tokens quedan como 'enc:v1:…' y todo falla más adelante con
+                # errores que no se parecen en nada a la causa. Hay que decirlo acá.
+                log.error("No se pudieron descifrar los secretos del padrón (%s). Revisá "
+                          "ITHOS_MASTER_KEY: los tokens van a quedar ilegibles.", str(e)[:140])
+            try:
                 self._por_key = {c["api_key"]: _normalizar(c)
                                  for c in data.get("clientes", [])
                                  if c.get("activo", True)}
-            except Exception:  # noqa: BLE001
-                self._por_key = {}
+            except Exception as e:  # noqa: BLE001
+                log.error("El padrón de clientes tiene un formato inesperado (%s): %s",
+                          self.ruta, str(e)[:140])
+                return
+            log.info("Padrón de clientes cargado: %d activo(s).", len(self._por_key))
 
     def validar(self, api_key):
         """Devuelve la config del cliente si la api_key es válida, o None."""

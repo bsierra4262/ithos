@@ -115,14 +115,40 @@ y el versionado, [SemVer](https://semver.org/lang/es/).
   más en la misma fecha** es `ERROR` y se avisa cada vez; el tope alcanzado por acumulación
   histórica se informa **una sola vez por corrida**.
 
-- **El chequeo "cero jarvis" no estaba mirando el código.** Escaneaba `comun/`, `central/` y
+- **El chequeo que prohíbe la marca vieja no estaba mirando el código.** Escaneaba `comun/`, `central/` y
   `agente/` colgando de la raíz, carpetas que dejaron de existir cuando el código se movió bajo
   `ITHOS/`: abría **cero archivos** y daba verde sin verificar nada. Así sobrevivieron seis
-  "JARVIS" en los `requirements.txt` y uno en `comun/wake.py`. Corregidas las rutas y ampliado el
+  menciones de la marca vieja en los `requirements.txt` y una en `comun/wake.py`. Corregidas las
+  rutas y ampliado el
   alcance (requirements, instalador `.iss`, configuraciones), ahora abre **107 archivos**; y se le
   agregó un piso mínimo de archivos leídos, para que **un chequeo que no mira nada falle en vez de
   pasar**. Las dos únicas excepciones quedan explícitas: la carpeta de deploy `jarvis-cloud` y el
   usuario del SQL Server de fichadas, que es de un sistema de terceros.
+
+- **Una caída pasajera de GLPI hacía que ITHOS le pisara el trabajo al técnico.**
+  `_tecnicos_asignados()` atrapaba el error de lectura y devolvía un conjunto **vacío**, que es
+  exactamente lo que dice un ticket todavía sin triagear. Indistinguibles. Así, un fallo de un
+  segundo se leía como "ticket nuevo" y el triage volvía a correr sobre un ticket **ya trabajado**,
+  cambiándole la categoría, la prioridad y la asignación que una persona había puesto a mano —
+  justo lo que el requisito de triage robusto prohíbe. Y no es hipotético: el MySQL compartido del
+  hosting rechaza conexiones en ráfagas, que es la condición que lo dispara. Ahora el error se
+  **propaga** y, ante la duda, **no se triagea**: reintentar en la vuelta siguiente (~1 minuto) no
+  cuesta nada; pisarle el trabajo a alguien, sí.
+
+- **Un ticket podía quedar sin responsable y en silencio.** La asignación usaba
+  `except Exception: pass`, comentado como "ya asignado, estado final correcto". Eso vale para el
+  error **esperado** de GLPI (alta duplicada), pero se tragaba igual una caída real. Ahora, cuando
+  una asignación falla, se **relee quién quedó asignado**: si falta alguien, sale un `ERROR` que
+  dice a quién hay que poner a mano. Se verifica el estado final en vez de adivinar por el texto
+  del error.
+
+- **El Gestor podía arrancar sin ningún cliente, sin decirlo.** Si `clientes.json` no se podía leer,
+  el padrón quedaba vacío **sin una sola línea de log**: el Gestor levantaba normal, aceptaba la
+  conexión del agente y después no validaba a nadie. Como el padrón se carga **una sola vez al
+  arrancar**, eso dejaba el Gestor inútil hasta que alguien lo notara a mano. Ahora el fallo se
+  registra como `ERROR` diciendo qué pasa, no se pisa lo que ya estuviera cargado, y un fallo al
+  **descifrar** los secretos también se avisa (antes los tokens quedaban como `enc:v1:…` y todo
+  fallaba después con errores que no se parecían a la causa).
 
 - **El log operativo era mayoría chatarra de librerías.** `httpx` y el SDK de Google escriben a
   nivel INFO en **cada** llamada a la IA, y el triage llama una vez por ticket. Se los subió a
