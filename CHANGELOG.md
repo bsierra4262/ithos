@@ -197,16 +197,25 @@ y el versionado, [SemVer](https://semver.org/lang/es/).
   Una alarma que suena por algo normal deja de mirarse, y es así como una falla de verdad pasa
   desapercibida.
 
+- **El total de la batería decía más de lo que verificaba.** Ocho chequeos quedaron etiquetados
+  `[demo retirada]` cuando se retiró el ambiente de demo y seguían contándose como **verdes**. Un
+  verde dice "lo verifiqué y está bien", no "no hay nada que verificar": inflaban el número sin
+  mirar una sola línea. No se borraron —si la demo vuelve, el requisito sigue escrito y el chequeo
+  vuelve a correr—, pero ahora se informan aparte como **no aplican**. El total pasa de "113
+  verdes" a lo que realmente es: **105 verificados, 8 no aplican**.
+
 - **El log operativo era mayoría chatarra de librerías.** `httpx` y el SDK de Google escriben a
   nivel INFO en **cada** llamada a la IA, y el triage llama una vez por ticket. Se los subió a
   WARNING en `comun/ia.py` —no en el Gestor, porque el agente usa la misma capa—, así siguen
   apareciendo cuando algo falla de verdad.
 
-- **Diagnosticado, upstream:** las notas de voz de WhatsApp no se generan cuando toca el respaldo
-  gratuito. `edge-tts` 7.2.8 (la última publicada, de marzo 2026) recibe **403 en el handshake**
-  del servicio de Microsoft. **No es el hosting**: falla igual desde una conexión residencial. El
-  aviso igual llega al cliente, porque el código cae a texto. La voz de marca (Charon) no está
-  afectada.
+- **Las notas de voz de WhatsApp no se generaban cuando tocaba el respaldo gratuito.** `edge-tts`
+  7.2.8 recibía **403 en el handshake** del servicio de Microsoft — no era el hosting: fallaba
+  igual desde una conexión residencial. Los mantenedores publicaron el arreglo (**7.3.0 y 7.3.1**,
+  13-oct-2026) y el mínimo quedó fijado en `>=7.3.1` en los tres `requirements`, así que las
+  versiones rotas ya no se pueden instalar. Verificado: el camino real vuelve a generar audio. El
+  pin además invalida la capa cacheada de `pip`, que era por la que el contenedor seguía con la
+  versión vieja. Durante el corte el cliente nunca se quedó sin el aviso: el código cae a texto.
 
 ### Security
 - **El portal del cliente entregaba TODOS sus secretos.** `GET /api/cliente/<api_key>` devolvía la

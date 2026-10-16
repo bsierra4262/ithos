@@ -6,7 +6,9 @@ websockets>=12.0
 google-genai>=2.7           # Gemini (texto + voz Charon)
 pyodbc>=5.1                 # IVMS: leer la tabla de fichajes (SQL Server)
 sounddevice>=0.4            # capturar el micrófono
-edge-tts>=6.1.10            # voz GRATIS de respaldo + notas de voz
+edge-tts>=7.3.1            # voz GRATIS de respaldo + notas de voz. MINIMO 7.3.1: desde
+                          # 7.2.8 y anteriores el servicio de Microsoft rechaza el
+                          # handshake con 403 y no se genera NADA de audio (13-oct-2026).
 pydub>=0.25                 # ajuste de velocidad
 audiotsm>=0.1.2             # time-stretch de audio
 numpy>=1.24                 # audio / VAD

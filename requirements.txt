@@ -20,7 +20,9 @@ neonize>=0.3
 segno>=1.5                  # QR de vinculación
 
 # --- Voz: TTS / reproducción / ajuste de velocidad --------------------------
-edge-tts>=6.1.10            # voz GRATIS de respaldo + notas de voz
+edge-tts>=7.3.1            # voz GRATIS de respaldo + notas de voz. MINIMO 7.3.1: desde
+                          # 7.2.8 y anteriores el servicio de Microsoft rechaza el
+                          # handshake con 403 y no se genera NADA de audio (13-oct-2026).
 pygame>=2.5                 # reproducción de audio en la demo
 pydub>=0.25                 # ajuste de velocidad (x1.25)
 audiotsm>=0.1.2             # time-stretch de audio (agente)

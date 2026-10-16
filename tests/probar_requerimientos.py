@@ -40,6 +40,7 @@ APP = os.path.join(RAIZ, "ITHOS")   # el codigo vive bajo app/ tras la reorg
 PROD = ["ITHOS/comun", "ITHOS/central", "ITHOS/agente"]          # código de PRODUCTO (debe ser portable)
 fallas = []
 oks = []
+inaplicables = []
 
 
 def ok(msg, extra=""):
@@ -50,6 +51,17 @@ def ok(msg, extra=""):
 def fail(msg, extra=""):
     fallas.append(msg)
     print(f"  [FALLA] {msg}  {extra}")
+
+
+def na(msg, extra=""):
+    """Requisito que HOY no aplica: la pieza que verificaba ya no existe en el producto.
+
+    Existe para no mentir en el total. Estos chequeos se contaban como verdes, y un verde dice
+    «lo verifiqué y está bien», no «no hay nada que verificar»: siete de ellos inflaban el número
+    sin mirar una sola línea. No se borran —si la pieza vuelve, el requisito sigue escrito y el
+    chequeo vuelve a correr—, pero se cuentan aparte."""
+    inaplicables.append(msg)
+    print(f"  [N/A] {msg}  {extra}")
 
 
 def pyfiles(dirs):
@@ -167,7 +179,7 @@ demo = leer(os.path.join(RAIZ, "iniciar_demo.py"))
 if "lsof" in demo and 'os.name == "nt"' in demo:
     ok("iniciar_demo.matar_puerto contempla Linux/Mac (lsof/fuser)")
 else:
-    ok("[demo retirada] iniciar_demo.matar_puerto es solo-Windows")
+    na("[demo retirada] iniciar_demo.matar_puerto es solo-Windows")
 
 # A7) Rutas de datos portables (~/.ithos via expanduser) en el producto.
 usan_home = 0
@@ -312,12 +324,12 @@ conv_src = leer_asistente()
 if "def arrancar_agente(" in demo_src and "arrancar_agente(cli)" in demo_src:
     ok("la demo lanza el AGENTE de producción (arrancar_agente)")
 else:
-    ok("[demo retirada] la demo no lanza el agente de producción")
+    na("[demo retirada] la demo no lanza el agente de producción")
 if ("_agente_demo.json" in demo_src and "os.remove(os.path.join(LOCAL, tmp))" in demo_src and
         "def cerrar" in demo_src):
     ok("la demo limpia sus artefactos temporales (config del agente + tokens de alta) al cerrar")
 else:
-    ok("[demo retirada] la demo no limpia la config temporal del agente")
+    na("[demo retirada] la demo no limpia la config temporal del agente")
 if 'os.environ.get("ITHOS_AGENTE_CONFIG")' in ag_src:
     ok("agente.py acepta config por env (no pisa agente/config.json)")
 else:
@@ -325,7 +337,7 @@ else:
 if "ITHOS_AGENTE_CONSULTA_INICIO" in ag_src and "ITHOS_AGENTE_CONSULTA_INICIO" in demo_src:
     ok("consulta de arranque real cableada (agente + demo)")
 else:
-    ok("[demo retirada] falta la consulta de arranque")
+    na("[demo retirada] falta la consulta de arranque")
 # En DEMO el central NO abre canales externos (evita conflicto de sesión WhatsApp).
 if 'wa = None if os.environ.get("ITHOS_DEMO")' in main_src:
     ok("en demo el central no abre canales externos (sin conflicto de WhatsApp)")
@@ -1030,7 +1042,7 @@ try:
         fail("falta portero-demo / baseline / anti-suspensión",
              f"portero={portero_demo} baseline={baseline_ivms} despierto={despierto_wired}")
 except Exception as e:  # noqa: BLE001
-    ok("[demo retirada] no se pudo verificar demo-portero / baseline / anti-suspensión", repr(e))
+    na("[demo retirada] no se pudo verificar demo-portero / baseline / anti-suspensión", repr(e))
 
 
 # H19) LOG LIMPIO: el ruido inofensivo de terceros no ensucia el log (se silencia sin tapar lo
@@ -1123,7 +1135,7 @@ try:
         fail("falta log-a-archivo o input robusto en la demo",
              f"log={log_a_archivo} input={input_robusto}")
 except Exception as e:  # noqa: BLE001
-    ok("[demo retirada] no se pudo verificar consola limpia / input robusto", repr(e))
+    na("[demo retirada] no se pudo verificar consola limpia / input robusto", repr(e))
 
 
 # H24) La VOZ no lee EMOJIS: locucion.sin_emojis los saca de lo que se PRONUNCIA (el texto que se
@@ -1338,7 +1350,7 @@ try:
     if interno and aislado and generado and demo_prod and aislable and usa_logs:
         ok("demo = producción: aislada (ITHOS_ALTA_FILE) + auto-limpiante + auth interna (X-Admin-Token) + nada hardcodeado + usa _demo.log")
     else:
-        ok("[demo retirada] la demo no cumple demo=producción aislada/limpia/no-hardcodeada/logs",
+        na("[demo retirada] la demo no cumple demo=producción aislada/limpia/no-hardcodeada/logs",
              f"interno={interno} aislado={aislado} generado={generado} demo={demo_prod} aislable={aislable} logs={usa_logs}")
 except Exception as e:  # noqa: BLE001
     fail("no se pudo verificar demo=producción (aislada/limpia/no-hardcodeada)", repr(e))
@@ -2027,7 +2039,7 @@ try:
         ok("demo siloada y efímera: misma imagen que prod, volumen/clientes/claves propios (no toca "
            "producción), `down -v` borra todo, no se publica (túnel SSH), plantillas + .gitignore")
     else:
-        ok("[demo retirada] el ambiente de demo no queda bien aislado/efímero",
+        na("[demo retirada] el ambiente de demo no queda bien aislado/efímero",
              f"img={misma_imagen} vol={vol_propio} cli={clientes_aparte} env={env_aparte} "
              f"local={local_only} efimero={efimero} gi={gi_ok} lf={sin_crlf} ejemplos={ejemplos}")
 except Exception as e:  # noqa: BLE001
@@ -3623,9 +3635,19 @@ except Exception as e:  # noqa: BLE001
 
 
 print("\n" + "=" * 58)
+# El total dice SÓLO lo que de verdad se verificó. Los que hoy no aplican se nombran aparte: un
+# número de verdes que incluye chequeos que no miran nada no sirve para decidir nada.
+if inaplicables:
+    print(f"  No aplican hoy ({len(inaplicables)}): la pieza que verificaban ya no está en el")
+    print("  producto. El requisito queda escrito; si vuelve, el chequeo vuelve a correr.")
+    for m in inaplicables:
+        print(f"    · {m}")
+    print()
 if fallas:
-    print(f"  REQUERIMIENTOS: {len(fallas)} FALLA(S) / {len(oks)} OK")
+    print(f"  REQUERIMIENTOS: {len(fallas)} FALLA(S) / {len(oks)} verificados"
+          + (f" / {len(inaplicables)} no aplican" if inaplicables else ""))
     print("=" * 58)
     sys.exit(1)
-print(f"  REQUERIMIENTOS: OK — {len(oks)} chequeos verdes")
+print(f"  REQUERIMIENTOS: OK — {len(oks)} chequeos verificados"
+      + (f" ({len(inaplicables)} no aplican hoy)" if inaplicables else ""))
 print("=" * 58)
