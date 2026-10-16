@@ -197,6 +197,15 @@ y el versionado, [SemVer](https://semver.org/lang/es/).
   Una alarma que suena por algo normal deja de mirarse, y es así como una falla de verdad pasa
   desapercibida.
 
+- **Arreglar los códigos de salida rompió la suite que corre a las otras.** `probar_todo.py`
+  ejecuta `probar_ciclo.py` con `runpy.run_path(…, "__main__")`, así que al darle a ese guion un
+  `sys.exit()` empezó a recibir un **`SystemExit`** — que **no deriva de `Exception`** y por lo
+  tanto ningún `except Exception` lo atrapa. La excepción subía, cortaba `probar_todo` entera y su
+  resumen no se imprimía nunca; y como el código era 0, todo parecía haber salido bien. Ahora se
+  traduce a un resultado: el paso queda `OK` o `FALLA` y la suite sigue con los que vienen
+  después. Verificado en los dos sentidos —con el hijo saliendo bien y saliendo mal— y agregado a
+  la batería, que ahora exige que toda suite que corra a otra atrape su `SystemExit`.
+
 - **El total de la batería decía más de lo que verificaba.** Ocho chequeos quedaron etiquetados
   `[demo retirada]` cuando se retiró el ambiente de demo y seguían contándose como **verdes**. Un
   verde dice "lo verifiqué y está bien", no "no hay nada que verificar": inflaban el número sin

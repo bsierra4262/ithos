@@ -3630,6 +3630,24 @@ try:
         fail("hay suites que NO salen con error cuando fallan (nadie se entera)", str(sin_salida))
     else:
         ok("todas las suites salen con código de error cuando algún chequeo falla")
+
+    # La otra cara del mismo problema: una suite que corre OTRA con `runpy.run_path(…, "__main__")`
+    # recibe su `sys.exit()` como `SystemExit`, que NO deriva de `Exception` y por lo tanto NO lo
+    # atrapa ningún `except Exception`. La excepción sube, corta la suite que llamaba y su resumen
+    # nunca se imprime — y si el código era 0, todo parecía haber salido bien. Tiene que estar
+    # atrapado explícitamente.
+    sin_atrapar = []
+    for f in sorted(_g37.glob(os.path.join(RAIZ, "tests", "probar_*.py"))):
+        if os.path.basename(f) == os.path.basename(__file__):
+            continue                      # este archivo nombra el patrón para buscarlo, no lo usa
+        txt = open(f, encoding="utf-8", errors="ignore").read()
+        if "runpy.run_path" in txt and not re.search(r"except\s+SystemExit", txt):
+            sin_atrapar.append(os.path.basename(f))
+    if sin_atrapar:
+        fail("una suite corre a otra con runpy y no atrapa su SystemExit: se corta a sí misma",
+             str(sin_atrapar))
+    else:
+        ok("una suite que corre a otra traduce su SystemExit en un resultado, no se corta")
 except Exception as e:  # noqa: BLE001
     fail("no se pudo verificar el código de salida de las suites", repr(e))
 

@@ -195,9 +195,20 @@ def t_conversacional_ia():
 
 
 def t_ciclo_ia():
+    """Corre el ciclo de vida completo (probar_ciclo.py) como si fuera su propio programa.
+
+    OJO con el `SystemExit`: ese guion ahora termina con `sys.exit(<código>)` —antes salía con 0
+    pasara lo que pasara—, y `SystemExit` NO deriva de `Exception`, así que el `check()` de acá
+    arriba no lo atrapa: la excepción sube, corta esta suite entera y el resumen nunca se imprime.
+    Y como el código era 0, todo parecía haber salido bien. Hay que traducirlo a un resultado."""
     import runpy
-    runpy.run_path(os.path.join(os.path.dirname(os.path.abspath(__file__)), "probar_ciclo.py"),
-                   run_name="__main__")
+    try:
+        runpy.run_path(os.path.join(os.path.dirname(os.path.abspath(__file__)), "probar_ciclo.py"),
+                       run_name="__main__")
+    except SystemExit as e:
+        codigo = e.code if isinstance(e.code, int) else (0 if e.code is None else 1)
+        if codigo:
+            raise AssertionError(f"el ciclo de vida falló (salió con {codigo})") from None
     return "ciclo completo ejecutado (ver arriba)"
 
 
