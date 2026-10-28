@@ -226,6 +226,26 @@ y el versionado, [SemVer](https://semver.org/lang/es/).
   pin además invalida la capa cacheada de `pip`, que era por la que el contenedor seguía con la
   versión vieja. Durante el corte el cliente nunca se quedó sin el aviso: el código cae a texto.
 
+- **Una reactivación programada se reintentaba para siempre y machacaba GLPI.** Tres tickets
+  (#725, #727, #730) quedaron agendados para reabrirse el 12-oct y después fueron purgados de
+  GLPI. `agenda.procesar()` tenía dos casos nada más —salió bien, o falló y vuelve a la agenda—,
+  sin mirar **por qué** había fallado y sin límite. Como el ticket ya no existía, la entrada no se
+  podía completar nunca: el reactivador le escribía cada minuto, dos semanas seguidas. El saldo
+  eran **354 escrituras fallidas por hora** contra la API, **21.596 advertencias de PHP por día**
+  y un `php-errors.log` de **115 MB**. Un reintento sin condición de salida no es tolerancia a
+  fallos, es un bucle.
+
+  Ahora se distingue el fallo **permanente** (404 / `ERROR_ITEM_NOT_FOUND`: el ticket ya no
+  existe → se descarta la entrada) del **pasajero** (GLPI caído, red, timeout → se reintenta). Y
+  hay un **tope de 7 días** como red de seguridad: aunque el motivo del fallo no se pueda
+  reconocer, ninguna entrada se reintenta indefinidamente. De paso, el archivo se guardaba sólo
+  cuando algo se reactivaba con éxito, así que un descarte ni siquiera habría podido persistir.
+
+  El volumen de advertencias viene además de un bug de GLPI: en `API.php::updateItems()`, la rama
+  "Item not found" hace `continue` **antes** de agregar el resultado a la colección, y después la
+  lee con `$idCollection[0]['message']` sobre una colección vacía. No se parchea —se perdería en
+  la próxima actualización—: lo que se corrige es la causa, que era nuestra.
+
 ### Security
 - **El portal del cliente entregaba TODOS sus secretos.** `GET /api/cliente/<api_key>` devolvía la
   configuración completa y descifrada —los tokens de GLPI (incluido el de **super admin**), las

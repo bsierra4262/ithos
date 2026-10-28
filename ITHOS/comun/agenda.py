@@ -15,8 +15,25 @@ import os
 import re
 import json
 import time
+import logging
 import threading
 from datetime import datetime, timedelta
+
+log = logging.getLogger("agenda")
+
+# Tope de vida de una entrada vencida. Es la red de seguridad: pase lo que pase, una reactivación
+# NO se reintenta para siempre. Sin esto, un ticket que ya no existe hacía que el reactivador le
+# pegara a GLPI cada minuto, sin fin: 354 escrituras fallidas por hora y un log de 115 MB.
+_TOPE_REINTENTOS_DIAS = 7
+
+
+def _es_permanente(e):
+    """True si el error dice que el ticket YA NO EXISTE: reintentarlo no va a cambiar nada.
+
+    Se distingue del fallo PASAJERO (GLPI caído, red, timeout), que sí hay que reintentar. El
+    cliente conserva el código HTTP y el motivo que devolvió GLPI, así que alcanza con mirarlos."""
+    codigo = int(getattr(e, "code", 0) or 0)
+    return codigo == 404 or "ERROR_ITEM_NOT_FOUND" in str(e)
 
 DATA = os.environ.get("ITHOS_DATA") or os.path.join(os.path.expanduser("~"), ".ithos")
 try:
@@ -187,7 +204,13 @@ def iniciar_reactivador(cli_cfg, avisar=None, intervalo=60):
                 except Exception:  # noqa: BLE001
                     pass
             return True
-        except Exception:  # noqa: BLE001
+        except Exception as e:  # noqa: BLE001
+            if _es_permanente(e):
+                # El ticket ya no está (lo purgaron). Reintentar no lo va a traer de vuelta: se
+                # descarta la entrada. Antes se reintentaba cada minuto para siempre.
+                log.warning("Agenda: el ticket #%s ya no existe en el sistema de tickets; "
+                            "descarto la reactivación programada.", tid)
+                return "descartar"
             return False
 
     def loop():
@@ -208,10 +231,23 @@ def iniciar_reactivador(cli_cfg, avisar=None, intervalo=60):
 
 
 def procesar(reactivar_fn, cliente=None, ahora=None):
-    """Reactiva los tickets cuyo momento ya llegó. reactivar_fn(entry)->bool (ponerlo EN CURSO); recibe
-    la ENTRADA completa (dict con cliente/tid/desc/silencioso). Devuelve la lista de entradas reactivadas."""
+    """Reactiva los tickets cuyo momento ya llegó. Devuelve la lista de entradas reactivadas.
+
+    `reactivar_fn(entry)` recibe la ENTRADA completa (dict con cliente/tid/desc/silencioso) y
+    devuelve:
+      · `True`        -> se reactivó: la entrada se saca de la agenda;
+      · `"descartar"` -> NO se va a poder nunca (el ticket ya no existe): también se saca;
+      · cualquier otra cosa -> fallo PASAJERO: se reintenta en la vuelta siguiente.
+
+    Antes sólo había dos casos y todo lo que no fuera éxito se reintentaba, sin límite. Tres
+    tickets que habían sido purgados en GLPI quedaron así para siempre: el reactivador les pegaba
+    cada minuto, lo que daba 354 escrituras fallidas por hora, 21.596 advertencias por día y un
+    log de 115 MB. Un reintento sin condición de salida no es tolerancia a fallos, es un bucle.
+
+    Y el archivo se guardaba sólo `if hechos`, así que una entrada descartada ni siquiera se
+    habría podido borrar: ahora se guarda también cuando se descarta algo."""
     ahora = ahora or time.time()
-    hechos = []
+    hechos, descartados = [], []
     with _LOCK:
         items = _cargar()
     quedan, vencidos = [], []
@@ -221,16 +257,25 @@ def procesar(reactivar_fn, cliente=None, ahora=None):
         else:
             quedan.append(x)
     for x in vencidos:
-        ok = False
         try:
-            ok = bool(reactivar_fn(x))
+            r = reactivar_fn(x)
         except Exception:  # noqa: BLE001
-            ok = False
-        if ok:
+            r = False
+        if r is True:
             hechos.append(x)
+        elif r == "descartar":
+            descartados.append(x)
+        elif float(x.get("epoch", 0)) < ahora - _TOPE_REINTENTOS_DIAS * 86400:
+            # Red de seguridad, por si el motivo del fallo no se puede reconocer: una entrada
+            # vencida hace más de una semana ya no se reintenta más. Si el ticket sigue vivo y
+            # hace falta, el técnico lo retoma a mano; lo que no puede pasar es el bucle eterno.
+            log.warning("Agenda: la reactivación del ticket #%s lleva más de %d días fallando; "
+                        "la descarto para no seguir reintentando.",
+                        x.get("tid"), _TOPE_REINTENTOS_DIAS)
+            descartados.append(x)
         else:
-            quedan.append(x)               # no se pudo ahora -> reintentar después
-    if hechos:
+            quedan.append(x)               # fallo pasajero -> reintentar después
+    if hechos or descartados:
         with _LOCK:
             _guardar(quedan)
     return hechos
