@@ -703,6 +703,6 @@ reconocimiento de autoría (Ley 11.723 art. 52; Convenio de Berna art. 6 bis). V
 
 ## Autor
 
-**Brian Sierra** — diseño, desarrollo e implementación completos: arquitectura Gestor/Agente,
-cadena multi-IA y voz, mesa de ayuda con triage, integraciones de tickets y control de acceso,
-mensajería por WhatsApp, gestión del equipo (Planka), empaquetado y despliegue.
+**Brian Sierra** — Administrador de sistemas (SysAdmin) en Intellihelp · [LinkedIn](https://www.linkedin.com/in/brian-gabriel-sierra/) · [GitHub](https://github.com/bsierra4262)
+
+Diseño, desarrollo e implementación completos: arquitectura Gestor/Agente, cadena multi-IA y voz, mesa de ayuda con triage, integraciones de tickets y control de acceso, mensajería por WhatsApp, gestión del equipo (Planka), empaquetado y despliegue.
