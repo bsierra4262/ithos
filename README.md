@@ -22,6 +22,7 @@
 ## Índice
 
 - [Descripción](#descripción)
+- [La aplicación por dentro](#la-aplicación-por-dentro)
 - [Características](#características)
 - [Arquitectura](#arquitectura)
 - [Cadena multi-IA](#cadena-multi-ia)
@@ -60,6 +61,76 @@ comunican por WebSocket autenticado. Cada empresa es un inquilino aislado: su pr
 su configuración y sus secretos cifrados; un cliente nunca ve el contexto de otro.
 
 > Demo y despliegue de referencia (privados): gestionados por INTELLIHELP.
+
+## La aplicación por dentro
+
+Capturas tomadas con la aplicación corriendo en un entorno local de demostración: empresas,
+personas, tickets y números ficticios, sin conexión a sistemas reales.
+
+### Centro de mando del Gestor
+
+Vista del superadministrador: empresas dadas de alta, cuántas están activas y conectadas en
+este momento, y la actividad del mes (tickets gestionados por la IA, anuncios por voz y
+consultas respondidas).
+
+<p align="center"><img src="docs/capturas/01-centro-de-mando.png" alt="Centro de mando del Gestor" width="100%"></p>
+
+### Empresas y estado en vivo
+
+Cada empresa es un inquilino aislado. La tarjeta muestra su sistema de tickets, el control de
+acceso, la IA y los canales configurados, y el estado en vivo de cada componente (agente,
+control de acceso, micrófono y WhatsApp). Las credenciales se ven siempre enmascaradas.
+
+<p align="center"><img src="docs/capturas/02-empresas.png" alt="Empresas y estado en vivo" width="100%"></p>
+
+### Métricas y reportes ITIL
+
+KPIs del período calculados sobre los tickets del cliente: volumen, cumplimiento de SLA de
+resolución y de primera respuesta, MTTR y desglose por prioridad, categoría, técnico, estado y
+antigüedad del backlog. Se descargan en PDF o CSV.
+
+<p align="center"><img src="docs/capturas/03-metricas-itil.png" alt="Métricas y reportes ITIL" width="100%"></p>
+
+### Portal del cliente
+
+Cada empresa tiene su portal privado: estado del sistema, vinculación del WhatsApp de la
+empresa, sus tickets y su SLA, sus reportes y la base de conocimiento propia.
+
+<p align="center"><img src="docs/capturas/04-portal-cliente.png" alt="Portal del cliente" width="100%"></p>
+
+### Agente de escritorio
+
+La aplicación que se instala en el equipo del cliente (Windows, Linux o macOS). Muestra el
+estado de la conexión con el Gestor y de cada componente, la actividad técnica en vivo y las
+opciones de mantenimiento del caché de voz.
+
+<p align="center"><img src="docs/capturas/05-agente-escritorio.png" alt="Agente de escritorio" width="80%"></p>
+
+### Asistente en el grupo de la mesa de ayuda
+
+ITHOS avisa cuando entra en línea y cuando llega un ticket nuevo, y responde cuando lo llaman
+con «Hey ITHOS». Los mensajes son los que genera la aplicación con los datos de demostración.
+
+<p align="center"><img src="docs/capturas/06-asistente.png" alt="Asistente en el grupo de la mesa de ayuda" width="80%"></p>
+
+### Informe ITIL en PDF
+
+El mismo reporte, listo para enviar al cliente.
+
+<p align="center"><img src="docs/capturas/07-informe-pdf.png" alt="Informe ITIL en PDF" width="70%"></p>
+
+### Alta de empresa
+
+Formulario completo de alta: datos de la empresa, cadena de IA (primaria y respaldos),
+sistema de tickets, control de acceso y canales de aviso.
+
+<p align="center"><img src="docs/capturas/09-alta-empresa.png" alt="Alta de empresa" width="100%"></p>
+
+### En el celular
+
+El portal del cliente se adapta a la pantalla del teléfono.
+
+<p align="center"><img src="docs/capturas/08-celular.png" alt="Portal del cliente en el celular" width="320"></p>
 
 ## Características
 
