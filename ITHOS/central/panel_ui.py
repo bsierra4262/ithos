@@ -424,7 +424,7 @@ function canalesResumen(c){let n=(c&&c.notificaciones)||[];let act=n.filter(x=>x
 // UI: selector de período + botones. Cualquiera puede sacar el reporte diario/semanal/mensual
 // a mano y descargar PDF/CSV, aunque NO tenga configurado el envío automático.
 function itilBloque(){return `<div class=sec style="border:0;margin-top:16px"><span>Reportes ITIL 4</span></div>
-   <div class=f style="gap:8px;align-items:end;flex-wrap:wrap">
+   <div class=f style="flex-direction:row;gap:8px;align-items:end;flex-wrap:wrap">
      <div><label>Período</label><select id=r_per onchange="itilPer()"><option value=diario>Diario</option><option value=semanal>Semanal</option><option value=mensual selected>Mensual</option><option value=total>Histórico (todo)</option><option value=personalizado>Personalizado…</option></select></div>
      <div id=r_rango class=row style="display:none;gap:8px;align-items:end">
        <div><label>Desde</label><input type=date id=r_desde></div>

@@ -118,6 +118,7 @@ h1,h2,h3,.ttl{font-family:'Orbitron','Rajdhani',sans-serif;letter-spacing:1.5px;
 .form{display:grid;grid-template-columns:1fr 1fr;gap:14px}
 .f{display:flex;flex-direction:column;gap:5px}
 .f.full{grid-column:1/-1}
+.f.hint{display:block}
 .f label{font-size:11px;letter-spacing:1.5px;color:var(--muted);text-transform:uppercase}
 .f input,.f select{background:#05101d;border:1px solid var(--line);border-radius:8px;padding:10px 12px;color:var(--txt);font-family:'Rajdhani',sans-serif;font-size:15px;outline:none;transition:.12s}
 .f input:focus,.f select:focus{border-color:var(--cyan);box-shadow:0 0 12px rgba(47,227,255,.3)}

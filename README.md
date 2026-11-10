@@ -85,9 +85,9 @@ control de acceso, micrófono y WhatsApp). Las credenciales se ven siempre enmas
 
 ### Métricas y reportes ITIL
 
-KPIs del período calculados sobre los tickets del cliente: volumen, cumplimiento de SLA de
-resolución y de primera respuesta, MTTR y desglose por prioridad, categoría, técnico, estado y
-antigüedad del backlog. Se descargan en PDF o CSV.
+Estado de los tickets del cliente y cumplimiento de SLA, y debajo los KPIs ITIL del período:
+volumen, SLA de resolución y de primera respuesta, MTTR y desglose por prioridad, categoría,
+técnico, estado y antigüedad del backlog. Se descargan en PDF o CSV.
 
 <p align="center"><img src="docs/capturas/03-metricas-itil.png" alt="Métricas y reportes ITIL" width="100%"></p>
 
