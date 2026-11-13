@@ -87,6 +87,30 @@ y el versionado, [SemVer](https://semver.org/lang/es/).
 
 ### Fixed
 
+- **Al cliente se le repetía la solución, y el historial decía que había resuelto ITHOS**
+  (auditoría del ticket #803, "Legajo 14616", 13-nov-2026). Cuando un técnico resuelve por
+  comentario, ITHOS pasa el ticket a Resuelto y carga una **solución** —el campo que el cliente
+  aprueba o rechaza—. Esa solución se cargaba con **el comentario del técnico copiado palabra por
+  palabra**. Como ese comentario es público, el cliente **leía dos veces lo mismo**; y lo que leía
+  era procedimiento interno: nombres de scripts `.sql`, consultas a la base, chequeos en la
+  terminal, parámetros de vinculación. Nada de eso es para el solicitante.
+
+  Ahora la solución es un **resumen corto escrito para él**: una o dos oraciones que dicen qué
+  quedó resuelto, sin detalle interno. La explicación técnica **no se mueve ni se borra**, queda
+  donde ya estaba. Y como pedirle a la IA que resuma no alcanza como garantía —puede devolver el
+  original casi intacto—, se **comprueba**: si el texto arrastra una tirada larga del comentario,
+  o es casi tan largo, se descarta y va una frase genérica. Lo mismo si la IA no contesta: una
+  solución corta sigue cumpliendo lo único que GLPI necesita de ella, que el cliente tenga qué
+  aprobar, y repetirle lo que ya leyó sería peor.
+
+  Segunda mitad del mismo bug: la solución quedaba registrada **a nombre de ITHOS**, con la técnica
+  que la escribió teniendo su propio token configurado. El ciclo nunca le pasaba el autor, así que
+  el camino que carga la solución con el usuario del técnico no se usaba nunca. Ahora se le pasa
+  **quién resolvió**, y el historial dice la verdad. Si ese técnico no tiene token la carga ITHOS,
+  como último recurso: sin solución cargada el cliente se quedaría sin los botones.
+
+  Regresión en `tests/probar_solucion_803.py` y chequeo permanente en la batería (sección L).
+
 - **Un plugin fantasma hacía trabajar a GLPI de más en cada pedido.** La carpeta `plugins/` quedó
   vacía tras la actualización, pero `glpi_plugins` seguía marcando **mreporting** como *activado*:
   GLPI intentaba cargarlo en cada petición y dejaba el aviso `Plugin "mreporting" version changed.

@@ -97,7 +97,7 @@ class _TriageFalso:
         self.resueltos.append(tid)
         return True
 
-    def a_confirmacion_del_cliente(self, tid, solucion):
+    def a_confirmacion_del_cliente(self, tid, solucion, autor=None):
         """El pasaje completo: resuelto -> en espera de que el cliente confirme."""
         self.resueltos.append(tid)
         return True
@@ -351,10 +351,12 @@ class _SinSolucion(_ClienteSol_):
 
 print("\n=== 7 · Resuelto por el técnico -> EN ESPERA de que el cliente confirme ===")
 # Pedido de Brian: si le estamos pidiendo la confirmación, el estado tiene que decir eso. El pasaje
-# lo hace ITHOS entero: carga la solución con el texto del técnico (no se replica con el usuario de
-# él, que lo dejaría duplicado), pide la confirmación y deja el ticket EN ESPERA con la solución
-# PENDIENTE. Ese último paso importa: al pasar a En espera la mesa de ayuda saca la solución de
-# pendiente y el cliente se queda sin los botones, así que hay que volver a dejarla pendiente.
+# lo hace ITHOS entero: carga la solución RESUMIDA para el cliente y a nombre del técnico que
+# resolvió (ver probar_solucion_803.py: copiar su comentario entero se lo hacía leer dos veces, y
+# cargarla como ITHOS dejaba el historial mintiendo), pide la confirmación y deja el ticket con la
+# solución PENDIENTE. Ese último paso importa: al pasar a En espera la mesa de ayuda saca la
+# solución de pendiente y el cliente se queda sin los botones, así que hay que volver a dejarla
+# pendiente.
 TRI_SRC2 = open(os.path.join(APP, "central", "triage.py"), encoding="utf-8").read()
 paso = TRI_SRC2[TRI_SRC2.index("def a_confirmacion_del_cliente"):]
 paso = paso[:paso.index("def marcar_resuelto")]
@@ -367,10 +369,10 @@ ok('"status": 2' in paso, "y la solución queda PENDIENTE de su aprobación")
 ok("!= 5" in paso and "!= 2" in paso,
    "y se COMPRUEBA que haya quedado así, no se da por hecho")
 ok("self.pedir_confirmacion(tid)" in paso, "y se le pide al cliente que confirme")
-ok("triage.a_confirmacion_del_cliente(t[\"id\"], cont)" in CICLO_SRC,
+ok("triage.a_confirmacion_del_cliente(t[\"id\"], cont," in CICLO_SRC,
    "el ciclo hace todo el pasaje de una")
-ok("marcar_resuelto(t[\"id\"], cont, int(ult" not in CICLO_SRC,
-   "y NO se replica la solución con el usuario del técnico (quedaba duplicada)")
+ok("autor=int(ult.get(\"users_id\") or 0)" in CICLO_SRC,
+   "y le dice QUIÉN resolvió, para que la solución no quede a nombre de ITHOS")
 
 print("\n=== 7.b · El cliente tiene QUÉ aprobar o rechazar ===")
 # En GLPI el solicitante aprueba o rechaza LA SOLUCIÓN. Un ticket que pasa a Resuelto SIN cargar
@@ -380,18 +382,19 @@ resuelto = _TriageFalso(ia_viva=True)
 resuelto.pasajes = []
 
 
-def _pasaje(tid, solucion):
-    resuelto.pasajes.append((tid, solucion))
+def _pasaje(tid, solucion, autor=None):
+    resuelto.pasajes.append((tid, solucion, autor))
     return True
 
 
 resuelto.a_confirmacion_del_cliente = _pasaje
 list(CI.gestionar_ciclo(_ClienteFalso(), resuelto, 12, {}))
 ok(len(resuelto.pasajes) == 1, "se hace el pasaje una sola vez")
-tid_m, sol_m = resuelto.pasajes[0]
+tid_m, sol_m, autor_m = resuelto.pasajes[0]
 ok(bool(sol_m), "se carga la SOLUCIÓN (sin ella el cliente no puede aprobar ni rechazar)")
 ok("quedó solucionado" in sol_m.lower(),
-   "y la solución son LAS PALABRAS DEL TÉCNICO, no una que redacte ITHOS", sol_m[:60])
+   "y lo que se pasa es LO QUE ESCRIBIÓ EL TÉCNICO, no algo que invente ITHOS", sol_m[:60])
+ok(autor_m == 7, "junto con QUIÉN lo resolvió, para que la solución lleve su nombre", str(autor_m))
 
 print("\n=== 7.b.2 · Lo que hace el EQUIPO no deja el ticket esperando al cliente ===")
 # Caso real (#651): el técnico escribió "vamos a proceder a encargar el selenoide" —lo encarga el

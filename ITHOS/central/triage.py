@@ -69,6 +69,41 @@ from comun.horario import (ZONA_DEFAULT, HORARIO_DEFAULT as _HORARIO_DEFAULT,  #
 # El saludo al solicitante vive en comun/glpi.py (compartido con el camino de voz aplicar_ciclo).
 _saludo_solicitante = G.saludo_solicitante
 
+# Lo que la SOLUCIÓN que lee el cliente no puede ser: una copia de lo que el técnico ya escribió.
+_TOPE_RESUMEN = 700          # caracteres: una solución para el cliente es corta, no un informe
+_VENTANA_COPIA = 10          # palabras seguidas iguales -> es un pegado, no un resumen
+
+
+def _palabras(texto):
+    """Las palabras de un texto, en minúscula y sin puntuación, para poder compararlo."""
+    return re.findall(r"\w+", str(texto or "").lower(), flags=re.UNICODE)
+
+
+def _repite_al_tecnico(resumen, original):
+    """¿El `resumen` es en realidad el texto del técnico otra vez?
+
+    POR QUÉ EXISTE. La solución que ve el cliente tiene que ser un resumen corto, NO el comentario
+    del técnico copiado: en el ticket #803 el cliente leyó dos veces el mismo procedimiento interno
+    (nombres de scripts, consultas a la base, parámetros de la terminal). Pedirle a la IA que
+    resuma no alcanza como garantía —puede devolver el texto casi intacto—, así que se comprueba.
+
+    Se considera copia si el resumen es casi tan largo como el original, o si arrastra una tirada
+    de `_VENTANA_COPIA` palabras seguidas igual que el original. Comparar palabra por palabra (y no
+    el texto crudo) evita que un cambio de comillas o de salto de línea lo dé por distinto."""
+    pr, po = _palabras(resumen), _palabras(original)
+    if not pr or not po:
+        return False
+    # El piso de palabras va por encima de lo que se le pide a la IA (50), así que un resumen
+    # legítimo de un comentario corto nunca se descarta por largo: lo descarta la regla de abajo,
+    # que es la que mira si el texto es el mismo.
+    if len(resumen) > _TOPE_RESUMEN or len(pr) > max(len(po) * 0.6, 55):
+        return True
+    if len(po) < _VENTANA_COPIA:
+        return False
+    tiradas = {" ".join(po[i:i + _VENTANA_COPIA]) for i in range(len(po) - _VENTANA_COPIA + 1)}
+    unido = " ".join(pr)
+    return any(t in unido for t in tiradas)
+
 
 class Triage:
     @property
@@ -432,12 +467,61 @@ class Triage:
         except Exception:  # noqa: BLE001
             return None
 
-    def a_confirmacion_del_cliente(self, tid, solucion):
+    def resumen_para_el_cliente(self, texto):
+        """El comentario del técnico, resumido en una o dos líneas PARA EL CLIENTE.
+
+        EL PROBLEMA QUE RESUELVE (ticket #803). La solución se cargaba con el comentario del
+        técnico copiado tal cual. Como ese comentario es PÚBLICO, el cliente terminaba leyendo dos
+        veces exactamente lo mismo, y encima el detalle interno —nombres de scripts, consultas a la
+        base de datos, parámetros de la terminal— que no es para él.
+
+        La explicación técnica NO se pierde ni se mueve: sigue donde estaba, en el comentario del
+        técnico. Lo único que cambia es la SOLUCIÓN, que pasa a decir en criollo qué quedó resuelto.
+
+        Si la IA no contesta, o contesta algo que es el texto del técnico otra vez, se carga un
+        texto genérico. Es a propósito: una solución corta y sin detalle sigue cumpliendo lo único
+        que GLPI necesita de ella —que el cliente tenga qué aprobar o rechazar—, y el detalle ya lo
+        tiene a la vista. Repetirle el texto sería peor que no resumirlo."""
+        generico = ("El equipo técnico resolvió el inconveniente reportado. El detalle de lo "
+                    "realizado quedó asentado en el ticket.")
+        limpio = str(texto or "").strip()
+        if not limpio:
+            return generico
+        try:
+            r = (self.ia.chat(
+                "Sos de la mesa de ayuda ITH. Un TÉCNICO dejó un comentario explicando cómo "
+                "resolvió un ticket. Escribí la SOLUCIÓN que va a leer el CLIENTE.\n"
+                "- UNA o DOS oraciones. Nunca más de 50 palabras.\n"
+                "- Decí QUÉ quedó resuelto y qué puede hacer ahora el cliente, no CÓMO se hizo.\n"
+                "- PROHIBIDO copiar frases del comentario: es un resumen, no un recorte.\n"
+                "- PROHIBIDO nombrar detalle interno: scripts, archivos .sql, consultas, tablas, "
+                "bases de datos, rutas, direcciones IP, comandos, parámetros de configuración ni "
+                "herramientas nuestras.\n"
+                "- Español rioplatense, de usted, cordial y sobrio. Sin emojis, sin saludo inicial "
+                "y sin firma: eso lo pone el sistema aparte.\n"
+                "Respondé SOLO el texto de la solución, sin comillas.",
+                limpio, json_out=False) or "").strip()
+        except Exception as e:  # noqa: BLE001
+            log.info("Triage: no pude resumir la solución para el cliente (%s); va la genérica.",
+                     str(e)[:90])
+            return generico
+        r = re.sub(r"<[^>]+>", " ", r)
+        r = re.sub(r"\s+", " ", r).strip().strip('"').strip()
+        if not r or _repite_al_tecnico(r, limpio):
+            log.info("Triage: el resumen de la solución repetía el texto del técnico; va la "
+                     "genérica (al cliente no se le repite lo que ya leyó).")
+            return generico
+        return r
+
+    def a_confirmacion_del_cliente(self, tid, solucion, autor=None):
         """El técnico resolvió: el ticket queda ESPERANDO QUE EL CLIENTE CONFIRME.
 
-        Carga la SOLUCIÓN con el texto del técnico —la carga ITHOS, que es quien hace el pasaje; no
-        se replica con el usuario del técnico porque su explicación ya está en el ticket y quedaría
-        duplicada— y le pide al cliente que confirme.
+        QUÉ SE CARGA COMO SOLUCIÓN: un RESUMEN corto escrito para el cliente
+        (`resumen_para_el_cliente`), NO el comentario del técnico copiado. Su explicación ya está
+        en el ticket y es pública: repetirla entera en la solución le hacía leer dos veces lo mismo.
+
+        A NOMBRE DE QUIÉN: del técnico que resolvió (`autor`), cuando tiene su token configurado.
+        Si la carga ITHOS, el historial del ticket dice que resolvió ITHOS, y no es verdad.
 
         POR QUÉ QUEDA EN 'RESUELTO' Y NO EN 'EN ESPERA': se probó dejarlo en espera, que describe
         mejor la situación, y la mesa de ayuda entonces NO le dibuja al cliente los botones de
@@ -446,7 +530,7 @@ class Triage:
         resolver queda grabada la fecha de solución, con lo cual el SLA de resolución deja de
         correr, y el vigilante tampoco alerta por un ticket resuelto. Y si el cliente contesta
         escribiendo en vez de apretar el botón, también se cierra o se reabre."""
-        if not self.marcar_resuelto(tid, solucion):
+        if not self.marcar_resuelto(tid, self.resumen_para_el_cliente(solucion), autor=autor):
             return False
         self.pedir_confirmacion(tid)
         try:
@@ -477,9 +561,14 @@ class Triage:
         rechazar: ve el ticket resuelto y no tiene cómo decir "sigue igual". Con la solución
         cargada, la mesa de ayuda la deja pendiente de su aprobación y le muestra los dos botones.
 
-        La carga ITHOS con el texto del técnico. `autor` existe por compatibilidad: si se pasa y
-        ese técnico tiene token, se carga con su usuario; el ciclo NO lo usa, porque la explicación
-        del técnico ya está en el ticket y replicarla a su nombre la deja duplicada.
+        A NOMBRE DE QUIÉN SE CARGA: de `autor`, el técnico que resolvió, siempre que tenga su
+        token configurado (`_sesion_de`). Si la carga ITHOS, el historial dice que el que resolvió
+        fue ITHOS —y en el ticket #803 lo dijo, con la resolución escrita por una técnica que sí
+        tenía token—. Cuando no hay token para ese técnico, la carga ITHOS: es el último recurso,
+        porque sin solución cargada el cliente se queda sin los botones.
+
+        El TEXTO que se le pasa acá ya viene resumido para el cliente (ver
+        `a_confirmacion_del_cliente`): esta función no reescribe nada, carga lo que recibe.
 
         Sin texto sólo cambia el estado (compatibilidad)."""
         if not solucion:

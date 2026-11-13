@@ -447,7 +447,7 @@ try:
         # El ciclo pregunta PRIMERO si queda algo del cliente (acá no) y recién después si resuelve.
         def tecnico_pide_confirmacion(self, t): return False
         def tecnico_resolvio(self, t): return True     # el comentario del técnico resuelve
-        def a_confirmacion_del_cliente(self, tid, sol):   # el pasaje completo
+        def a_confirmacion_del_cliente(self, tid, sol, autor=None):   # el pasaje completo
             llam["marcar"] += 1; llam["confirm"] += 1; return True
         def marcar_resuelto(self, tid, sol="", autor=None):llam["marcar"] += 1; return True
         def pedir_confirmacion(self, tid): llam["confirm"] += 1; return True
@@ -3420,6 +3420,13 @@ CAPACIDADES = [
                                        "Formación acompañada"],
               "README.md": ["formación", "responsable"],
               "CHANGELOG.md": ["El equipo sale de la configuración"]}},
+    {"que": "la solución que lee el cliente es un resumen suyo, a nombre de quien resolvió",
+     "codigo": [("ITHOS/central/triage.py", "def resumen_para_el_cliente"),
+                ("ITHOS/central/triage.py", "def _repite_al_tecnico"),
+                ("ITHOS/central/ciclo.py", "autor=int(ult.get(\"users_id\") or 0)")],
+     "docs": {"DOCUMENTO_MAESTRO.md": ["resumen corto", "No es el comentario del técnico copiado"],
+              "README.md": ["resumen corto", "No es el comentario del técnico copiado"],
+              "CHANGELOG.md": ["leía dos veces lo mismo"]}},
     {"que": "el tablero del equipo conserva sus colores y suma a quien entra",
      "codigo": [("ITHOS/central/planka_rollover.py", "COLORES"),
                 ("ITHOS/comun/planka.py", "def actualizar_lista")],
@@ -3608,6 +3615,34 @@ try:
         ok("ningún secreto sin cifrar queda en el contexto de build de la imagen")
 except Exception as e:  # noqa: BLE001
     fail("no se pudo verificar qué se lleva la imagen del Gestor", repr(e))
+
+
+# ---------------------------------------------------------------------------------------------
+print("\n  L) AL CLIENTE NO SE LE REPITE LO QUE YA LEYÓ")
+# Requerimiento permanente de Brian: "repetir la respuesta no va". En el ticket #803 la solución se
+# cargaba con el comentario del técnico COPIADO palabra por palabra; como ese comentario es público,
+# el cliente leyó dos veces el mismo procedimiento interno. Y encima quedó registrada a nombre de
+# ITHOS, con la técnica que la escribió teniendo su propio token. Detalle completo y test de
+# regresión en tests/probar_solucion_803.py.
+try:
+    _tri = open(os.path.join(RAIZ, "ITHOS", "central", "triage.py"), encoding="utf-8").read()
+    _cic = open(os.path.join(RAIZ, "ITHOS", "central", "ciclo.py"), encoding="utf-8").read()
+    _paso = _tri[_tri.index("def a_confirmacion_del_cliente"):]
+    _paso = _paso[:_paso.index("def marcar_resuelto")]
+    if "resumen_para_el_cliente(solucion)" not in _paso:
+        fail("la solución se carga con el texto del técnico tal cual: el cliente lo lee dos veces")
+    else:
+        ok("la solución que ve el cliente es un RESUMEN, no el comentario del técnico copiado")
+    if "_repite_al_tecnico" not in _tri:
+        fail("nada comprueba que el 'resumen' no sea el texto del técnico otra vez")
+    else:
+        ok("y se COMPRUEBA que no sea un pegado (la IA puede devolver el original casi intacto)")
+    if "autor=autor" not in _paso or "autor=int(ult.get(\"users_id\") or 0)" not in _cic:
+        fail("la solución no se carga a nombre del técnico que resolvió: el historial miente")
+    else:
+        ok("y queda a nombre del técnico que resolvió, no de ITHOS")
+except Exception as e:  # noqa: BLE001
+    fail("no se pudo verificar cómo se carga la solución que lee el cliente", repr(e))
 
 
 # ---------------------------------------------------------------------------------------------

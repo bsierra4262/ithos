@@ -443,10 +443,23 @@ se le asigna también a él, al mismo tiempo y con el mismo criterio, hasta que 
 
 Ese mismo conjunto es el que separa, en el ciclo de vida, un comentario del equipo de una respuesta
 del cliente: un técnico que no esté cargado se lee como si fuera el cliente y su resolución no cierra
-nada. Cuando alguien resuelve por comentario, la resolución es **su comentario, con sus palabras**:
-el ticket pasa a resuelto y se le informa al cliente para que confirme, sin que ITHOS escriba además
-una solución propia ni le pida documentar lo que ya documentó. Si en algún camino hay que dejar una
-solución formal, se carga **con el usuario del técnico** (su token), no con el de ITHOS.
+nada. Cuando alguien resuelve por comentario, la explicación técnica es **suya y se queda donde
+está**: su comentario, con sus palabras. El ticket pasa a resuelto y se le pide al cliente que
+confirme.
+
+Lo que se carga como **solución** —el campo que el cliente aprueba o rechaza— es un **resumen corto
+escrito para él**: una o dos oraciones que dicen qué quedó resuelto, sin nombres de scripts,
+consultas a la base, rutas, direcciones ni parámetros. **No es el comentario del técnico copiado**:
+copiarlo le hacía leer dos veces lo mismo, porque su comentario ya es público, y le ponía delante
+detalle interno que no es para él. Y como pedirle a la IA que resuma no alcanza como garantía
+—puede devolver el original casi intacto—, se comprueba: si el resumen arrastra una tirada larga del
+texto del técnico, o es casi tan largo, se descarta y va una frase genérica. Lo mismo si la IA no
+contesta. Repetirle lo que ya leyó es peor que no resumir.
+
+La solución se carga **con el usuario del técnico que resolvió** (su token), no con el de ITHOS ni
+el del administrador: el historial dice quién resolvió de verdad. Si ese técnico no tiene token la
+carga ITHOS, como último recurso: sin solución cargada el cliente se quedaría sin los botones de
+aprobar y rechazar.
 
 Por chat o por voz se puede pedir: cerrar, reabrir, poner en espera, posponer con fecha y hora, responder
 al cliente, categorizar, fijar SLA, cambiar prioridad, escalar, asignar, crear, buscar, leer un ticket

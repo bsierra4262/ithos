@@ -503,12 +503,15 @@ def gestionar_ciclo(cliente, triage, entidad, estado):
                     continue                  # ya lo procesamos en este ciclo
                 if resolvio:
                     # El técnico resolvió -> el ticket queda ESPERANDO QUE EL CLIENTE CONFIRME: se
-                    # carga la solución con el texto del técnico (la carga ITHOS, que es quien hace
-                    # el pasaje), se le pide que confirme y el ticket va a EN ESPERA con la
-                    # solución pendiente de su aprobación. El estado dice lo que de verdad pasa, el
-                    # SLA no corre mientras espera, y el cliente puede cerrarlo o decir que sigue
-                    # igual. Si no contesta, se le recuerda una vez por día hábil.
-                    if triage.a_confirmacion_del_cliente(t["id"], cont):
+                    # carga la solución RESUMIDA para el cliente (su explicación entera ya está en
+                    # el comentario, que es público: copiarla a la solución se la hacía leer dos
+                    # veces) y A NOMBRE DEL TÉCNICO que la escribió, para que el historial no diga
+                    # que resolvió ITHOS. Después se le pide al cliente que confirme y el ticket
+                    # queda con la solución pendiente de su aprobación: el SLA no corre mientras
+                    # espera, y él puede cerrarlo o decir que sigue igual. Si no contesta, se le
+                    # recuerda una vez por día hábil.
+                    if triage.a_confirmacion_del_cliente(t["id"], cont,
+                                                         autor=int(ult.get("users_id") or 0)):
                         st["confirm_pedido"] = True
                         anunciar(
                             t["id"],

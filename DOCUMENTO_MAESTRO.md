@@ -378,12 +378,24 @@ Es lo que separa un comentario del equipo de una respuesta del cliente, así que
 esté cargado se lee como si fuera el cliente: su resolución no cierra nada y el ticket queda
 esperando una respuesta que ya llegó.
 
-Cuando un técnico **resuelve por comentario**, la resolución es **su comentario, con sus palabras**:
-el ticket pasa a Resuelto y se le informa al cliente para que confirme, sin que ITHOS escriba
-además una "solución" propia —que quedaría repetida y atribuida a quien no resolvió— ni le pida al
-técnico que documente lo que ya documentó. Si en algún camino sí hay que dejar una solución formal
-y el técnico tiene su **token** configurado (`glpi_<login>_token`), se carga **con su usuario**, no
-con el de ITHOS ni el del administrador: el historial dice quién resolvió de verdad.
+Cuando un técnico **resuelve por comentario**, la explicación técnica es **suya y se queda donde
+está**: su comentario, con sus palabras. El ticket pasa a Resuelto y se le pide al cliente que
+confirme.
+
+Lo que se carga como **solución** —el campo que el cliente aprueba o rechaza— es un **resumen corto
+escrito para él**: una o dos oraciones que dicen qué quedó resuelto, sin nombres de scripts,
+consultas a la base, rutas, direcciones ni parámetros de configuración.
+**No es el comentario del técnico copiado.** Copiarlo le hacía leer dos veces exactamente lo mismo,
+porque su comentario ya es público, y le ponía delante detalle interno que no es para él.
+Y como pedirle a la IA que resuma no
+alcanza como garantía —puede devolver el original casi intacto—, se **comprueba**: si el resumen
+arrastra una tirada larga del texto del técnico, o es casi tan largo, se descarta y va una frase
+genérica. Lo mismo si la IA no contesta. Repetirle lo que ya leyó es peor que no resumir.
+
+La solución se carga **con el usuario del técnico que resolvió**, cuando tiene su **token**
+configurado (`glpi_<login>_token`), no con el de ITHOS ni el del administrador: el historial dice
+quién resolvió de verdad. Si ese técnico no tiene token, la carga ITHOS como último recurso —sin
+solución cargada el cliente se quedaría sin los botones de aprobar y rechazar—.
 
 **Formación acompañada.** Un técnico nuevo aprende haciendo. Si en su ficha se indica un
 `responsable`, el ticket que le toca a esa persona se le asigna **también a él, al mismo tiempo y
@@ -447,7 +459,10 @@ ticket, con qué prioridad entra, en manos de quién y por qué se ajustó.
   solo en ese momento. Un ticket pospuesto **no recibe recordatorios ni escaladas**.
 - **Resuelto → confirmación**: cuando el técnico resuelve (o lo marca resuelto a mano), ITHOS le pide al
   cliente que confirme y le recuerda una vez por día hábil. **Nunca cierra sin confirmación real**: si el
-  cliente dice que sigue el problema, **reabre**.
+  cliente dice que sigue el problema, **reabre**. La **solución** que se carga es un **resumen corto para
+  el cliente** y va **a nombre del técnico que resolvió**, nunca el comentario de él copiado: eso le hacía
+  leer dos veces lo mismo y le mostraba detalle interno. La explicación técnica no se mueve de su
+  comentario.
 - **Feedback interno para la KB**: si la resolución no explica **cómo** se resolvió, ITHOS le pide al técnico
   por nota privada el **procedimiento paso a paso**. Eso alimenta la base de conocimiento.
 - **SLA en riesgo**: alerta de los tickets por vencer o vencidos, **agrupada por técnico asignado** y
