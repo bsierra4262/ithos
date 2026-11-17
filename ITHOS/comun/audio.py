@@ -121,66 +121,6 @@ def _rms(bloque):
     return float(np.sqrt(np.mean(x * x)))
 
 
-def grabar_dinamico(fs=16000, max_seg=15.0, silencio_seg=1.3, inicio_max=6.0,
-                    umbral_min=280.0):
-    """Graba del micrófono hasta que hay ~silencio_seg de silencio (o se llega a max_seg).
-    Devuelve un numpy int16 mono a `fs`. Si nunca se detecta voz, devuelve arreglo vacío.
-
-    - Calibra el piso de ruido con los primeros ~0.3 s.
-    - Espera a que empieces a hablar hasta `inicio_max` s.
-    - Corta tras `silencio_seg` de silencio continuo una vez que empezaste a hablar.
-    """
-    import numpy as np
-    import sounddevice as sd
-    paso = 0.05                                   # bloques de 50 ms
-    blk = int(fs * paso)
-    stream = sd.InputStream(samplerate=fs, channels=1, dtype="int16", blocksize=blk)
-    stream.start()
-    frames = []
-    try:
-        # 1) Calibrar el ruido de fondo (0.3 s).
-        cal = []
-        for _ in range(int(0.3 / paso)):
-            d, _ = stream.read(blk)
-            cal.append(_rms(d))
-        piso = (sum(cal) / len(cal)) if cal else 0.0
-        umbral = max(piso * 2.8, umbral_min)      # hay voz si supera esto
-        hablando = False
-        sil = 0.0
-        transcurrido = 0.0
-        # 2) Bucle de captura.
-        while True:
-            d, _ = stream.read(blk)
-            frames.append(np.array(d, dtype="int16").copy())
-            energia = _rms(d)
-            transcurrido += paso
-            if not hablando:
-                if energia > umbral:
-                    hablando = True
-                elif transcurrido >= inicio_max:
-                    return np.zeros(0, dtype="int16")     # nunca habló
-            else:
-                if energia < umbral:
-                    sil += paso
-                    if sil >= silencio_seg:
-                        break                              # se calló -> listo
-                else:
-                    sil = 0.0
-            if transcurrido >= max_seg:
-                break
-    finally:
-        try:
-            stream.stop()
-            stream.close()
-        except Exception:  # noqa: BLE001
-            pass
-    if not frames:
-        return np.zeros(0, dtype="int16")     # nunca habló (silencio) -> el caller sale
-    # Devuelve el audio CRUDO (gateado por energía). El filtro de VOZ humana (Silero VAD) lo
-    # aplica el que llama con filtrar_voz(), así puede distinguir "silencio" de "ruido".
-    return np.concatenate(frames).flatten().astype("int16")
-
-
 def decodificar(audio_bytes, mime="audio/ogg", fs=16000):
     """Decodifica un audio (ogg/opus de WhatsApp, mp3, etc.) a numpy int16 mono a `fs`,
     usando ffmpeg. Devuelve arreglo vacío si no se puede."""

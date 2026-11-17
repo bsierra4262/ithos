@@ -39,7 +39,6 @@ sys.path.insert(0, APP)
 sys.path.insert(0, os.path.join(APP, "central"))
 
 import ciclo as CI                      # noqa: E402
-import triage as TR                     # noqa: E402
 
 FALLAS = []
 
@@ -122,7 +121,7 @@ ok("a pedido suyo" in cerr,
 
 print("\n=== 5 · El prompt distingue cancelar de resolver y de posponer ===")
 prom = TRI_SRC[TRI_SRC.index("def cliente_cancela"):]
-prom = prom[:prom.index("def reabrir")]
+prom = prom[:prom.index("def pedir_evidencia")]
 ok("ANTE LA DUDA, false" in prom,
    "ante la duda no cancela: cerrar un ticket vivo es peor que dejarlo abierto")
 ok("SE RESOLVIÓ" in prom, "se le aclara que resolver NO es cancelar")

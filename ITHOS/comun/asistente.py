@@ -9,7 +9,6 @@ conocimiento) -> ejecuta -> responde en lenguaje natural (texto + voz Charon).
 Ideal para clientes sin micrófono central: mandan un audio al WhatsApp de ITHOS.
 """
 
-import json
 import logging
 from datetime import datetime
 
@@ -175,7 +174,7 @@ def _nombre_zona(zona):
 def _proximo_reset(tz_reset, zona=ZONA_DEFAULT):
     """Fecha y hora EXACTAS del próximo reset (medianoche en tz_reset) en la ZONA del cliente.
     Devuelve p. ej. 'hoy 04/07 a las 04:00'. Usa el reloj del sistema (sincronizado por NTP)."""
-    from datetime import datetime, timedelta
+    from datetime import timedelta
     try:
         from zoneinfo import ZoneInfo
         zc = ZoneInfo(zona or ZONA_DEFAULT)
@@ -310,21 +309,6 @@ class Asistente:
                 "NO la respondas: decí amablemente que en este grupo sólo se manejan los tickets e "
                 "indicá que esa consulta va al grupo de consultas generales.\n")
 
-    def _elegir(self, texto):
-        catalogo = "\n".join(f"- {n}: {h['desc']}" for n, h in self.herramientas.items())
-        sistema = (
-            self._alcance() + "\n\n"
-            "Según lo que pide el usuario, elegí UNA herramienta y sus argumentos, o "
-            "respondé directo si es una charla o te preguntan qué podés hacer (usá tu "
-            "alcance real para esa respuesta). "
-            f"Herramientas disponibles:\n{catalogo}\n"
-            "Respondé SOLO JSON: {\"herramienta\": \"<nombre|null>\", "
-            "\"args\": {...}, \"respuesta_directa\": \"<texto o null>\"}")
-        try:
-            return json.loads(self.ia.chat(sistema, texto, json_out=True))
-        except Exception:  # noqa: BLE001
-            return {"herramienta": None, "args": {}, "respuesta_directa": None}
-
     def _panorama(self):
         """DATOS REALES actuales del sistema (tickets abiertos + SLA), leídos de las
         APIs integradas. Con caché corta para no golpear GLPI en cada mensaje."""
@@ -433,7 +417,6 @@ class Asistente:
                 texto = consulta
             else:                            # solo la clave -> abre admin para la próxima
                 self._admin[clave_sesion] = _time.time() + 300   # ventana 5 min (sin guardar la clave)
-                self._ultimo_admin = "handshake"
                 return "Contraseña de administrador verificada. Acceso total concedido."
         elif self._admin.get(clave_sesion, 0) > _time.time() and self._admin_voz_ok(canal, audio):
             es_admin = True                  # admin activo (dentro de la ventana) + voz del dueño
@@ -441,7 +424,6 @@ class Asistente:
             # saludo/charla). Así un "hola" no gasta el desbloqueo. Igual expira sola a los 5'.
             if conocimiento.es_consulta_tecnica(texto):
                 self._admin.pop(clave_sesion, None)
-        self._ultimo_admin = es_admin        # observabilidad (la demo lo muestra)
         # MÉTRICA de actividad REAL: cada consulta atendida por la IA (cualquier canal). No es
         # una prueba: es una respuesta real -> se ve en el central ('Consultas'). Aislada por cliente.
         try:
@@ -777,7 +759,6 @@ class Asistente:
             es_admin = True
             if conocimiento.es_consulta_tecnica(texto):
                 self._admin.pop(clave, None)
-        self._ultimo_admin = es_admin
         # Solo streameamos la respuesta técnica del dueño; el resto va por el camino normal.
         if not (es_admin and conocimiento.es_consulta_tecnica(texto)
                 and hasattr(self.ia, "chat_stream")):
@@ -807,7 +788,7 @@ class Asistente:
                         on_frase(buf[:corte].strip())
                         buf = buf[corte:]
                         umbral = 180                   # siguientes trozos más largos (fluido)
-        except Exception as e:  # noqa: BLE001
+        except Exception:  # noqa: BLE001
             if not completo:                          # fallback sin streaming
                 try:
                     completo = (self.ia.chat(sis, texto, json_out=False) or "").strip()

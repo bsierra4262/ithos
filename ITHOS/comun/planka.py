@@ -57,12 +57,6 @@ class Planka:
         """included del board: 'lists', 'cards', 'cardMemberships', 'users', etc."""
         return self._req(f"/api/boards/{board_id}").get("included", {})
 
-    def tarjeta(self, card_id):
-        return self._req(f"/api/cards/{card_id}").get("item", {})
-
-    def usuarios(self):
-        return self._req("/api/users").get("items", [])
-
     # ------------------------------------------------------------------ tarjetas
     def crear_tarjeta(self, list_id, nombre, descripcion=None, position=POS_STEP):
         data = {"type": TIPO_TARJETA, "name": nombre, "position": position}
@@ -81,12 +75,6 @@ class Planka:
         semana/mes. Verificado contra Planka 2.1.1 (PATCH boardId+listId)."""
         return self._req(f"/api/cards/{card_id}", "PATCH",
                          {"boardId": board_id, "listId": list_id, "position": position}).get("item", {})
-
-    def actualizar_tarjeta(self, card_id, **campos):
-        return self._req(f"/api/cards/{card_id}", "PATCH", campos).get("item", {})
-
-    def borrar_tarjeta(self, card_id):
-        self._req(f"/api/cards/{card_id}", "DELETE")
 
     # ------------------------------------------------------------------ estructura (proyecto/board/lista)
     def crear_proyecto(self, nombre, tipo="private"):
@@ -135,17 +123,6 @@ class Planka:
             log.debug("Planka: no pude asignar %s a la card %s: %s", user_id, card_id, e)
             return False
 
-    def desasignar(self, card_id, user_id):
-        try:
-            self._req(f"/api/cards/{card_id}/card-memberships/userId:{user_id}", "DELETE")
-            return True
-        except PlankaError:
-            return False
-
-    # ------------------------------------------------------------------ comentarios
-    def comentar(self, card_id, texto):
-        """Agrega un comentario a la tarjeta (como el usuario de la API key = ITHOS)."""
-        self._req(f"/api/cards/{card_id}/comments", "POST", {"text": texto})
 
     # ------------------------------------------------------------------ acceso (admin)
     def agregar_miembro_board(self, board_id, user_id, role="editor"):
@@ -169,12 +146,3 @@ class Planka:
                 self._req(path, "POST", payload)
             except PlankaError:
                 pass
-
-
-def desde_config(cfg):
-    """Crea un Planka desde la sección 'planka' de la config del cliente:
-    {"url": "...", "api_key": "...", ...}. None si no está configurado."""
-    p = (cfg or {}).get("planka") or {}
-    if not p.get("url") or not p.get("api_key"):
-        return None
-    return Planka(p["url"], p["api_key"])

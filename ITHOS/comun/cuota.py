@@ -73,35 +73,6 @@ def cadena_cfg(ia_cfg):
     return orden
 
 
-def _tiene_clave(ia_cfg, proveedor):
-    """¿Hay una clave configurada para ese proveedor? Se busca en su bloque y en la raíz."""
-    ia = ia_cfg or {}
-    campo = f"{proveedor}_api_key"
-    if (ia.get(campo) or "").strip():
-        return True
-    for b in (ia.get("secundario"), ia.get("terciario")):
-        b = b or {}
-        if (b.get("proveedor") or "").lower() == proveedor and (b.get(campo) or b.get("api_key") or ""):
-            return True
-    return proveedor in ("local", "ollama")      # los locales no llevan clave
-
-
-def cadena_util(ia_cfg):
-    """La cadena REAL, salteando los proveedores que no tienen clave cargada.
-
-    Una cadena sirve para una cosa: que cuando la IA de arriba se queda sin cuota, la de abajo
-    conteste. Un eslabón sin credencial no contesta nada —sólo agrega un viaje fallido y la
-    latencia de descubrirlo— y, peor, hace creer que hay un respaldo donde no lo hay. Se avisa
-    en el log, porque un respaldo caído es algo que alguien tiene que ir a arreglar."""
-    util, descartados = [], []
-    for prov in cadena_cfg(ia_cfg):
-        (util if _tiene_clave(ia_cfg, prov) else descartados).append(prov)
-    if descartados:
-        log.warning("Cadena de IA: %s no tiene clave configurada, no cuenta como respaldo. "
-                    "Queda: %s", ", ".join(descartados), " -> ".join(util) or "(ninguna)")
-    return util or cadena_cfg(ia_cfg)
-
-
 def _zona(zona):
     try:
         return ZoneInfo(zona or ZONA_DEFAULT)
@@ -368,12 +339,6 @@ class GestorCuota:
         if tipo == "groq":
             return f"{etq}: {self._cola_groq()}"
         return f"{etq}: {'con tu clave paga, sin límite.' if self.ilimitada else 'disponible.'}"
-
-    def _linea_gemini(self):        # compat interno
-        return self._linea_ia("gemini", "primaria")
-
-    def _linea_groq(self):          # compat interno
-        return self._linea_ia("groq", "secundaria")
 
     def estado_texto(self, prefijo="📊 *Estado de la IA*", zona=None):
         """Estado COMPLETO de la cadena REAL del cliente (cada IA con su rol y su reinicio real).

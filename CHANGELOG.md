@@ -7,6 +7,15 @@ y el versionado, [SemVer](https://semver.org/lang/es/).
 ## [Unreleased]
 
 ### Added
+- **Cartel al aprobar la solución en GLPI** (#849). El botón «Aprobar» cierra el ticket y el cliente lo
+  usaba para contestar cualquier cosa: escribió «No puede fichar aún» y apretó Aprobar. Ahora aparece
+  un cartel grande, «Estás confirmando la resolución del ticket»; si el comentario suena a que el
+  problema sigue, se lo marca en rojo y le ofrece «No, el problema sigue», que rechaza en su lugar.
+  Plugin propio `ithosconfirma` (`docs/glpi/plugins/`), instalado y activo en la mesa de ayuda.
+- **El cliente dice que sigue fallando → ITHOS le pide la evidencia** (#849). Antes reabría y había
+  que revisar a ciegas algo resuelto de raíz. Ahora pide foto o video del error en la terminal, en qué
+  terminal y de qué lado del molinete, fecha y hora (en tickets que no son de fichaje: captura o video,
+  dónde y cuándo), y el ticket queda En espera de eso. Regresión en `tests/probar_evidencia_849.py`.
 - **La IA local, como último respaldo de la cadena.** La VPS corre su propia IA (Ollama, contenedor
   `ollama`, sólo alcanzable por el Gestor en la red interna). Cuando Gemini y Groq se quedan sin
   cuota, ITHOS sigue atendiendo en vez de dejar de triagear; y las pruebas la usan para no gastar la
@@ -138,6 +147,16 @@ y el versionado, [SemVer](https://semver.org/lang/es/).
   notificaciones. Todo queda versionado y explicado en `docs/glpi/`.
 
 ### Fixed
+
+- **Cerrar, reabrir o poner en espera un ticket por chat fallaba después de hacerlo.** Al partir el
+  asistente en dos módulos (agosto) quedó sin importar `_id_ticket`: GLPI hacía el cambio y después la
+  herramienta explotaba, sin avisar al grupo. Y el aviso de **mantenimiento** antes de reiniciar el
+  Gestor nunca salía (`AV` sin importar, error tragado). Los encontró el linter de nombres sin definir.
+
+- **Código sin uso, afuera.** Las herramientas viejas atadas a GLPI (`herramientas_glpi`,
+  `acciones_glpi`), que sólo usaban dos tests —ahora prueban las de producción—; métodos de Planka,
+  memoria, cuota, IA y audio que nadie llamaba; constantes y atributos que se escribían y no se leían;
+  imports sin uso.
 
 - **La cuenta `admin` figuraba como solicitante en 17 tickets** (#798 al #849). Los clientes la
   elegían como observador en la pregunta «Observadores» del formulario de la mesa de ayuda, y ITHOS

@@ -18,6 +18,28 @@ lo de abajo es la misma: **nada que una actualización de GLPI pueda reescribir*
 | `ith-touch-icon.png` | `public/pics/logos/` y `public/apple-touch-icon.png` | no |
 | los logos `ith-*.png` | `public/pics/logos/` | no: GLPI no conoce esos nombres |
 | `local_define.php` | `config/local_define.php` (la zona horaria) | **no**: `config/` se conserva |
+| `plugins/ithosconfirma/` | `plugins/ithosconfirma/` (el cartel al aprobar una solución) | **no**: `plugins/` se conserva |
+
+## El cartel al aprobar la solución: el plugin `ithosconfirma`
+
+El botón **«Aprobar»** de la solución cierra el ticket. En el #849 el cliente escribió «No puede
+fichar aún» y apretó Aprobar: el ticket quedó cerrado con el problema abierto. El plugin pone un
+cartel grande antes de cerrar —«Estás confirmando la resolución del ticket»— y, si el comentario
+suena a que el problema sigue, se lo marca en rojo y le ofrece «No, el problema sigue», que rechaza
+en su lugar. No guarda nada en la base: es un JavaScript y un CSS que GLPI carga en todas las páginas
+(hook `add_javascript` / `add_css`, servidos desde `public/` del plugin).
+
+Es un plugin y no un cambio en `templates/` porque el núcleo se pisa en cada actualización.
+
+Para instalarlo (o actualizarlo), subir la carpeta a `plugins/ithosconfirma/` y, desde la raíz de GLPI:
+
+```bash
+php bin/console plugin:install ithosconfirma
+php bin/console plugin:activate ithosconfirma
+```
+
+Comprobación: `https://ayuda.intellihelp.tech/plugins/ithosconfirma/js/confirmar.js` tiene que
+devolver 200.
 
 ## La zona horaria: por qué está en `local_define.php`
 
@@ -100,6 +122,8 @@ Dos cosas para no olvidar:
    devuelve 404 en todo y `config/` queda descargable por web).
 2. Verificar que los `pics/logos/ith-*.png`, `ith-favicon.ico` y `apple-touch-icon.png` sigan ahí.
    Y que `config/local_define.php` siga ahí: sin él, todo vuelve a quedar tres horas adelantado.
+   Y que el plugin `ithosconfirma` siga **activo** (`php bin/console plugin:list`): una versión
+   nueva de GLPI puede desactivar los plugins hasta que se confirme que son compatibles.
 3. Correr `python tests/probar_tema_glpi.py`.
 4. Mirar la interfaz con la paleta puesta (hoy `auror_dark`): lo seleccionado tiene que verse
    verde con texto oscuro, en el menú, en los desplegables, en las pestañas y en las listas.

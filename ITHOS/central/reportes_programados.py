@@ -16,7 +16,6 @@ de "notificaciones" del cliente (los que soporten adjuntos).
 """
 
 import os
-import json
 import asyncio
 import logging
 from datetime import datetime, timedelta

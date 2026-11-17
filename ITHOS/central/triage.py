@@ -15,10 +15,8 @@ Los mapeos de categorías y SLA son los de SRT/ITH; en el producto se configuran
 """
 
 import os
-import re
 import sys
 import logging
-from datetime import datetime, timedelta
 
 _AQUI = os.path.dirname(os.path.abspath(__file__))
 for _p in (os.path.join(_AQUI, ".."), _AQUI):   # ITHOS/ y ITHOS/central/
@@ -57,7 +55,7 @@ from textos_ticket import (_MARCA_ESPERA_CLIENTE, _MARCA_SIN_ATENDER,     # noqa
                            _NOTA_PEDIR_PROCEDIMIENTO, _nota_alcance, _nota_interna_horario,
                            _nota_respuesta_fuera_horario, _nota_sin_atender, _con_cierre_espera,
                            _texto_recordatorio_espera, _nota_escalada_espera,
-                           frase_triage, mensaje_triage)
+                           frase_triage, mensaje_triage, texto_pedido_evidencia)
 
 # El HORARIO DE ATENCIÓN del cliente vive en comun/horario.py (única fuente de verdad, compartida
 # con el ciclo, el proactivo de SLA y los reportes): nada de lo que sale hacia afuera cae de noche
@@ -727,12 +725,18 @@ class Triage:
         except Exception:  # noqa: BLE001
             return None
 
-    def reabrir(self, tid):
+    def pedir_evidencia(self, tid, ticket=None):
+        """El cliente dice que lo que dimos por RESUELTO sigue fallando -> ITHOS le pide la evidencia
+        concreta (`texto_pedido_evidencia`) y el ticket queda EN ESPERA de su respuesta: la pelota
+        es del cliente, el SLA no corre y el ciclo le recuerda una vez por día hábil. Cuando manda
+        la evidencia, el ciclo lo pasa a En curso como cualquier respuesta a un pedido."""
+        ticket = ticket or {}
+        texto = texto_pedido_evidencia(self._nombre_solicitante(ticket),
+                                       f"{ticket.get('name', '')} {ticket.get('content', '')}")
         try:
             self.cli.abrir()
-            self._followup(tid, "El cliente indica que el inconveniente continúa. "
-                           "Reabrimos el ticket para seguir trabajando en la solución.")
-            self.cli.request(f"/Ticket/{tid}", "PUT", {"input": {"status": 2}})
+            self._followup(tid, texto)
+            self.cli.request(f"/Ticket/{tid}", "PUT", {"input": {"status": 4}})
             return True
         except Exception:  # noqa: BLE001
             return False
@@ -840,7 +844,7 @@ class Triage:
         except Exception:  # noqa: BLE001
             return None
 
-    def poner_en_espera_pedido(self, tid, comentario_tecnico=""):
+    def poner_en_espera_pedido(self, tid):
         """El técnico le pidió algo al cliente -> el ticket pasa a EN ESPERA (status 4) y el SLA se
         pausa. ITHOS NO le escribe nada al cliente.
 

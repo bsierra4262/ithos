@@ -185,8 +185,8 @@ class TriageFalso:
     def cerrar(self, tid):
         return self._reg("cerrar", tid)
 
-    def reabrir(self, tid):
-        return self._reg("reabrir", tid)
+    def pedir_evidencia(self, tid, ticket=None):
+        return self._reg("pedir_evidencia", tid)
 
     # --- decisiones de IA: en el test no hay IA -> False/None (no inventa) ---
     def tecnico_resolvio(self, texto):

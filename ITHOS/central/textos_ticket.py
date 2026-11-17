@@ -44,6 +44,38 @@ _HORAS_SIN_ATENDER = 2            # horas HÁBILES sin contestarle al cliente ->
 # (default Lun-Vie 09:00-18:00 en SU zona, `en_horario_atencion`): a la misma hora, nunca de noche
 # ni un fin de semana. La hora es la de apertura: el primer ciclo del día que cae en horario.
 _CIERRE_ESPERA = " Quedamos a la espera de su respuesta. Soporte ITH."
+# Firma estable del pedido de EVIDENCIA (ver `texto_pedido_evidencia`). El ciclo la usa para que el
+# recordatorio le hable de "la información que le solicitamos" y no de una confirmación.
+_MARCA_EVIDENCIA = "necesitamos la evidencia del caso"
+# ¿El ticket es de fichaje / control de acceso? Decide qué evidencia se pide.
+_RE_FICHAJE = re.compile(r"fich|terminal|molinete|biom[eé]tric|legajo|huella|rostro|reconoc|acceso",
+                         re.I)
+
+
+def texto_pedido_evidencia(nombre="", asunto=""):
+    """Lo que ITHOS le contesta al cliente cuando dice que algo que dimos por RESUELTO sigue fallando.
+
+    POR QUÉ (ticket #849). El técnico resolvió el problema de raíz —la persona no estaba
+    sincronizada en la terminal—, el cliente contestó "No puede fichar aún" y nada más. Sin pruebas,
+    reabrir es volver a revisar a ciegas algo que ya se revisó. Se le pide lo concreto: la imagen
+    del error, en qué equipo pasó y cuándo. Así se diagnostica lo que de verdad ocurrió (otra
+    terminal, el otro lado del molinete, un intento anterior al arreglo) y queda el respaldo de que
+    el caso se trabajó bien."""
+    saludo = f"Hola {nombre}, " if nombre else "Hola, "
+    if _RE_FICHAJE.search(asunto or ""):
+        pedidos = ("una foto o un video de la terminal en el momento en que la persona intenta "
+                   "fichar, donde se vea el mensaje de error",
+                   "en qué terminal fue (sede y ubicación del equipo) y de qué lado del molinete: "
+                   "entrada o salida",
+                   "la fecha y la hora aproximada del intento")
+    else:
+        pedidos = ("una captura de pantalla o un video donde se vea el error",
+                   "en qué equipo o sistema ocurre y qué se estaba haciendo en ese momento",
+                   "la fecha y la hora aproximada en que pasó")
+    lista = " ".join(f"{i}) {p.capitalize()}." for i, p in enumerate(pedidos, 1))
+    return (f"{saludo}nos indican que el inconveniente continúa. Para revisarlo "
+            f"{_MARCA_EVIDENCIA}: {lista} Con eso lo analizamos y le respondemos."
+            f"{_CIERRE_ESPERA}")
 
 _ALCANCE_TXT = {
     "individual": "afecta al fichaje de UNA persona",

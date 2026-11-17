@@ -91,7 +91,6 @@ def vigilar(cfg, enviar_evento, stop=None):
     conn = None
     vistos = {}          # dict, no set: conserva el orden -> se descartan las MÁS VIEJAS
     baseline = False
-    poll_n = 0
     ultimo_reciente = None
     while stop is None or not stop.is_set():
         try:
@@ -100,7 +99,6 @@ def vigilar(cfg, enviar_evento, stop=None):
                 cur = conn.cursor()
             cur.execute(consulta)
             filas = cur.fetchall()
-            poll_n += 1
             # Diagnóstico SILENCIOSO (nivel debug, no llena el log): solo cuando CAMBIA la fichada más
             # reciente de la DB. Los eventos reales (NUEVA fichada) sí van a INFO más abajo.
             reciente = str(filas[0].fecha_hora) if filas else None

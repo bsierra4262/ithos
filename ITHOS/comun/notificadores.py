@@ -46,10 +46,6 @@ class Notificadores:
         """Lista de {tipo, activo, detalle} de cada canal (dashboard de salud)."""
         return [estado_canal(c) for c in self.canales]
 
-    def canal_activo(self, tipo):
-        """True si HAY algún canal de ese tipo y está activo (p. ej. para decidir cuándo avisar)."""
-        return any(e["activo"] for e in self.estado() if e["tipo"] == tipo)
-
     def hay_activo(self):
         """True si al menos un canal está activo (para saber si el aviso llegará a algún lado)."""
         return any(e["activo"] for e in self.estado())

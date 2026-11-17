@@ -185,7 +185,6 @@ def _plan_cache_leer():
 
 
 def _plan_cache_guardar(d):
-    import json
     try:
         os.makedirs(os.path.dirname(_planes_archivo()), exist_ok=True)
         _escribir_atomico(_planes_archivo(), d)
@@ -432,14 +431,6 @@ class GeminiIA(ProveedorIA):
         if self.gestor:
             self.gestor.registrar()
         return (r.text or "").strip()
-
-    def _live_config(self):
-        from google.genai import types
-        return types.LiveConnectConfig(
-            response_modalities=["AUDIO"],
-            system_instruction=_sys_voz(self.idioma),
-            speech_config=types.SpeechConfig(voice_config=types.VoiceConfig(
-                prebuilt_voice_config=types.PrebuiltVoiceConfig(voice_name=self.voz))))
 
     async def voz_stream(self, texto):
         """Genera la voz con el TTS DEDICADO de Gemini (lee VERBATIM). El TTS devuelve el audio COMPLETO
@@ -992,21 +983,6 @@ def es_por_dia(e):
             or "rpd" in m or "insufficient_quota" in m)
 
 
-def es_por_minuto(e):
-    """True si es un límite por MINUTO / rate-limit transitorio (se recupera en segundos), NO
-    falta de cuota diaria. Ante un 429 sin detalle, asumimos por-minuto (no asustar en vano)."""
-    m = str(e).lower()
-    if es_por_dia(e):
-        return False
-    # Señales DIRECTAS de límite por minuto (simétrico a es_por_dia): Groq 'TPM/RPM',
-    # Gemini 'PerMinute'. Así se clasifica bien aunque el SDK no incluya la palabra 'rate limit'.
-    if ("per minute" in m or "per-minute" in m or "perminute" in m
-            or "tpm" in m or "rpm" in m):
-        return True
-    return ("429" in m or "resource_exhausted" in m or "rate limit" in m
-            or "too many requests" in m or "rate_limit" in m)
-
-
 def _es_permanente(e):
     """True si el error NO se arregla esperando: la petición, la clave o el modelo están mal.
 
@@ -1080,7 +1056,6 @@ class MultiIA(ProveedorIA):
         self._primaria_hasta = 0.0    # epoch: hasta cuándo NO consultar la primaria (sin cuota)
         self._ultimo_probe = 0.0      # epoch: última vez que se PROBÓ la primaria (re-probe periódico)
         self._aviso_cambio_hasta = {}  # id(prov) -> epoch: dedup del aviso "cambié de IA" al canal
-        self.ultimo_proveedor = None  # nombre del motor que respondió por ÚLTIMA vez (observabilidad real)
         # La primaria falla rápido ante 429 -> el respaldo responde al instante.
         if hasattr(primaria, "sin_reintento_429"):
             primaria.sin_reintento_429 = True
@@ -1180,7 +1155,6 @@ class MultiIA(ProveedorIA):
                 self._ultimo_probe = time.time()      # registramos el intento (re-probe periódico)
             try:
                 r = prov.chat(system, prompt, json_out, max_tokens)
-                self.ultimo_proveedor = type(prov).__name__   # verdad: quién respondió
                 if prov is self.primaria:
                     self._primaria_hasta = 0.0        # anduvo -> limpiar cooldown
                 return r
@@ -1200,7 +1174,6 @@ class MultiIA(ProveedorIA):
             time.sleep(min(_retry_delay(ultimo) or 3, 6))
             try:
                 r = respaldo.chat(system, prompt, json_out, max_tokens)
-                self.ultimo_proveedor = type(respaldo).__name__
                 return r
             except Exception as e:  # noqa: BLE001
                 ultimo = e

@@ -426,7 +426,7 @@ resolución contada dos veces sigue siendo una resolución contada dos veces.
 
 Lo que se resigna, a sabiendas: sin una solución cargada, la mesa de ayuda no le dibuja al cliente
 los botones de **aprobar / rechazar**. Contesta escribiendo —el pedido de confirmación se lo dice— y el
-ciclo lee esa respuesta igual: cierra si confirma, reabre si sigue. De paso se va un problema real: en
+ciclo lee esa respuesta igual: cierra si confirma, pide la evidencia si sigue. De paso se va un problema real: en
 el #803 el cliente apretó «aprobar» mientras escribía que seguía sin poder fichar, y el ticket se
 cerró solo.
 
@@ -519,9 +519,21 @@ ticket, con qué prioridad entra, en manos de quién y por qué se ajustó.
   solo en ese momento. Un ticket pospuesto **no recibe recordatorios ni escaladas**.
 - **Resuelto → confirmación**: cuando el técnico resuelve (o lo marca resuelto a mano), ITHOS le pide al
   cliente que confirme y le recuerda una vez por día hábil. **Nunca cierra sin confirmación real**: si el
-  cliente dice que sigue el problema, **reabre**. La resolución es **el comentario del técnico**, que ya
+  cliente dice que sigue el problema, **le pide la evidencia** (abajo). La resolución es **el comentario del técnico**, que ya
   está en el ticket: ITHOS no carga ninguna solución encima —copiada, resumida o tal cual, las tres
   le repetían al cliente lo que ya había leído— y sólo escribe el pedido de confirmación.
+- **El cliente dice que sigue fallando → se le pide la evidencia**: antes de volver a revisar a ciegas
+  algo que el técnico ya dio por resuelto, ITHOS le pide lo concreto —en un ticket de fichaje: **foto o
+  video de la terminal con el error, en qué terminal y de qué lado del molinete (entrada o salida), fecha
+  y hora del intento**; en otro ticket: captura o video del error, dónde y cuándo— y el ticket queda
+  **En espera** de eso, con el recordatorio de cada día hábil. Así se diagnostica lo que pasó de verdad y
+  queda el respaldo de que el caso se trabajó (#849: «No puede fichar aún» después de un arreglo de raíz).
+- **Cartel al aprobar la solución**: el botón «Aprobar» de GLPI **cierra** el ticket, y el cliente lo usaba
+  para contestar cualquier cosa (#849: escribió «No puede fichar aún» y apretó Aprobar). Ahora, antes de
+  cerrar, aparece un cartel grande: **«Estás confirmando la resolución del ticket»**. Si lo que escribió
+  suena a que el problema sigue, se lo muestra en rojo y le ofrece **«No, el problema sigue»**, que
+  rechaza en su lugar. Es un plugin propio de GLPI (`ithosconfirma`, en `docs/glpi/plugins/`), no un
+  cambio al núcleo: sobrevive a las actualizaciones.
 - **Feedback interno para la KB**: si la resolución no explica **cómo** se resolvió, ITHOS le pide al técnico
   por nota privada el **procedimiento paso a paso**. Eso alimenta la base de conocimiento.
 - **SLA en riesgo**: alerta de los tickets por vencer o vencidos, **agrupada por técnico asignado** y

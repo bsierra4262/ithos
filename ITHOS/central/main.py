@@ -33,6 +33,7 @@ logging.basicConfig(level=logging.INFO,
 log = logging.getLogger("ithos-central")
 
 from comun import version as _VER          # noqa: E402
+from comun import ambitos as AV            # noqa: E402  tipos de aviso -> a qué grupo va cada uno
 app = FastAPI(title="ITHOS Gestor", version=_VER.GESTOR_VERSION)
 # Evita que el equipo se suspenda mientras el central corre (la pantalla puede bloquearse igual).
 try:
@@ -280,7 +281,6 @@ async def arrancar_servicios(conf):
     # Canales de notificación del cliente (los que ELIGIÓ: whatsapp/telegram/
     # email/teams/slack). Un solo objeto que manda a todos.
     from comun import notificadores as NOTIF
-    from comun import ambitos as AV      # tipos de aviso -> a qué grupo va cada uno
     # Sesión de WhatsApp ESTABLE y AISLADA por cliente (multi-tenant): el runtime usa EXACTAMENTE
     # el mismo archivo que la vinculación por QR del panel/alta. Sin esto, dos clientes chocarían
     # sobre 'wa_session.sqlite3' y lo vinculado no serviría para enviar.
@@ -627,7 +627,6 @@ async def ws(websocket: WebSocket):
             await asyncio.sleep(12)          # dar tiempo a que WhatsApp se vincule
             try:
                 from comun import conversacion as CV
-                from comun import ambitos as AV
                 texto_inicio = CV.mensaje_inicio(
                     cliente, ia_disponible=True,
                     zona=conf.get("zona_horaria", "America/Argentina/Buenos_Aires"),
@@ -640,7 +639,6 @@ async def ws(websocket: WebSocket):
         # Si veníamos de un MANTENIMIENTO, avisarle que ya está disponible.
         if wa and not os.environ.get("ITHOS_DEMO") and cliente in _flags_mantenimiento():
             async def _avisar_disponible():
-                from comun import ambitos as AV
                 for _ in range(30):
                     try:
                         if wa.hay_activo():

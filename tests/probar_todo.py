@@ -190,7 +190,7 @@ def t_conversacional_ia():
     from comun import conversacion
     from comun import ia as IA
     asis = conversacion.Asistente(IA.crear_texto(IA_CFG),
-                                  conversacion.herramientas_glpi(GL, ENT))
+                                  conversacion.herramientas_tickets(CFG))
     return asis.responder_texto("cuantos tickets abiertos hay?")[:55]
 
 

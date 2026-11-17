@@ -197,7 +197,6 @@ def _auto_cargar(cliente):
 
 
 def _auto_guardar(cliente, st):
-    import json
     try:
         _escribir_atomico(_auto_estado_path(cliente), st)
     except Exception:  # noqa: BLE001

@@ -15,12 +15,10 @@ crear_whatsapp(cfg) devuelve el canal listo.
 
 import os
 import re
-import json
 import time
 import shutil
 import logging
 import threading
-import urllib.request
 
 log = logging.getLogger("whatsapp")
 

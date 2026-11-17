@@ -1,0 +1,99 @@
+/* ITHOS · Confirmar resolución. Colores propios (no los del tema) para que se lea igual en el
+   tema claro y en el oscuro de GLPI. */
+.ithos-conf-abierto { overflow: hidden; }
+
+.ithos-conf-fondo {
+    position: fixed;
+    inset: 0;
+    z-index: 2000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+    background: rgba(10, 14, 22, .72);
+}
+
+.ithos-conf-caja {
+    width: 100%;
+    max-width: 560px;
+    max-height: calc(100vh - 32px);
+    overflow-y: auto;
+    box-sizing: border-box;
+    padding: 32px 28px 24px;
+    border-radius: 14px;
+    border-top: 8px solid #2f9e44;
+    background: #ffffff;
+    color: #1d2433;
+    text-align: center;
+    box-shadow: 0 24px 60px rgba(0, 0, 0, .45);
+    font-size: 16px;
+    line-height: 1.5;
+}
+.ithos-conf-alerta { border-top-color: #e03131; }
+
+.ithos-conf-icono {
+    width: 64px;
+    height: 64px;
+    margin: 0 auto 12px;
+    border-radius: 50%;
+    background: #2f9e44;
+    color: #fff;
+    font-size: 40px;
+    font-weight: 800;
+    line-height: 64px;
+}
+.ithos-conf-alerta .ithos-conf-icono { background: #e03131; }
+
+.ithos-conf-titulo {
+    margin: 0 0 12px;
+    font-size: 26px;
+    font-weight: 800;
+    line-height: 1.25;
+    color: #1d2433;
+}
+
+.ithos-conf-texto { margin: 0 0 18px; font-size: 17px; }
+
+.ithos-conf-aviso {
+    margin: 0 0 20px;
+    padding: 14px 16px;
+    border-radius: 10px;
+    border: 2px solid #e03131;
+    background: #fff5f5;
+    color: #8a1c1c;
+    text-align: left;
+}
+.ithos-conf-aviso p { margin: 8px 0 0; }
+.ithos-conf-cita { font-style: italic; word-break: break-word; }
+
+.ithos-conf-botones { display: flex; flex-direction: column; gap: 10px; }
+.ithos-conf-botones button {
+    width: 100%;
+    min-height: 48px;
+    padding: 10px 16px;
+    border-radius: 10px;
+    font-size: 17px;
+    font-weight: 700;
+    cursor: pointer;
+}
+.ithos-conf-si { border: 0; background: #2f9e44; color: #fff; }
+.ithos-conf-si:hover { background: #2b8a3e; }
+.ithos-conf-no { border: 2px solid #e03131; background: #fff; color: #c92a2a; }
+.ithos-conf-no:hover { background: #fff5f5; }
+.ithos-conf-volver { border: 0; background: transparent; color: #495057; font-weight: 600; }
+.ithos-conf-botones button:focus-visible { outline: 3px solid #1c7ed6; outline-offset: 2px; }
+
+.ithos-conf-hint {
+    margin: 0 0 10px;
+    padding: 10px 12px;
+    border-radius: 8px;
+    border: 1px solid #e03131;
+    background: #fff5f5;
+    color: #8a1c1c;
+    font-weight: 600;
+}
+
+@media (max-width: 420px) {
+    .ithos-conf-caja { padding: 24px 18px 18px; }
+    .ithos-conf-titulo { font-size: 22px; }
+}

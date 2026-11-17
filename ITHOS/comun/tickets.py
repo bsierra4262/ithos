@@ -189,7 +189,6 @@ class _GLPI:
         self.tok = self.gl.get("glpi_ithos_token")                      # agente (escribe)
         self.tok_admin = (self.gl.get("glpi_superadmin_token")
                           or self.gl.get("glpi_user_token") or self.tok)  # super admin (total)
-        self.tok_helpdesk = self.gl.get("glpi_bsierra_token") or self.tok  # técnico helpdesk
         self.ithos_id = int(self.gl.get("ithos_user_id", 28))
         self.niveles_sla = self.gl.get("niveles_sla") or _NIVEL_SLA_DEFAULT
 
@@ -260,23 +259,6 @@ class _GLPI:
             txt = _sin_html(f.get("texto", "")).strip()
             if txt and not _cierre_administrativo(txt) and not _es_aviso_automatico(txt):
                 return txt
-        return ""
-
-    def _solucion(self, c, tid):
-        """La solución de UN ticket puntual (uso suelto). Para listas, `_mejor_solucion`, que no
-        hace una petición por ticket. Nunca devuelve un aviso automático de ITHOS como solución."""
-        try:
-            for s in reversed(c.request(f"/Ticket/{tid}/ITILSolution") or []):
-                txt = _sin_html(s.get("content", "")).strip()
-                if txt:
-                    return txt
-            from comun import glpi as _G
-            for f in reversed(_G.followups(c, tid)):
-                txt = _sin_html(f.get("content", "")).strip()
-                if txt and not _es_aviso_automatico(txt):
-                    return txt
-        except Exception:  # noqa: BLE001
-            pass
         return ""
 
     def estado(self, tid):

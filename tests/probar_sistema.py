@@ -283,7 +283,7 @@ def main():
     from comun import conversacion as CV
     if intelli:
         gl = intelli["integrador_glpi"]
-        acc = CV.acciones_glpi(gl, int(gl["entity_id"]), gl.get("glpi_ithos_token"))
+        acc = CV.acciones_tickets(intelli)
         check("agente tiene acciones (cerrar/asignar/responder/crear/reabrir)",
               set(acc) >= {"cerrar_ticket", "asignar_ticket", "responder_ticket",
                            "crear_ticket", "reabrir_ticket"})

@@ -39,7 +39,7 @@ from textos_ticket import (_MARCA_CONFIRMACION, _MARCA_RECORDATORIO,       # noq
                            _MARCA_ESPERA_CLIENTE, _MARCA_PROCEDIMIENTO, _MARCA_PEDIDO_TECNICO,
                            _MARCA_RECORDATORIO_ESPERA, _MARCA_ESCALADA_ESPERA,
                            _MARCA_SIN_ATENDER, _DIAS_HABILES_ESCALADA, _HORAS_SIN_ATENDER,
-                           _NOTA_PEDIR_PROCEDIMIENTO)
+                           _NOTA_PEDIR_PROCEDIMIENTO, _MARCA_EVIDENCIA)
 
 log = logging.getLogger("ciclo")
 
@@ -207,6 +207,8 @@ def _espera_pendiente(fu, tecs=None):
                          if int(f.get("id") or 0) == ultimo_pedido), "")
     if cerebro.MARCA_COORDINAR in texto_ultimo.lower():
         motivo = "confirmacion"
+    if _MARCA_EVIDENCIA in texto_ultimo.lower():
+        motivo = "datos"          # le pedimos la evidencia: el recordatorio habla de esa información
     return fechas[0], fechas[-1], motivo
 
 
@@ -519,7 +521,7 @@ def gestionar_ciclo(cliente, triage, entidad, estado):
                     # volver a decirlo con otras palabras quedaba poco profesional (#826).
                     # Sólo si NO estaba ya en espera y NO lo registramos ya por ESTE comentario.
                     if status != 4 and not _coordinacion_despues_de(fu, int(ult["id"]), tecs) \
-                            and triage.poner_en_espera_pedido(t["id"], cont):
+                            and triage.poner_en_espera_pedido(t["id"]):
                         anunciar(
                             t["id"],
                             f"En el ticket número {t['id']} el técnico le pidió algo al cliente. "
@@ -600,11 +602,15 @@ def gestionar_ciclo(cliente, triage, entidad, estado):
                 # Ya está como corresponde y el cliente todavía no contestó: sigue de largo, que
                 # más abajo se le manda el recordatorio una vez por día hábil.
             if conf is False:
-                if triage.reabrir(t["id"]):
+                # Dice que sigue fallando: antes de volver a revisar a ciegas algo que el técnico ya
+                # dio por resuelto, ITHOS le pide la evidencia (foto/video del error, dónde, cuándo)
+                # y el ticket queda EN ESPERA de eso (#849).
+                if triage.pedir_evidencia(t["id"], t):
                     anunciar(t["id"],
                              f"El cliente {autor} indica que el ticket número {t['id']} sigue sin "
-                             "resolverse. Vuelve a estar en curso.",
-                             f"🔁 *Ticket #{t['id']}* — {autor} dice que sigue. En curso otra vez."
+                             "resolverse. Le pedí la evidencia del error y quedó en espera.",
+                             f"🔁 *Ticket #{t['id']}* — {autor} dice que sigue. Le pedí foto o "
+                             "video del error, dónde y cuándo; queda en espera."
                              + (("\n_" + dijo[:300] + "_") if dijo else ""))
                 estado.pop(tid, None)
                 continue

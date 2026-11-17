@@ -265,7 +265,7 @@ class _ConPendiente(_TriageFalso):
     def tecnico_pide_confirmacion(self, texto):
         return True                    # queda algo del lado del cliente
 
-    def poner_en_espera_pedido(self, tid, comentario):
+    def poner_en_espera_pedido(self, tid):
         self.en_espera.append(tid)
         return True
 
@@ -484,13 +484,13 @@ class _ClienteSol:
 class _TriageBotones(_TriageFalso):
     def __init__(self):
         super().__init__(ia_viva=True)
-        self.cerrados, self.reabiertos = [], []
+        self.cerrados, self.reabiertos = [], []   # reabiertos = se le pidió la evidencia
 
     def cerrar(self, tid):
         self.cerrados.append(tid)
         return True
 
-    def reabrir(self, tid):
+    def pedir_evidencia(self, tid, ticket=None):
         self.reabiertos.append(tid)
         return True
 
@@ -520,7 +520,7 @@ ok(aprob.cerrados == [678] and not aprob.reabiertos,
 rech = _TriageBotones()
 list(CI.gestionar_ciclo(_ClienteSol("rechazada"), rech, 12, {}))
 ok(rech.reabiertos == [678] and not rech.cerrados,
-   "si rechaza con el botón, vuelve a EN CURSO (no queda esperando para siempre)",
+   "si rechaza con el botón, se le pide la evidencia (no queda esperando para siempre)",
    str(rech.reabiertos))
 
 quieto = _TriageBotones()

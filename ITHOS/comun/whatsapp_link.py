@@ -149,7 +149,6 @@ class _Vinculacion:
         self.numero = ""
         self.error = ""
         self.inicio = time.time()
-        self.qr_ts = 0.0
         self.client = None
         self._fin = threading.Event()
         threading.Thread(target=self._run, name=f"wa-link-{sesion_id}", daemon=True).start()
@@ -179,7 +178,6 @@ class _Vinculacion:
             try:
                 code = data.decode() if isinstance(data, (bytes, bytearray)) else str(data)
                 self.qr = segno.make_qr(code).png_data_uri(scale=6, border=2)
-                self.qr_ts = time.time()
                 if self.estado != "vinculado":
                     self.estado = "qr"
                 log.info("[WA-LINK %s] QR nuevo (esperando escaneo)", self.id)

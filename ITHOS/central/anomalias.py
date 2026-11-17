@@ -18,10 +18,8 @@ Envía por los MISMOS canales del cliente. Anti-spam: una vez por evento por dí
 """
 
 import os
-import json
 import asyncio
 import logging
-from datetime import datetime
 
 log = logging.getLogger("anomalias")
 BASE = os.path.dirname(os.path.abspath(__file__))

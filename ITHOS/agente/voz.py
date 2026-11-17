@@ -64,7 +64,6 @@ class VozAgente:
         self.pq = queue.Queue()                  # cola de PRE-CACHEO (baja prioridad, tiempo ocioso)
         self._cuota_hasta = 0.0                  # si Charon agota cuota, no insistir hasta este instante
         self._stop = threading.Event()
-        self._reproduciendo = False
         self.loop = asyncio.new_event_loop()     # UN loop dedicado (worker)
         # El audio se inicializa PEREZOSO (antes de cada reproducción): si al arrancar la PC está
         # bloqueada / entrada por RDP / el agente arranca headless, puede no haber dispositivo de
@@ -289,13 +288,10 @@ class VozAgente:
                 break
             texto, cachear = item
             log.debug("[VOZ] worker toma saludo (cachear=%s): %s", cachear, (texto or "")[:60])
-            self._reproduciendo = True
             try:
                 self._reproducir(texto, cachear)
             except Exception as e:  # noqa: BLE001
                 log.warning("Fallo al hablar: %s", e)
-            finally:
-                self._reproduciendo = False
 
     # -- Pre-cacheo de saludos (para que la fichada sea INSTANTÁNEA) --
     def precachear(self, texto):

@@ -21,12 +21,10 @@ Anti-spam: avisa UNA vez por ticket por día (estado en disco, por cliente).
 """
 
 import os
-import json
 import asyncio
 import logging
 
 from comun import ambitos as AMB
-from datetime import datetime
 
 log = logging.getLogger("proactivo")
 BASE = os.path.dirname(os.path.abspath(__file__))

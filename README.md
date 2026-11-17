@@ -452,8 +452,20 @@ la misma hora. Cuando responde, el ticket vuelve a estar en curso solo. Si pasan
 sin respuesta, el **técnico asignado** recibe el aviso —nota interna privada y mensaje por WhatsApp
 mencionándolo— para decidir: contactarlo, posponerlo o cerrarlo. Un ticket pospuesto no recibe nada hasta
 su fecha. Cuando el técnico resuelve, ITHOS pide confirmación y **nunca cierra sin ella**; si el cliente
-dice que el problema sigue, reabre. Y si la resolución no explica **cómo** se resolvió, le pide al técnico
-el procedimiento paso a paso, que alimenta la base de conocimiento.
+dice que el problema sigue, le pide la evidencia. Y si la resolución no explica **cómo** se resolvió, le
+pide al técnico el procedimiento paso a paso, que alimenta la base de conocimiento.
+
+Cuando **el cliente dice que sigue fallando** algo que el técnico dio por resuelto, ITHOS **le pide la
+evidencia** en vez de volver a revisar a ciegas: en un ticket de fichaje, **foto o video de la terminal con
+el error, en qué terminal y de qué lado del molinete (entrada o salida), fecha y hora del intento**; en
+otro, captura o video del error, dónde y cuándo. El ticket queda **en espera** de eso, con el recordatorio
+de cada día hábil. Así se diagnostica lo que pasó de verdad y queda el respaldo de que el caso se trabajó.
+
+El botón **«Aprobar»** de GLPI cierra el ticket, y el cliente lo usaba para contestar cualquier cosa. Antes
+de cerrar aparece un **cartel grande —«Estás confirmando la resolución del ticket»—**; si lo que escribió
+suena a que el problema sigue, se lo muestra en rojo y le ofrece **«No, el problema sigue»**, que rechaza
+en su lugar. Es un plugin propio de GLPI (`ithosconfirma`, en `docs/glpi/plugins/`), no un cambio al
+núcleo, así que sobrevive a las actualizaciones.
 
 Cuando **el técnico le pide algo al cliente** —un dato, coordinar o confirmar algo—, ITHOS deja el ticket
 **en espera** para que el SLA no corra, y **no le escribe nada al cliente**: el pedido del técnico ya está
@@ -497,7 +509,7 @@ Se probaron las tres formas de cargarla y las tres le repetían al cliente lo qu
 copiada y sin las capturas, **resumida** por ITHOS, y **cruda, tal cual**. Una resolución contada dos
 veces sigue siendo una resolución contada dos veces. Lo que se resigna: sin solución cargada la mesa
 de ayuda no le muestra al cliente los botones de aprobar y rechazar, así que contesta escribiendo, y
-el ciclo lee esa respuesta igual —cierra si confirma, reabre si sigue—. De paso se va el caso de un
+el ciclo lee esa respuesta igual —cierra si confirma, pide la evidencia si sigue—. De paso se va el caso de un
 cliente que apretó «aprobar» mientras escribía que seguía sin poder fichar.
 
 **Un sí/no dudoso de la IA no decide nada.** Las preguntas de sí o no que se le hacen a la IA se

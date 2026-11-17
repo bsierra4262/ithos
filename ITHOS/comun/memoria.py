@@ -88,10 +88,6 @@ class Memoria:
                       "ON CONFLICT(clave) DO UPDATE SET valor=excluded.valor, ts=excluded.ts",
                       (clave[:120], str(valor)[:2000], time.time()))
 
-    def olvidar(self, clave):
-        with _LOCK, self._con() as c:
-            c.execute("DELETE FROM hechos WHERE clave=?", (clave,))
-
     def hechos(self):
         with _LOCK, self._con() as c:
             return dict(c.execute("SELECT clave,valor FROM hechos ORDER BY ts DESC").fetchall())

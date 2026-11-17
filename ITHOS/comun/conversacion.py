@@ -15,5 +15,5 @@ from comun.asistente import (Asistente, mensaje_inicio, mensaje_sin_cuota, info_
                              ZONA_DEFAULT, _fusionar, _pide_detalle, _pide_antecedentes,
                              _id_ticket, _ticket_por_asunto, _mensaje_error)
 from comun.herramientas import (herramientas_tickets, acciones_tickets,                 # noqa: F401
-                                herramientas_glpi, acciones_glpi, _resolver_tecnico,
+                                _resolver_tecnico,
                                 _una_linea)

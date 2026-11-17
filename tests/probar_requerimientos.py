@@ -453,7 +453,7 @@ try:
         def pedir_confirmacion(self, tid): llam["confirm"] += 1; return True
         def poner_en_curso(self, tid): return True
         def cerrar(self, tid): return True
-        def reabrir(self, tid): return True
+        def pedir_evidencia(self, tid, ticket=None): return True
         def cliente_confirma(self, t): return None
     try:
         _TRI.gestionar_ciclo(_Cli(), _Tri(), 0, {})
@@ -491,7 +491,7 @@ try:
         def pedir_confirmacion(self, tid): llam2["confirm"] += 1; return True
         def poner_en_curso(self, tid): return True
         def cerrar(self, tid): return True
-        def reabrir(self, tid): return True
+        def pedir_evidencia(self, tid, ticket=None): return True
         def cliente_confirma(self, t): return None
         def nota_interna(self, tid, texto): return True
     _orig_de2 = _TRI.G.de_entidad
@@ -585,7 +585,7 @@ try:
             def pedir_confirmacion(self, tid): return True
             def recordar_confirmacion(self, tid): cont["recordar"] += 1; return True
             def cerrar(self, tid): cont["cerrar"] += 1; return True
-            def reabrir(self, tid): cont["reabrir"] += 1; return True
+            def pedir_evidencia(self, tid, ticket=None): cont["reabrir"] += 1; return True
             def cliente_confirma(self, t): return confirma
             def poner_en_curso(self, tid): return True
             def nota_interna(self, tid, texto): return True
@@ -620,7 +620,7 @@ try:
         def pedir_confirmacion(self, tid): return True
         def recordar_confirmacion(self, tid): _T6cerrado.veces += 1; return True
         def cerrar(self, tid): return True
-        def reabrir(self, tid): return True
+        def pedir_evidencia(self, tid, ticket=None): return True
         def cliente_confirma(self, t): return None
         def poner_en_curso(self, tid): return True
         def nota_interna(self, tid, texto): return True
@@ -672,7 +672,7 @@ try:
         def pedir_confirmacion(self, tid): return True
         def recordar_confirmacion(self, tid): return True
         def cerrar(self, tid): return True
-        def reabrir(self, tid): return True
+        def pedir_evidencia(self, tid, ticket=None): return True
         def cliente_confirma(self, t): return None
         def marcar_resuelto(self, tid):return True
         def tecnico_resolvio(self, t): return False
@@ -867,7 +867,10 @@ try:
         ("itil", ("comun", "reportes_itil.py")),
         ("tickets", ("comun", "tickets.py")),
         ("asistente", ("comun", "herramientas.py")))}
-    todos = [n for n, s in fuentes.items() if "entidades_de" in s]
+    # El asistente no habla con GLPI: pasa por el adaptador de tickets.py, que es el que mira las
+    # áreas. Basta con que use ese adaptador (la versión vieja atada a GLPI se borró).
+    todos = [n for n, s in fuentes.items()
+             if "entidades_de" in s or (n == "asistente" and "T.adaptador(cli_cfg)" in s)]
     if (una == [1] and varias == [1, 2] and por_entidad and sin_heredar and sesion_amplia
             and len(todos) == len(fuentes)):
         ok("el cliente son TODAS sus áreas: un ticket que entra por soporte técnico o "
@@ -1030,7 +1033,6 @@ except Exception as e:  # noqa: BLE001
 #      está cableado en agente/central/demo.
 try:
     def _leer(*partes):
-        import os as _o
         _ruta=os.path.join(APP if partes and partes[0] in ("comun","central","agente") else RAIZ, *partes)
         return open(os.path.join(APP if partes and partes[0] in ("comun","central","agente") else RAIZ, *partes), encoding="utf-8").read()
     src_demo = _leer("iniciar_demo.py")
@@ -3486,6 +3488,21 @@ CAPACIDADES = [
      "docs": {"DOCUMENTO_MAESTRO.md": ["El cliente da de baja su pedido"],
               "README.md": ["el cliente da de baja su pedido"],
               "CHANGELOG.md": ["da de baja"]}},
+    {"que": "el cliente dice que sigue fallando: ITHOS le pide la evidencia y queda En espera",
+     "codigo": [("ITHOS/central/textos_ticket.py", "def texto_pedido_evidencia"),
+                ("ITHOS/central/triage.py", "def pedir_evidencia"),
+                ("ITHOS/central/ciclo.py", "triage.pedir_evidencia(")],
+     "docs": {"DOCUMENTO_MAESTRO.md": ["se le pide la evidencia"],
+              "README.md": ["Cuando **el cliente dice que sigue fallando**"],
+              "CHANGELOG.md": ["ITHOS le pide la evidencia"]}},
+    {"que": "cartel en GLPI antes de aprobar la solución (el botón cierra el ticket)",
+     "codigo": [("docs/glpi/plugins/ithosconfirma/setup.php", "add_javascript"),
+                ("docs/glpi/plugins/ithosconfirma/public/js/confirmar.js",
+                 "Estás confirmando la resolución del ticket")],
+     "docs": {"DOCUMENTO_MAESTRO.md": ["Estás confirmando la resolución del ticket"],
+              "README.md": ["Estás confirmando la resolución del ticket"],
+              "CHANGELOG.md": ["Estás confirmando la resolución del ticket"],
+              "docs/glpi/README.md": ["ithosconfirma"]}},
     {"que": "el tablero del equipo conserva sus colores y suma a quien entra",
      "codigo": [("ITHOS/central/planka_rollover.py", "COLORES"),
                 ("ITHOS/comun/planka.py", "def actualizar_lista")],

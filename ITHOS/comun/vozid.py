@@ -37,7 +37,6 @@ MAX_MUESTRAS = 40         # sigue entrenando/afinando hasta 40 muestras -> perfi
 #   coseno crudo (sin cohorte): tu voz ≥0.97 ; otras ≤0.93      -> umbral 0.95.
 UMBRAL_Z = 1.0           # score T-norm mínimo (normalizado por cohorte) para aceptar la voz
 UMBRAL_RAW = 0.95        # coseno crudo mínimo si no hay cohorte disponible
-UMBRAL = UMBRAL_RAW      # compat
 _DUR_MIN_SEG = 1.2        # descartar audios demasiado cortos para entrenar
 
 

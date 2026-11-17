@@ -31,7 +31,7 @@ import sys
 import json
 import asyncio
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime
 
 _AQUI = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(_AQUI, ".."))

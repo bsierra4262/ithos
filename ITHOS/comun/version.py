@@ -33,14 +33,6 @@ def compat_protocolo(protocolo):
         return True
 
 
-def agente_desactualizado(agente_version):
-    """True si el agente del cliente es MÁS VIEJO que el mínimo soportado -> conviene actualizar
-    (lo usa el aviso de auto-update; en fase 1 solo informa, no obliga)."""
-    if not agente_version:
-        return False
-    return _tupla(agente_version) < _tupla(AGENTE_MIN_VERSION)
-
-
 # --------------------------------------------------------------- qué hay DESPLEGADO de verdad
 # El servidor no es un checkout de git (el paquete se descomprime sobre la carpeta), así que no hay
 # forma de preguntarle "¿qué commit estás corriendo?". Sin eso, diagnosticar es adivinar: cuando algo
