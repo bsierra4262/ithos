@@ -3,7 +3,7 @@
 # Nota: para NOTAS DE VOZ hace falta ffmpeg (sistema); IVMS necesita el driver ODBC de
 # SQL Server. Ver INSTALACION.md.
 websockets>=12.0
-google-genai>=2.7           # Gemini (texto + voz Charon)
+google-genai>=2.7,<4.0      # Gemini (texto + voz Charon). Techo: la 3.x cambió la API por defecto a v1 y rompió flash; ia.py fija v1beta, pero una mayor nueva se prueba antes
 pyodbc>=5.1                 # IVMS: leer la tabla de fichajes (SQL Server)
 sounddevice>=0.4            # capturar el micrófono
 edge-tts>=7.3.1            # voz GRATIS de respaldo + notas de voz. MINIMO 7.3.1: desde

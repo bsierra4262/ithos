@@ -156,6 +156,19 @@ g, f = gemini_con({"retirado": RuntimeError(NO_EXISTE), "flash": "OK"}, ["retira
 ok(g.chat("s", "p", json_out=False) == "OK",
    "un modelo que no existe se saltea y contesta el siguiente", str(f.pedidos))
 
+print("\n=== 3.b · Gemini se habla por v1beta, sea cual sea la versión de la librería ===")
+# google-genai 2.x usa v1beta y la 3.x pasó a v1, donde gemini-2.5-flash rechaza las instrucciones
+# de sistema con un 400. En producción la imagen bajó la 3.3 y el segundo escalón fallaba siempre;
+# en la máquina de desarrollo, con la 2.7, andaba. Se construye el cliente de verdad y se mira a
+# qué API apunta: no depende de qué versión de la librería esté instalada.
+g_real = IA.GeminiIA.__new__(IA.GeminiIA)
+g_real.api_key = "clave-de-prueba"
+g_real._cli = None
+cli_real = g_real._cliente()
+version = getattr(getattr(getattr(cli_real, "_api_client", None), "_http_options", None),
+                  "api_version", None)
+ok(version == "v1beta", "el cliente de Gemini apunta a la API v1beta", str(version))
+
 print("\n=== 4 · La IA local: los tres ajustes sin los que no contesta ===")
 enviados = []
 

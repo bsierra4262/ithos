@@ -13,7 +13,7 @@ cryptography>=42.0          # cifrado EN REPOSO de secretos del cliente (AES-256
 websockets>=12.0
 
 # --- Inteligencia artificial -------------------------------------------------
-google-genai>=2.7           # Gemini (texto + voz Charon)
+google-genai>=2.7,<4.0      # Gemini (texto + voz Charon). Techo: la 3.x cambió la API por defecto a v1 y rompió flash; ia.py fija v1beta, pero una mayor nueva se prueba antes
 
 # --- WhatsApp no-oficial (neonize / whatsmeow) ------------------------------
 neonize>=0.3

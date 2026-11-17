@@ -301,9 +301,21 @@ class GeminiIA(ProveedorIA):
         self._agotados = {}           # modelo -> día en que se quedó sin cuota (se libera solo)
 
     def _cliente(self):
+        """Cliente de Gemini, con la versión de la API FIJADA a mano: `v1beta`.
+
+        POR QUÉ NO SE DEJA LA DE LA LIBRERÍA. `google-genai` cambió de opinión entre versiones:
+        la 2.x usa `v1beta` y la 3.x pasó a `v1`. Y en `v1`, `gemini-2.5-flash` rechaza las
+        instrucciones de sistema («Developer instruction is not enabled for api version v1. Use api
+        version v1beta instead»), que ITHOS usa en todas las consultas. Pasó en producción: la
+        imagen del Gestor bajó la 3.3, el segundo escalón de la escalera fallaba siempre con un 400 y
+        cada vez que flash-lite se quedaba sin cuota se saltaba directo al proveedor siguiente. En
+        la máquina de desarrollo, con la 2.7, andaba: por eso se veía bien al probar. Fijada acá, la
+        versión de la librería deja de decidir a qué API se le habla."""
         if self._cli is None:
             from google import genai
-            self._cli = genai.Client(api_key=self.api_key)
+            from google.genai import types
+            self._cli = genai.Client(api_key=self.api_key,
+                                     http_options=types.HttpOptions(api_version="v1beta"))
         return self._cli
 
     def _modelo_vigente(self):

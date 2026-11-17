@@ -271,6 +271,8 @@ causa: antes salía el 404 del último escalón y nadie se enteraba de que el pr
 **Cada error dice su causa.** Un 400, 401, 403 o 404 —clave inválida, sin permiso, modelo inexistente—
 no se arregla esperando: queda en el log como error, con el motivo real, y la primaria se aparta diez
 minutos en vez de reintentarse cada cuarenta segundos bajo el rótulo engañoso de «límite por minuto».
+Lo primero que destapó: la librería de Gemini cambió en su versión 3 la API por defecto a `v1`, donde
+`gemini-2.5-flash` rechaza las instrucciones de sistema; ITHOS ahora le habla siempre por `v1beta`.
 
 **La IA local, el último respaldo.** La VPS corre su propia IA (Ollama, sólo alcanzable por el Gestor
 en la red interna): sigue atendiendo cuando las nubes se quedan sin cuota —antes, en ese momento, ITHOS

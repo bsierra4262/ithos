@@ -146,6 +146,15 @@ y el versionado, [SemVer](https://semver.org/lang/es/).
   solicitantes; los 17 tickets se limpiaron conservando a sus solicitantes reales. Regresión en
   `tests/probar_admin_fuera.py`.
 
+- **El segundo modelo de Gemini nunca funcionó en producción.** `google-genai` cambió la API por
+  defecto entre versiones: la 2.x usa `v1beta` y la 3.x pasó a `v1`, donde `gemini-2.5-flash`
+  rechaza las instrucciones de sistema que ITHOS manda en cada consulta («Developer instruction is
+  not enabled for api version v1»). El requirements decía `>=2.7` sin techo, así que la imagen del
+  Gestor bajó la 3.3 y, cada vez que flash-lite se quedaba sin cuota, flash fallaba con un 400 y se
+  saltaba directo al proveedor siguiente. En la máquina de desarrollo, con la 2.7, andaba. Ahora
+  `ia.py` fija `v1beta` a mano y la librería tiene techo (`<4.0`). Salió a la luz gracias al arreglo
+  de abajo: el log, por primera vez, escribió el motivo real del 400.
+
 - **Un modelo que no existe tapaba que Gemini estaba agotada.** La escalera de Gemini terminaba en
   `gemini-3-flash-preview`, que Google no tiene («not found for API version v1»). Cuando los dos
   modelos reales se quedaban sin la cuota del día, el error que salía era el 404 de ese tercero, no

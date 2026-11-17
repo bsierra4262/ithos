@@ -99,7 +99,9 @@ proveedor estaba agotado—. Antes de sumar un modelo a la escalera hay que comp
 **Cada error dice su causa.** Un 400, 401, 403 o 404 —clave inválida, sin permiso, modelo
 inexistente— **no se arregla esperando**: queda escrito en el log como error, con el motivo real, y
 la primaria se aparta diez minutos en vez de reintentarse cada cuarenta segundos. Hasta ahora todo
-lo que no era cuota diaria se llamaba «límite por minuto» y la causa se perdía.
+lo que no era cuota diaria se llamaba «límite por minuto» y la causa se perdía. Lo primero que
+destapó: la librería de Gemini cambió en su versión 3 la API por defecto a `v1`, donde
+`gemini-2.5-flash` rechaza las instrucciones de sistema; ITHOS ahora le habla siempre por `v1beta`.
 
 **La IA local, el último respaldo.** La VPS corre su propia IA (Ollama, contenedor `ollama`, que
 sólo el Gestor alcanza por la red interna). Es el eslabón que sigue atendiendo cuando las nubes se
