@@ -508,6 +508,14 @@ async def arrancar_servicios(conf):
     except Exception:  # noqa: BLE001
         pass
 
+    # Wiki del equipo (Outline): la lee para la KB y publica los procedimientos de los tickets
+    # cerrados. Sólo si el cliente la tiene configurada (kb_outline: url + token).
+    if (conf.get("kb_outline") or {}).get("token") and asistente is not None:
+        import wiki as WIKI
+        tareas_extra.append(asyncio.create_task(WIKI.vigilar(
+            conf, asistente.ia,
+            avisar=(lambda m: wa.enviar(m, tipo=AV.SISTEMA)) if wa else None)))
+
 
     # Reactivador de tickets POSPUESTOS: pasa a EN CURSO los que llegaron a su día/hora.
     try:

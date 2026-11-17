@@ -27,18 +27,18 @@ para dimensionar el valor creado y, sobre esa base, la comisión.
 | Canales conversacionales: WhatsApp oficial y no oficial, Telegram, Email, Teams, Slack y Matrix | 50 |
 | Asistente: memoria por cliente, base de conocimiento automática con Outline, y autorización | 44 |
 | Reportes ITIL 4: KPIs, SLA, MTTR, PDF y CSV, programados y con rango personalizado | 30 |
-| Proactivo: aviso de SLA por vencer y anomalías de horario | 20 |
+| Proactivo: aviso de SLA por vencer, agrupado por técnico asignado | 14 |
 | Facturación MercadoPago: suscripciones, gross‑up de comisión, dólar BNA y webhook con firma | 34 |
 | Panel web: diseño HUD, superadmin, portal, auto‑alta, UX, responsive y multiplataforma | 58 |
 | Instaladores multi‑SO para Windows, Linux y Mac, más Docker y Caddy con HTTPS/WSS | 28 |
 | QA y testing: cinco baterías de producción, exhaustiva, código, nivel 4 y requerimientos, con seguridad, concurrencia y escala | 48 |
 | Integración, ajustes finos, documentación y puesta a punto | 40 |
-| **TOTAL** | **≈ 696 h** |
+| **TOTAL** | **≈ 690 h** |
 
 - **Cronograma.** Desarrollado por fases —arquitectura, integraciones, voz y canales, IA y asistente, facturación,
   panel y UX, y finalmente QA y hardening— a lo largo de varios meses de trabajo dedicado.
 - **Valor de mercado del desarrollo, costo de reemplazo.** Contratar este desarrollo a un tercero a tarifa de
-  mercado, entre US$40 y US$60 por hora, le habría costado a INTELLIHELP entre US$28.000 y US$42.000. Es el costo
+  mercado, entre US$40 y US$60 por hora, le habría costado a INTELLIHELP entre US$27.600 y US$41.400. Es el costo
   de mercado de construir este producto, es decir el valor que aporté.
 - **Base de la comisión.** Por el desarrollo completo de este producto corresponde una comisión proporcional al
   valor creado y a los ingresos recurrentes que genere para INTELLIHELP. El producto es replicable por cliente,
@@ -113,7 +113,7 @@ de la comisión, no un único cobro.
 recargable de una cuenta de la empresa de aproximadamente $160.000 por mes, lo que da cerca de $1.000.000 mensuales
 en total, de forma aproximada, ya que el monto exacto de la tarjeta puede variar. Vengo sin ajuste desde hace
 tiempo, mientras desarrollé y sostengo una plataforma que INTELLIHELP puede vender y monetizar, con un valor de
-desarrollo de entre US$28.000 y US$42.000 según la sección 1, y un costo de operación de centavos por cliente
+desarrollo de entre US$27.600 y US$41.400 según la sección 1, y un costo de operación de centavos por cliente
 según el informe de costos operativos. Sé que INTELLIHELP es una PyME, así que la propuesta es realista, sin
 desembolso grande de entrada y escalonada. El objetivo es que mis ingresos crezcan junto con los de la empresa: si
 ITHOS le genera más a INTELLIHELP, a mí también.
@@ -171,7 +171,7 @@ completa y el derecho a usar, modificar y vender libremente, desligándome a mí
 compra único. Este precio no se descuenta por ser PyME: es el valor real del activo, el mismo si lo compra una
 PyME, Google o Meta. Se valúa como producto terminado, no solo como código:
 
-- **Piso, costo de reconstruirlo desde cero:** entre US$28.000 y US$42.000, según la sección 1, solo la mano de obra.
+- **Piso, costo de reconstruirlo desde cero:** entre US$27.600 y US$41.400, según la sección 1, solo la mano de obra.
 - **Como producto listo para vender:** en las adquisiciones de software, un producto en producción se paga entre
   3 y 6 veces su costo de construcción, por el time‑to‑market, el riesgo evitado, el know‑how y las más de quince
   integraciones reales, lo que da un rango aproximado de US$120.000 a US$250.000.

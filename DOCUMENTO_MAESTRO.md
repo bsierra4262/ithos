@@ -243,6 +243,7 @@ de WhatsApp, memorias, métricas, cachés de voz, tokens de alta, certificados y
 | `notificadores.py` | Agrupa los canales del cliente y reparte cada aviso según su TIPO (tickets, SLA, tablero, sistema). Sumar un canal es una clase con `enviar()`. |
 | `voz_tts.py` · `locucion.py` · `audio.py` · `vozid.py` | TTS de respaldo, pronunciación/locución sin emojis, captura + VAD (Silero/webrtc/energía) e identificación por voz del dueño. |
 | `planka.py` | Cliente de Planka (X-API-Key): tableros, listas, tarjetas, miembros, comentarios. |
+| `outline.py` | Cliente de la wiki Outline: lee y escribe, y nunca toca las colecciones de credenciales. |
 | `kb.py` | Base de conocimiento por cliente (lectura y uso en las respuestas). |
 | `memoria.py` · `metricas.py` | Memoria y métricas por cliente (aisladas, SQLite/JSON). |
 | `reportes_itil.py` | KPIs ITIL (volumen, SLA, MTTR, por técnico/categoría) con lecturas masivas. |
@@ -266,6 +267,7 @@ de WhatsApp, memorias, métricas, cachés de voz, tokens de alta, certificados y
 | `proactivo.py` | Alerta de SLA en riesgo/vencido, agrupada por técnico asignado y dentro del horario de atención. |
 | `reportes.py` · `reportes_programados.py` | Reportes ITIL y su envío automático (diario/semanal/mensual, período cerrado, zona y días hábiles del cliente). |
 | `kb_auto.py` | Regeneración automática de la base de conocimiento desde los casos resueltos. |
+| `wiki.py` | La wiki del equipo conectada: la sincroniza con la KB y publica los procedimientos de los tickets cerrados. |
 | `planka_integrador.py` · `planka_rollover.py` | Tareas del equipo: resumen 9:00, seguimiento horario, alta/movimiento por WhatsApp y rollover semanal/mensual/anual. |
 | `panel.py` · `panel_ui.py` | Panel superadmin, alta de empresas y dashboard del cliente (responsive, con login). |
 | `autenticacion.py` | Login del Gestor (hash scrypt), cookies seguras, enlaces de alta de un solo uso y revocación. |
@@ -686,8 +688,21 @@ sigue funcionando igual que antes.
 
 - Se **regenera sola una vez por semana** a partir de los casos **resueltos** del propio cliente, y se usa
   en las respuestas del asistente y del triage.
-- El alta permite **subir instructivos** y está preparada para traer documentación de **Outline**
-  (pendiente de conectar: ver §16).
+- El alta permite **subir instructivos**.
+- **La wiki del equipo (Outline) está conectada en los dos sentidos.** ITHOS la **lee**: cada documento
+  entra en la base de conocimiento y se resincroniza cada seis horas (lo que se borra en la wiki, sale).
+  Y la **escribe**: cuando un ticket se **cierra** y el técnico explicó cómo lo resolvió, redacta el
+  procedimiento (síntoma, causa, pasos, cómo verificar) y lo publica en la colección que corresponde por
+  el tema, dentro del documento del cliente (para INTELLIHELP, el de SRT). Al **cierre** y no al
+  resolverse: si el cliente después dice que sigue fallando, ese procedimiento no sirve y no puede quedar
+  escrito. Si ya hay un artículo **de ITHOS** con el mismo procedimiento, **no lo duplica: le suma el
+  caso** (se compara el contenido, no sólo lo que opina la IA). Así la wiki crece con cada ticket y la
+  base de conocimiento con ella.
+- Tres reglas de la wiki: **nada sensible** —la colección de credenciales («Core IT - Sensitive &
+  Credentials», los Vault) no se lee ni se escribe nunca, porque lo que ITHOS lee puede terminar en una
+  respuesta por WhatsApp—; **nada inventado** —el artículo dice sólo lo que dicen el ticket y el técnico—;
+  y **nada personal** —ni el nombre ni el legajo del afectado—. Va de a tres tickets cada media hora para
+  no comerse la cuota de IA del triage.
 - Cuando un técnico resuelve sin documentar el procedimiento, ITHOS se lo pide por nota interna: la KB se
   alimenta de procedimientos reales, no de "listo/solucionado".
 
@@ -833,8 +848,7 @@ manejan el certificado. Del repositorio se puede reconstruir el agente completo.
   pública** (hoy la firma es self-signed, válida en la flota que confía el certificado).
 - **Auto-update del agente por red** (el Gestor publica versión + manifiesto firmado; el agente avisa y el
   usuario decide) y **métricas de flota** (qué agentes están conectados y con qué versión).
-- **Outline** (base de conocimiento del equipo) y **derivación con balanceo a los técnicos**: se diseñan
-  cuando estén los instructivos y los tokens de usuario.
+- **Derivación con balanceo a los técnicos** más allá de la mesa por carga: se diseña con el equipo.
 - **IVMS** no tiene API: se lee su base de fichajes, por eso ese integrador corre en el agente.
 
 El detalle y el estado de estos puntos vive en [docs/FALTANTES.md](docs/FALTANTES.md).

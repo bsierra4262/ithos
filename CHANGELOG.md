@@ -7,6 +7,13 @@ y el versionado, [SemVer](https://semver.org/lang/es/).
 ## [Unreleased]
 
 ### Added
+- **La wiki del equipo (Outline) conectada en los dos sentidos.** ITHOS la lee (entra en la base de
+  conocimiento, resincronizada cada 6 h) y la escribe: cada ticket **cerrado** cuyo técnico explicó cómo
+  lo resolvió deja su procedimiento publicado en la colección que corresponde, dentro del documento del
+  cliente. El mismo procedimiento no se duplica: se suma el caso al artículo de ITHOS que ya existe (en el
+  ensayo con tickets reales, la IA sola escribía tres artículos casi iguales; ahora se compara el
+  contenido). Nunca lee ni escribe la colección de credenciales, nunca pone el nombre ni el legajo del
+  afectado y no inventa pasos. Regresión en `tests/probar_wiki.py`.
 - **Cartel al aprobar la solución en GLPI** (#849). El botón «Aprobar» cierra el ticket y el cliente lo
   usaba para contestar cualquier cosa: escribió «No puede fichar aún» y apretó Aprobar. Ahora aparece
   un cartel grande, «Estás confirmando la resolución del ticket»; si el comentario suena a que el
@@ -171,6 +178,15 @@ y el versionado, [SemVer](https://semver.org/lang/es/).
 - `_split_plan.txt` (el plan de cuando se partió el asistente).
 
 ### Fixed
+
+- **El importador de Outline podía meter credenciales en la base de conocimiento** y no se usaba bien:
+  traía sólo los primeros 100 documentos, sin User-Agent de navegador (Cloudflare lo rechaza), sin
+  excluir la colección de credenciales y sin sacar lo que se borraba de la wiki. Reemplazado por el
+  cliente nuevo.
+- **La base de conocimiento podía tomar un mensaje de ITHOS como la resolución de un ticket**: ahora
+  que ITHOS no carga solución, la resolución sale del último comentario de soporte, y la primera
+  respuesta de ITHOS ("recibimos el ticket…") contaba como tal. Lo que escribe ITHOS nunca es la
+  resolución.
 
 - **Cerrar, reabrir o poner en espera un ticket por chat fallaba después de hacerlo.** Al partir el
   asistente en dos módulos (agosto) quedó sin importar `_id_ticket`: GLPI hacía el cambio y después la

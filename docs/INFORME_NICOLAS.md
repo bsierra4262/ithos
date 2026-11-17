@@ -18,7 +18,7 @@ mensuales; WhatsApp no oficial es gratuito, y el oficial cuesta cerca de US$3 po
 entre varias empresas. Todo verificable con las cuentas y los precios oficiales de la Parte 1.
 
 **Valor del desarrollo.** Es lo que a INTELLIHELP le habría costado contratarlo afuera a tarifa de mercado, entre
-US$28.000 y US$42.000, por unas 700 horas de ingeniería. La empresa paga la infraestructura (IA y hosting); yo
+US$27.600 y US$41.400, por unas 690 horas de ingeniería. La empresa paga la infraestructura (IA y hosting); yo
 aporto el código, del que soy propietario, más el desarrollo y el mantenimiento.
 
 **Está probado de verdad.** La demo completa funciona en voz, tickets y WhatsApp, y el cobro con MercadoPago quedó

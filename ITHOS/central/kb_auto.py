@@ -118,35 +118,13 @@ def subir_archivos(cliente, archivos):
     return n, len(archivos)
 
 
-def importar_outline(cliente, base_url, api_token, limit=100):
-    """Trae documentos de OUTLINE (wiki/base de conocimiento OPEN-SOURCE) a la KB del cliente.
-    API oficial: POST {base}/api/documents.list con Authorization Bearer -> data:[{title,text}].
-    Guarda cada doc como .md en instructivos/ (la KB los combina solos con los casos resueltos).
-    Devuelve (traidos, total). Aislado por cliente. Requiere URL de la instancia + API token."""
-    import json
-    import urllib.request
-    base = (base_url or "").rstrip("/")
-    d = os.path.join(kb_dir(cliente), "instructivos")
-    os.makedirs(d, exist_ok=True)
-    req = urllib.request.Request(
-        base + "/api/documents.list",
-        data=json.dumps({"limit": max(1, min(int(limit), 100))}).encode(),
-        headers={"Authorization": f"Bearer {api_token}", "Content-Type": "application/json"},
-        method="POST")
-    with urllib.request.urlopen(req, timeout=30) as r:
-        docs = (json.load(r) or {}).get("data", []) or []
-    traidos = 0
-    for doc in docs:
-        titulo = (doc.get("title") or "documento").strip()
-        texto = _limpiar_doc(doc.get("text") or "")
-        if not texto.strip():
-            continue
-        seguro = ("".join(ch if (ch.isalnum() or ch in "-_.") else "_" for ch in titulo)[:60]
-                  or "outline")
-        with open(os.path.join(d, "outline_" + seguro + ".md"), "w", encoding="utf-8") as f:
-            f.write(f"# {titulo}\n\n{texto.strip()}")
-        traidos += 1
-    return traidos, len(docs)
+def importar_outline(cliente, base_url, api_token, limit=None, excluir=None):
+    """Trae la wiki de OUTLINE a la KB del cliente (botón del panel/portal). Es la misma
+    sincronización que hace sola la tarea de la wiki (central/wiki.py): todas las páginas, sin las
+    colecciones sensibles y sacando lo que se borró. Devuelve (traídos, total)."""
+    import wiki
+    from comun.outline import Outline
+    return wiki.importar({}, cliente, cli=Outline(base_url, api_token, excluir=excluir))
 
 
 def _limpiar_doc(t):
@@ -204,8 +182,8 @@ def _auto_guardar(cliente, st):
 
 async def vigilar(conf, stop=None):
     """Regenera la BASE DE CONOCIMIENTO SOLA, una vez por SEMANA (después de la semana laboral), sin
-    que el cliente tenga que apretar ningún botón. Aprende de los tickets RESUELTOS e IMPORTA la wiki
-    de Outline si está configurada. ON por defecto (se apaga con conf['kb']['auto']=false). Por
+    que el cliente tenga que apretar ningún botón. Aprende de los tickets RESUELTOS (la wiki de
+    Outline la sincroniza aparte central/wiki.py). ON por defecto (se apaga con conf['kb']['auto']=false). Por
     cliente, aislado, en el central. Config: conf['kb'] = {auto, dia_semana (0=lun..6=dom), hora}."""
     import asyncio
     import logging
@@ -219,7 +197,6 @@ async def vigilar(conf, stop=None):
     if not gl.get("glpi_url") and not tk.get("tipo"):
         return                                  # sin sistema de tickets no hay de qué aprender solo
     cliente = conf.get("nombre", "cliente")
-    ol = conf.get("kb_outline") or {}
     try:
         dia = int(kb.get("dia_semana", 5))      # 5 = sábado (después de lun–vie)
     except (TypeError, ValueError):
@@ -238,12 +215,6 @@ async def vigilar(conf, stop=None):
                 st = _auto_cargar(cliente)
                 if st.get("ultima") != clave:
                     n = await asyncio.to_thread(generar, conf, cliente)
-                    if ol.get("url") and ol.get("token"):
-                        try:
-                            await asyncio.to_thread(importar_outline, cliente,
-                                                    ol["url"], ol["token"])
-                        except Exception:  # noqa: BLE001
-                            pass
                     st["ultima"] = clave
                     _auto_guardar(cliente, st)
                     log.info("KB regenerada SOLA para %s: %s casos (semana %s).", cliente, n, clave)

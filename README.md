@@ -592,8 +592,15 @@ coincida** con el perfil del dueño.
 ## Base de conocimiento, reportes y tareas del equipo
 
 La **base de conocimiento** se regenera sola una vez por semana a partir de los casos resueltos del propio
-cliente y se usa en las respuestas; el alta permite sumar instructivos y está preparada para importar una
-wiki de Outline.
+cliente y se usa en las respuestas; el alta permite sumar instructivos.
+
+**La wiki del equipo (Outline) está conectada en los dos sentidos.** ITHOS la **lee** —cada documento entra
+en la base de conocimiento y se resincroniza cada seis horas— y la **escribe**: cuando un ticket se
+**cierra** y el técnico explicó cómo lo resolvió, redacta el procedimiento y lo publica en la colección que
+corresponde, dentro del documento del cliente. Al cierre y no al resolverse, para no dejar escrito un
+procedimiento que no funcionó. Si ya hay un artículo de ITHOS con el mismo procedimiento, **no lo duplica:
+le suma el caso**. Tres reglas: **nada sensible** (la colección de credenciales no se lee ni se escribe),
+**nada inventado** y **nada personal** (ni el nombre ni el legajo del afectado).
 
 Los **reportes ITIL** cubren volumen, cumplimiento de SLA, MTTR, backlog y desglose por prioridad,
 categoría y técnico. Salen automáticos —diario, semanal o mensual— sobre el **período cerrado**, en la zona
@@ -686,6 +693,7 @@ versionan**: el repositorio incluye únicamente plantillas (`ITHOS/central/clien
 | `notificadores.py` | Agrupa los canales del cliente y reparte cada aviso según su TIPO (tickets, SLA, tablero, sistema). Sumar un canal es una clase con `enviar()`. |
 | `voz_tts.py` · `locucion.py` · `audio.py` · `vozid.py` | TTS de respaldo, pronunciación/locución sin emojis, captura + VAD (Silero/webrtc/energía) e identificación por voz del dueño. |
 | `planka.py` | Cliente de Planka (X-API-Key): tableros, listas, tarjetas, miembros, comentarios. |
+| `outline.py` | Cliente de la wiki Outline: lee y escribe, y nunca toca las colecciones de credenciales. |
 | `kb.py` | Base de conocimiento por cliente (lectura y uso en las respuestas). |
 | `memoria.py` · `metricas.py` | Memoria y métricas por cliente (aisladas, SQLite/JSON). |
 | `reportes_itil.py` | KPIs ITIL (volumen, SLA, MTTR, por técnico/categoría) con lecturas masivas. |
@@ -709,6 +717,7 @@ versionan**: el repositorio incluye únicamente plantillas (`ITHOS/central/clien
 | `proactivo.py` | Alerta de SLA en riesgo/vencido, agrupada por técnico asignado y dentro del horario de atención. |
 | `reportes.py` · `reportes_programados.py` | Reportes ITIL y su envío automático (diario/semanal/mensual, período cerrado, zona y días hábiles del cliente). |
 | `kb_auto.py` | Regeneración automática de la base de conocimiento desde los casos resueltos. |
+| `wiki.py` | La wiki del equipo conectada: la sincroniza con la KB y publica los procedimientos de los tickets cerrados. |
 | `planka_integrador.py` · `planka_rollover.py` | Tareas del equipo: resumen 9:00, seguimiento horario, alta/movimiento por WhatsApp y rollover semanal/mensual/anual. |
 | `panel.py` · `panel_ui.py` | Panel superadmin, alta de empresas y dashboard del cliente (responsive, con login). |
 | `autenticacion.py` | Login del Gestor (hash scrypt), cookies seguras, enlaces de alta de un solo uso y revocación. |

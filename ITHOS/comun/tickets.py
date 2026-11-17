@@ -230,8 +230,11 @@ class _GLPI:
                 sol = self._mejor_solucion(int(t.get("id") or 0), t, sol_map, fu_map)
                 if not sol:
                     continue
+                cierre = str(t.get("closedate") or t.get("solvedate") or "")[:10]
                 out.append({"id": t["id"], "asunto": t.get("name", ""),
-                            "problema": t.get("content", ""), "solucion": sol})
+                            "problema": t.get("content", ""), "solucion": sol,
+                            "estado": int(t.get("status", 0)),
+                            "fecha_cierre": "/".join(reversed(cierre.split("-"))) if cierre else ""})
         finally:
             c.cerrar()
         return out
@@ -252,7 +255,9 @@ class _GLPI:
                 return txt
         solicitante = int(ticket.get("users_id_recipient") or 0)
         for f in reversed(fu_map.get(tid, [])):
-            if int(f.get("autor") or 0) == solicitante:
+            # Ni lo del solicitante ni lo de ITHOS: ITHOS no resuelve tickets, sólo acompaña; su
+            # primera respuesta ("recibimos el ticket…") no es la forma de resolver nada.
+            if int(f.get("autor") or 0) in (solicitante, self.ithos_id):
                 continue
             txt = _sin_html(f.get("texto", "")).strip()
             if txt and not _cierre_administrativo(txt) and not _es_aviso_automatico(txt):
