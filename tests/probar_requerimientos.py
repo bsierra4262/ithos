@@ -146,7 +146,7 @@ else:
     ok("todo open() de texto del producto usa encoding=utf-8")
 
 # A3) Sin dependencias EJECUTABLES atadas a un SO en el producto
-#     (winsound / SAPI powershell / taskkill / netstat). El demo launcher SÍ puede,
+#     (winsound / SAPI powershell / taskkill / netstat). Las herramientas de desarrollo sí pueden,
 #     pero degradado; acá exigimos que el PRODUCTO no dependa de eso.
 rx_so = re.compile(r"import\s+winsound|System\.Speech|taskkill|netstat\s+-ano|winsound\.")
 atados = []
@@ -173,13 +173,6 @@ if 'shutil.which("ffmpeg")' in audio:
     ok("comun/audio.py chequea ffmpeg antes de usarlo (degrada sin él)")
 else:
     fail("comun/audio.py usa ffmpeg sin verificar disponibilidad")
-
-# A6) El lanzador de demo libera puerto en POSIX también (no solo Windows).
-demo = leer(os.path.join(RAIZ, "iniciar_demo.py"))
-if "lsof" in demo and 'os.name == "nt"' in demo:
-    ok("iniciar_demo.matar_puerto contempla Linux/Mac (lsof/fuser)")
-else:
-    na("[demo retirada] iniciar_demo.matar_puerto es solo-Windows")
 
 # A7) Rutas de datos portables (~/.ithos via expanduser) en el producto.
 usan_home = 0
@@ -239,16 +232,12 @@ if "formHTML({},false)" in ui and "formHTML(C,false)" in ui and "formHTML(c,true
 else:
     fail("formHTML no distingue superadmin de cliente")
 
-# C3) Opción 'Ninguno' presente en tickets y en acceso (para quien no tiene sistema).
+# C3) El alta ofrece SÓLO lo que ITHOS tiene: GLPI para tickets e IVMS para acceso (sin 'Ninguno').
 panel = leer(os.path.join(APP, "central", "panel.py"))
-if re.search(r'"ninguno":\s*\{[^}]*"label"', panel) and 'todavía no tengo' in panel:
-    ok("panel.py: tickets con opción 'Ninguno / todavía no tengo'")
+if '"ninguno"' not in panel and '"glpi": {"label"' in panel and '"ivms": {"label"' in panel:
+    ok("panel.py: el alta ofrece GLPI e IVMS, sin opción 'Ninguno'")
 else:
-    fail("panel.py: falta la opción 'Ninguno' en tickets")
-if re.search(r'"ninguno":\s*\{"label":\s*"Ninguno', panel):
-    ok("panel.py: acceso con opción 'Ninguno'")
-else:
-    fail("panel.py: falta la opción 'Ninguno' en acceso")
+    fail("panel.py: el alta ofrece algo que ITHOS no tiene (o le falta GLPI/IVMS)")
 
 # C4) Métricas del dashboard con tooltip (title=) para que se expliquen solas.
 if "function sc(t,v,g,ti)" in ui and "title=" in ui:
@@ -258,9 +247,9 @@ else:
 
 
 print("\n" + "=" * 58)
-print("  D) MÉTRICAS REALES (aisladas demo/producción, sin gateo)")
+print("  D) MÉTRICAS REALES (sin gateo)")
 print("=" * 58)
-# La demo debe MOSTRAR su actividad real (avisos/triage/consultas) sin ensuciar producción.
+# El panel muestra la actividad real del cliente (avisos/triage/consultas).
 sys.path.insert(0, os.path.join(APP, "comun"))
 sys.path.insert(0, APP)
 try:
@@ -268,11 +257,7 @@ try:
     from comun import metricas as _MET
     importlib.reload(_MET)
     CLI = "__AUDIT_METRICAS__"
-    a_demo = None
     a_prod = None
-    # producción
-    os.environ.pop("ITHOS_DEMO", None)
-    importlib.reload(_MET)
     a_prod = _MET._archivo(CLI)
     for f in (a_prod,):
         if os.path.exists(f):
@@ -280,30 +265,12 @@ try:
     _MET.registrar(CLI, "ticket", 3)
     _MET.registrar(CLI, "consulta_voz", 2)
     uso_prod = _MET.resumen(CLI)["uso"]
-    # demo
-    os.environ["ITHOS_DEMO"] = "1"
-    importlib.reload(_MET)
-    a_demo = _MET._archivo(CLI)
-    if os.path.exists(a_demo):
-        os.remove(a_demo)
-    _MET.registrar(CLI, "ticket", 7)          # actividad de la demo: DEBE contar
-    uso_demo = _MET.resumen(CLI)["uso"]
-    os.environ.pop("ITHOS_DEMO", None)
 
     if uso_prod.get("ticket") == 3 and uso_prod.get("consulta_voz") == 2:
         ok("producción cuenta la actividad real (ticket + consulta)", str(uso_prod))
     else:
         fail("producción no cuenta bien la actividad", str(uso_prod))
-    if uso_demo.get("ticket") == 7:
-        ok("DEMO cuenta su actividad real (ya no da 0 en tickets/avisos)", str(uso_demo))
-    else:
-        fail("la DEMO sigue sin contar tickets (daría 0 en el panel)", str(uso_demo))
-    if a_demo != a_prod and "demo_" in os.path.basename(a_demo):
-        ok("demo y producción usan archivos SEPARADOS (aislamiento)",
-           os.path.basename(a_demo) + " vs " + os.path.basename(a_prod))
-    else:
-        fail("demo y producción comparten métricas (se contaminan)")
-    for f in (a_demo, a_prod):
+    for f in (a_prod,):
         try:
             if f and os.path.exists(f):
                 os.remove(f)
@@ -314,35 +281,22 @@ except Exception as e:  # noqa: BLE001
 
 
 print("\n" + "=" * 58)
-print("  E) DEMO: agente de producción + métricas sin doble conteo")
+print("  E) AGENTE + métricas sin doble conteo")
 print("=" * 58)
-demo_src = leer(os.path.join(RAIZ, "iniciar_demo.py"))
 ag_src = leer(os.path.join(APP, "agente", "agente.py"))
 main_src = leer(os.path.join(APP, "central", "main.py"))
 conv_src = leer_asistente()
 
-if "def arrancar_agente(" in demo_src and "arrancar_agente(cli)" in demo_src:
-    ok("la demo lanza el AGENTE de producción (arrancar_agente)")
-else:
-    na("[demo retirada] la demo no lanza el agente de producción")
-if ("_agente_demo.json" in demo_src and "os.remove(os.path.join(LOCAL, tmp))" in demo_src and
-        "def cerrar" in demo_src):
-    ok("la demo limpia sus artefactos temporales (config del agente + tokens de alta) al cerrar")
-else:
-    na("[demo retirada] la demo no limpia la config temporal del agente")
 if 'os.environ.get("ITHOS_AGENTE_CONFIG")' in ag_src:
     ok("agente.py acepta config por env (no pisa agente/config.json)")
 else:
     fail("agente.py no acepta config por env")
-if "ITHOS_AGENTE_CONSULTA_INICIO" in ag_src and "ITHOS_AGENTE_CONSULTA_INICIO" in demo_src:
-    ok("consulta de arranque real cableada (agente + demo)")
+# No queda ningún modo demo: producción es el único entorno (las pruebas van aisladas: tickets
+# '(test)' en la entidad raíz, clientes de prueba sin canales).
+if "ITHOS_DEMO" not in main_src and "--demo" not in ag_src:
+    ok("sin modo demo: el Gestor y el agente tienen un solo camino, el de producción")
 else:
-    na("[demo retirada] falta la consulta de arranque")
-# En DEMO el central NO abre canales externos (evita conflicto de sesión WhatsApp).
-if 'wa = None if os.environ.get("ITHOS_DEMO")' in main_src:
-    ok("en demo el central no abre canales externos (sin conflicto de WhatsApp)")
-else:
-    fail("en demo el central abriría canales externos (riesgo de conflicto)")
+    fail("queda un modo demo en el Gestor o en el agente")
 # consulta_voz se registra UNA sola vez: NO en main.py, SÍ en la capa de conversación.
 main_reg = len(re.findall(r'registrar\([^)]*consulta_voz', main_src))
 conv_reg = len(re.findall(r'"consulta_voz"', conv_src))
@@ -695,7 +649,7 @@ except Exception as e:  # noqa: BLE001
 
 
 # H8) Los AVISOS de WhatsApp respetan el FORMATO del cliente: 'texto'->solo texto, 'audio'->solo
-#     nota de voz, 'ambos'->texto + nota de voz. Aplica a demo y producción (misma clase).
+#     nota de voz, 'ambos'->texto + nota de voz.
 try:
     import threading as _th8
     import time as _t8
@@ -734,27 +688,19 @@ except Exception as e:  # noqa: BLE001
     fail("no se pudo verificar el formato texto/voz de los avisos de WhatsApp", repr(e))
 
 
-# H9) La demo/multicanal REUSA la conexión WhatsApp compartida (no abre otra sesión) y suma los
-#     demás canales configurados por el cliente. Así los avisos van por TODOS los canales.
+# H9) Los avisos salen por el WhatsApp del cliente: UNA sola sesión aunque el cliente lo tenga en
+#     el bloque suelto y en la lista de notificaciones.
 try:
     from comun import notificadores as _NT9
-    cli9 = {"notificaciones": [{"tipo": "whatsapp_no_oficial", "enabled": True}]}
 
     class _WAfake:
         def enviar(self, t, tipo=None): return True
-    waf = _WAfake()
-    n9 = _NT9.crear_notificadores(cli9, wa_compartido=waf)
-    tipos = [type(c).__name__ for c in n9.canales]
-    dup_wa = sum(1 for c in n9.canales if type(c).__name__.startswith("WhatsApp"))
-    # La ESTRUCTURA multicanal sigue: Notificadores agrupa N canales y reparte a todos. Hoy el
-    # cliente usa uno solo (WhatsApp); sumar otro es agregar una clase con enviar().
-    n9b = _NT9.Notificadores([waf, _WAfake()])
-    if waf in n9.canales and dup_wa == 0 and len(n9.canales) == 1 and n9b.enviar("hola"):
-        ok(f"notificadores: reusa el WhatsApp compartido sin duplicar sesión y sigue "
-           f"soportando VARIOS canales ({tipos})")
+    n9b = _NT9.Notificadores([_WAfake()])
+    sin_compartido = "wa_compartido" not in leer(os.path.join(APP, "comun", "notificadores.py"))
+    if n9b.enviar("hola") and sin_compartido:
+        ok("notificadores: un solo WhatsApp por cliente, sin el atajo de sesión compartida de la demo")
     else:
-        fail("notificadores no reusa el WhatsApp compartido o perdió el soporte multicanal",
-             str(tipos))
+        fail("notificadores no envía o conserva el atajo de la demo")
 except Exception as e:  # noqa: BLE001
     fail("no se pudo verificar la reutilización del WhatsApp compartido", repr(e))
 
@@ -939,7 +885,7 @@ except Exception as e:  # noqa: BLE001
 
 
 # H14) El integrador triagea por ESTADO (Nuevo=1), NO por 'id > baseline': así atiende los tickets
-#      que entraron con ITHOS APAGADO (al arrancar la demo/producción se pone al día).
+#      que entraron con ITHOS APAGADO (al arrancar se pone al día).
 try:
     sys.path.insert(0, os.path.join(APP, "central"))
     import integrador_glpi as _IG14
@@ -1014,7 +960,7 @@ except Exception as e:  # noqa: BLE001
     fail("no se pudo verificar la recuperación automática de la IA", repr(e))
 
 
-# H17) ANTI-SUSPENSIÓN: la PC no se duerme mientras ITHOS corre (producción y demo), aunque se
+# H17) ANTI-SUSPENSIÓN: la PC no se duerme mientras ITHOS corre, aunque se
 #      bloquee la pantalla. mantener_despierto existe, es idempotente y no rompe (multiplataforma).
 try:
     from comun import despierto as _DES
@@ -1028,26 +974,22 @@ except Exception as e:  # noqa: BLE001
     fail("no se pudo verificar el anti-suspensión", repr(e))
 
 
-# H18) DEMO = PRODUCCIÓN en el portero: la demo arranca el integrador de acceso real (saluda las
-#      fichadas nuevas), el IVMS tiene BASELINE (las viejas NO se repiten), y el anti-suspensión
-#      está cableado en agente/central/demo.
+# H18) PORTERO: el IVMS tiene BASELINE (las fichadas viejas NO se repiten) y el anti-suspensión
+#      está cableado en el agente y en el Gestor.
 try:
     def _leer(*partes):
         _ruta=os.path.join(APP if partes and partes[0] in ("comun","central","agente") else RAIZ, *partes)
         return open(os.path.join(APP if partes and partes[0] in ("comun","central","agente") else RAIZ, *partes), encoding="utf-8").read()
-    src_demo = _leer("iniciar_demo.py")
     src_ivms = _leer("agente", "integrador_ivms.py")
-    portero_demo = ('cfg["integrador"]' in src_demo and "integrador_config" in src_demo)
     baseline_ivms = ("baseline" in src_ivms and "vistos" in src_ivms)
     despierto_wired = all("mantener_despierto" in _leer(*p) for p in (
-        ("iniciar_demo.py",), ("agente", "agente.py"), ("central", "main.py")))
-    if portero_demo and baseline_ivms and despierto_wired:
-        ok("demo arranca portero real; baseline ignora fichadas viejas; anti-suspensión en agente/central/demo")
+        ("agente", "agente.py"), ("central", "main.py")))
+    if baseline_ivms and despierto_wired:
+        ok("portero: baseline ignora fichadas viejas; anti-suspensión en agente y Gestor")
     else:
-        fail("falta portero-demo / baseline / anti-suspensión",
-             f"portero={portero_demo} baseline={baseline_ivms} despierto={despierto_wired}")
+        fail("falta baseline / anti-suspensión", f"baseline={baseline_ivms} despierto={despierto_wired}")
 except Exception as e:  # noqa: BLE001
-    na("[demo retirada] no se pudo verificar demo-portero / baseline / anti-suspensión", repr(e))
+    fail("no se pudo verificar baseline / anti-suspensión", repr(e))
 
 
 # H19) LOG LIMPIO: el ruido inofensivo de terceros no ensucia el log (se silencia sin tapar lo
@@ -1106,7 +1048,7 @@ except Exception as e:  # noqa: BLE001
 
 
 # H22) NOTA DE VOZ más rápida (sin romper el cacheo): edge-tts a MEMORIA (sin archivo temporal) +
-#      precalentado para que el 1er audio no pague el arranque en frío. Cableado en demo y central.
+#      precalentado para que el 1er audio no pague el arranque en frío. Cableado en el Gestor.
 try:
     def _leer22(*p):
         try:
@@ -1118,7 +1060,7 @@ try:
     tiene_precal = "def precalentar" in src_v
     precal_wired = ("precalentar()" in _leer22("central", "main.py"))
     if a_memoria and tiene_precal and precal_wired:
-        ok("nota de voz más rápida: edge a memoria + precalentado (demo y central), sin tocar el cacheo")
+        ok("nota de voz más rápida: edge a memoria + precalentado (Gestor), sin tocar el cacheo")
     else:
         fail("falta optimizar la nota de voz (edge memoria / precalentar)",
              f"memoria={a_memoria} precal={tiene_precal} wired={precal_wired}")
@@ -1126,21 +1068,6 @@ except Exception as e:  # noqa: BLE001
     fail("no se pudo verificar la optimización de la nota de voz", repr(e))
 
 
-# H23) La demo manda su LOG a ARCHIVO (consola limpia para escribir en el menú, sin que los logs de
-#      neonize/httpx/IA pisen el prompt) y el input del menú es ROBUSTO (un EOF/hipo de terminal NO
-#      desconecta WhatsApp ni mata los servicios: se cierra solo con 'S' o Ctrl+C).
-try:
-    src_d = open(os.path.join(RAIZ, "iniciar_demo.py"), encoding="utf-8").read()
-    log_a_archivo = ("def _config_log" in src_d and "FileHandler" in src_d and
-                     "removeHandler" in src_d)
-    input_robusto = ("except EOFError" in src_d and 'op = input("   Opción' in src_d)
-    if log_a_archivo and input_robusto:
-        ok("demo: logs a archivo (consola limpia) + input del menú robusto (EOF no desconecta WhatsApp)")
-    else:
-        fail("falta log-a-archivo o input robusto en la demo",
-             f"log={log_a_archivo} input={input_robusto}")
-except Exception as e:  # noqa: BLE001
-    na("[demo retirada] no se pudo verificar consola limpia / input robusto", repr(e))
 
 
 # H24) La VOZ no lee EMOJIS: locucion.sin_emojis los saca de lo que se PRONUNCIA (el texto que se
@@ -1326,39 +1253,21 @@ except Exception as e:  # noqa: BLE001
     fail("no se pudo verificar la consistencia de los .md", repr(e))
 
 
-# H30) DEMO = PRODUCCIÓN pero AISLADA, AUTO-LIMPIANTE y NADA HARDCODEADO (requerimiento). La demo:
-#   - autentica sus llamadas internas IGUAL que producción (jget manda `X-Admin-Token`) y el readiness
-#     usa un endpoint ABIERTO (`/login`), no uno admin  → "aplicar todo a todo" (el bug que rompió la demo);
-#   - AÍSLA sus artefactos de prueba (`ITHOS_ALTA_FILE`) y los BORRA al cerrar (no deja nada registrado);
-#   - la contraseña de admin se GENERA (`secrets.token_urlsafe`), sin secreto hardcodeado;
-#   - lo REAL que toca (tickets GLPI) NO se deshace: es trabajo real; `ITHOS_DEMO` solo evita registrar
-#     las métricas de prueba. Regresión del pedido explícito de Brian.
+# H30) El archivo de enlaces de alta se puede llevar a otro lado por env (`ITHOS_ALTA_FILE`): en
+#   producción vive en el volumen persistente y en los tests en un temporal, sin tocar el real.
 try:
-    d30 = leer(os.path.join(RAIZ, "iniciar_demo.py"))
-    aut30 = leer(os.path.join(APP, "central", "autenticacion.py"))
-    interno = ("X-Admin-Token" in d30 and 'esperar(PANEL + "/login")' in d30)
-    aislado = ("ITHOS_ALTA_FILE" in aut30 and "_alta_path" in aut30 and
-               d30.count("ITHOS_ALTA_FILE") >= 2)     # setup del env + limpieza en cerrar()
-    generado = "secrets.token_urlsafe" in d30 and 'demo-" + str(os.getpid())' not in d30
-    demo_prod = "ITHOS_DEMO" in d30
-    # USA los logs: el narrado (p) se tee-a a _demo.log y hay FileHandler a archivo para revisar.
-    # Y la consola queda LIMPIA en el arranque (solo lo esencial force=True + las opciones); el resto al log.
-    usa_logs = ('getLogger("demo")' in d30 and "FileHandler" in d30 and "_demo.log" in d30 and
-                "_QUIET_STARTUP" in d30 and "force=True" in d30)
-    # Funcional: el archivo de alta se puede AISLAR por env (no toca el de producción).
-    _demo_alta = os.path.join(__import__("tempfile").gettempdir(), "_audit30_alta.json")
-    os.environ["ITHOS_ALTA_FILE"] = _demo_alta
+    _alta30 = os.path.join(__import__("tempfile").gettempdir(), "_audit30_alta.json")
+    os.environ["ITHOS_ALTA_FILE"] = _alta30
     sys.path.insert(0, os.path.join(APP, "central"))
     import autenticacion as _A30
-    aislable = _A30._alta_path() == _demo_alta
+    aislable = _A30._alta_path() == _alta30
     os.environ.pop("ITHOS_ALTA_FILE", None)
-    if interno and aislado and generado and demo_prod and aislable and usa_logs:
-        ok("demo = producción: aislada (ITHOS_ALTA_FILE) + auto-limpiante + auth interna (X-Admin-Token) + nada hardcodeado + usa _demo.log")
+    if aislable:
+        ok("enlaces de alta: el archivo se ubica por env (volumen en producción, temporal en tests)")
     else:
-        na("[demo retirada] la demo no cumple demo=producción aislada/limpia/no-hardcodeada/logs",
-             f"interno={interno} aislado={aislado} generado={generado} demo={demo_prod} aislable={aislable} logs={usa_logs}")
+        fail("el archivo de enlaces de alta no respeta ITHOS_ALTA_FILE")
 except Exception as e:  # noqa: BLE001
-    fail("no se pudo verificar demo=producción (aislada/limpia/no-hardcodeada)", repr(e))
+    fail("no se pudo verificar el archivo de enlaces de alta", repr(e))
 
 
 # H31) CUOTA / CADENA DE IA POR CLIENTE, REAL, SIN CABLEAR NI INVENTAR (bug real reportado por Brian:
@@ -1655,7 +1564,7 @@ try:
     aut = leer(os.path.join(APP, "central", "autenticacion.py"))
     pnl = leer(os.path.join(APP, "central", "panel.py"))
     cad = leer(os.path.join(APP, "Caddyfile"))
-    cookie_seg = "httponly=True" in aut and "secure=seguro" in aut          # secure en prod
+    cookie_seg = "httponly=True" in aut and "secure=True" in aut            # secure siempre (sólo HTTPS)
     alta_atom = "consumir_si_valido(b.get(\"_alta_token\"" in pnl           # consumo al enviar
     ratelimit = "_login_bloqueado(ip)" in pnl and "status_code=429" in pnl  # anti fuerza-bruta
     logout = "/logout" in pnl and "borrar_cookie" in aut
@@ -1676,7 +1585,6 @@ except Exception as e:  # noqa: BLE001
 #   la api_key sola. Menú del agente para instalar/mover a otra PC con el MISMO ejecutable.
 try:
     import tempfile as _tmp40, json as _j40
-    os.environ["ITHOS_DEMO"] = "1"          # el central NO abre canales externos en el test
     sys.path.insert(0, os.path.join(APP, "central"))
     import main as _M40
     from fastapi.testclient import TestClient as _TC40
@@ -1701,7 +1609,6 @@ try:
     r_mal = _auth40("K40", "TOKEN-EQUIVOCADO")           # api_key ok + token MALO -> RECHAZO
     r_ok = _auth40("K40", "SECRET-40")                   # api_key + token correctos -> OK + config
     r_compat = _auth40("K40OPEN")                        # empresa SIN token -> compat (api_key sola)
-    os.environ.pop("ITHOS_DEMO", None)
     rechazo = (r_mal.get("tipo") == "auth_error" and "token" in (r_mal.get("motivo") or ""))
     cfg40 = r_ok.get("config") or {}
     acepta = (r_ok.get("tipo") == "auth_ok" and (cfg40.get("voz") or {}).get("voz") == "Charon"
@@ -1939,7 +1846,6 @@ except Exception as e:  # noqa: BLE001
 #   'ambos' manda texto Y nota de voz; con 'audio' solo voz; con 'texto' solo texto.
 try:
     import asyncio as _aio45
-    os.environ["ITHOS_DEMO"] = "1"                # no registrar métricas de prueba
     sys.path.insert(0, os.path.join(APP, "central"))
     import integrador_glpi as _IG45
 
@@ -2009,7 +1915,6 @@ try:
     r_txt, r_aud, r_amb = _mk("texto"), _mk("audio"), _mk("ambos")
     resp_ok = (r_txt == {"txt": 1, "voz": 0} and r_aud == {"txt": 0, "voz": 1}
                and r_amb == {"txt": 1, "voz": 1})
-    os.environ.pop("ITHOS_DEMO", None)
     if parlante and canal and resp_ok:
         ok("ticket nuevo → PARLANTES + CANAL (wa.enviar) siempre; el canal respeta texto/audio/ambos "
            "(ambos=texto+nota de voz, audio=solo voz, texto=solo texto)")
@@ -2021,34 +1926,19 @@ except Exception as e:  # noqa: BLE001
     fail("no se pudo verificar ticket→canal (texto/audio/ambos)", repr(e) + " | " + _tb45.format_exc()[-300:])
 
 
-# H46) AMBIENTE DE DEMO SILOADO Y EFÍMERO (pedido de Brian, "ambiente separado que hace lo mismo, no
-#   toca producción, muere y no deja nada"): stack Docker aparte (docker-compose.demo.yml) con la MISMA
-#   imagen que producción, pero volumen/clientes/claves PROPIOS; se baja con `down -v` (borra todo).
-#   Modelo Silo/full-stack isolation (AWS) + Sandbox (Stripe).
+# H46) SIN AMBIENTE DE DEMO (pedido de Brian, 17-nov-2026: "probamos todo en producción, pero pruebas
+#   aisladas"): no queda stack, compose, script ni plantilla de demo.
 try:
-    dc = leer(os.path.join(RAIZ, "docker-compose.demo.yml"))
-    sh = leer(os.path.join(RAIZ, "compilador", "instaladores", "demo.sh"))
-    gi = leer(os.path.join(RAIZ, ".gitignore"))
-    misma_imagen = "build: ./central" in dc                      # mismo código que producción
-    vol_propio = "ithos_demo_data" in dc and "ithos_data:" not in dc   # volumen APARTE del de prod
-    clientes_aparte = "clientes.demo.json" in dc and "central/clientes.json:" not in dc
-    env_aparte = ".env.demo" in dc
-    local_only = "127.0.0.1:8091:8090" in dc and "443:443" not in dc  # no publica al mundo (túnel SSH)
-    efimero = "down -v" in sh and "-p ithos-demo" in sh          # borra el volumen (no deja nada) + proyecto aislado
-    gi_ok = "clientes.demo.json" in gi and ".env.demo" in gi     # los reales no se suben
-    sin_crlf = ("\r\n" not in dc and "\r\n" not in sh)           # LF (si no, bash rompe en Linux)
-    ejemplos = (os.path.exists(os.path.join(RAIZ, ".env.demo.example")) and
-                os.path.exists(os.path.join(APP, "central", "clientes.demo.json.example")))
-    if (misma_imagen and vol_propio and clientes_aparte and env_aparte and local_only and
-            efimero and gi_ok and sin_crlf and ejemplos):
-        ok("demo siloada y efímera: misma imagen que prod, volumen/clientes/claves propios (no toca "
-           "producción), `down -v` borra todo, no se publica (túnel SSH), plantillas + .gitignore")
+    restos = [p for p in ("docker-compose.demo.yml", ".env.demo.example",
+                          os.path.join("ITHOS", "central", "clientes.demo.json.example"),
+                          os.path.join("compilador", "instaladores", "demo.sh"))
+              if os.path.exists(os.path.join(RAIZ, p))]
+    if not restos:
+        ok("sin ambiente de demo: las pruebas corren en producción, aisladas")
     else:
-        na("[demo retirada] el ambiente de demo no queda bien aislado/efímero",
-             f"img={misma_imagen} vol={vol_propio} cli={clientes_aparte} env={env_aparte} "
-             f"local={local_only} efimero={efimero} gi={gi_ok} lf={sin_crlf} ejemplos={ejemplos}")
+        fail("quedan restos del ambiente de demo", ", ".join(restos))
 except Exception as e:  # noqa: BLE001
-    fail("no se pudo verificar el ambiente de demo siloado", repr(e))
+    fail("no se pudo verificar que no quede demo", repr(e))
 
 
 # H47) APP DEL AGENTE con INTERFAZ (no consola) + datos persistentes por cliente + desinstalado SIN
@@ -2492,8 +2382,8 @@ except Exception as e:  # noqa: BLE001
 
 # H58) WhatsApp NO-OFICIAL CONVERSACIONAL EN PRODUCCIÓN (bug real de Brian: "le mando audios o texto por
 #   whatsapp y nunca me contesta y creo que tampoco lo entrena"). El on_consulta/on_audio/transcribir del
-#   WhatsApp no-oficial se cableaba SOLO en la demo (iniciar_demo.py) -> en producción posteaba tickets
-#   pero NO respondía ni entrenaba la voz. Fix: el central engancha el asistente + el voz-id.
+#   WhatsApp no-oficial no estaba enganchado en producción: posteaba tickets pero NO respondía ni
+#   entrenaba la voz. Fix: el central engancha el asistente + el voz-id.
 try:
     m58 = leer(os.path.join(APP, "central", "main.py"))
     conv58 = ('_c.on_consulta = _consulta' in m58 and '_wa_on_consulta' in m58 and '_c.on_audio = _wa_entrenar_voz' in m58
@@ -2502,7 +2392,7 @@ try:
               and '_V.enrolar(' in m58)                          # entrena la voz del dueño
     if conv58:
         ok("WhatsApp no-oficial CONVERSACIONAL en producción: el central engancha el asistente "
-           "(responde texto+audio del grupo) y entrena la voz del dueño (voz-id) — antes solo en la demo")
+           "(responde texto+audio del grupo) y entrena la voz del dueño (voz-id)")
     else:
         fail("WhatsApp no-oficial no responde/entrena en producción (solo posteaba)", f"conv={conv58}")
 except Exception as e:  # noqa: BLE001
@@ -3674,7 +3564,7 @@ try:
     sospechosos = []
     for f in sorted(os.listdir(ctx)):
         ruta_f = os.path.join(ctx, f)
-        if not os.path.isfile(ruta_f) or f in ("clientes.ejemplo.json", "clientes.demo.json.example"):
+        if not os.path.isfile(ruta_f) or f == "clientes.ejemplo.json":
             continue
         if any(_fn.fnmatch(f, p.rstrip("/")) for p in patrones):
             continue                      # no viaja en la imagen

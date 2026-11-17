@@ -212,7 +212,7 @@ def _html():
       <div class=hint style="margin-top:12px">Actividad técnica en vivo (para soporte). El uso normal no la necesita.</div>
       <pre id=logbox>—</pre>
       <div class=sec style="margin-top:14px"><span>Caché de voz</span></div>
-      <div class=hint><b>Detectar personas nuevas</b>: relee tu sistema (IVMS/HikCentral/BioStar/ZKTeco/Honeywell) y cachea SOLO los empleados nuevos — los ya cacheados se conservan (ideal cuando entra gente nueva, sin regenerar todo). <b>Regenerar todo</b>: borra y recrea desde cero. Los archivos llevan el <b>nombre de la persona y el saludo</b> para identificarlos. <b>No toca</b> tus credenciales ni el reconocimiento de tu voz.</div>
+      <div class=hint><b>Detectar personas nuevas</b>: relee tu sistema de acceso (IVMS) y cachea SOLO los empleados nuevos — los ya cacheados se conservan (ideal cuando entra gente nueva, sin regenerar todo). <b>Regenerar todo</b>: borra y recrea desde cero. Los archivos llevan el <b>nombre de la persona y el saludo</b> para identificarlos. <b>No toca</b> tus credenciales ni el reconocimiento de tu voz.</div>
       <div class=row><button class="btn sm" onclick="detectarNuevos()">＋ Detectar personas nuevas</button>
         <button class="btn sm ghost" onclick="borrarCache()">↻ Regenerar todo desde cero</button></div>
       <div class=msg id=msgc></div>

@@ -100,7 +100,7 @@ def grupos_de(cfg):
 
 def llamar(fn, *args, tipo=None):
     """Llama a un canal pasándole el TIPO de aviso SÓLO si lo entiende. Los canales que no separan
-    por grupos (Telegram, email, un objeto de prueba) reciben el aviso igual que siempre: agregar
+    por grupos (un objeto de prueba, por ejemplo) reciben el aviso igual que siempre: agregar
     la clasificación no puede romper a quien no la usa."""
     try:
         import inspect

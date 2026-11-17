@@ -1,6 +1,6 @@
 # 🚀 Despliegue del Gestor en la VPS (Hostinger) — guía paso a paso
 
-> **Demo = Producción.** Es el **mismo software**. "Ir a producción" = **desplegar el Gestor en la VPS con
+> **Un solo software.** "Ir a producción" = **desplegar el Gestor en la VPS con
 > dominio, TLS y credenciales reales** — no se reescribe nada. El **Gestor** (cerebro) lo hosteamos **nosotros
 > (INTELLIHELP)** en **1 VPS Linux** para toda la flota; el **cliente solo instala el Agente**. Pendientes de la
 > Fase 2 (Nuitka, MSI, auto‑update firmado, métricas de flota): ver [FALTANTES.md](FALTANTES.md).
@@ -124,19 +124,9 @@ docker compose restart central panel              # recarga y descifra en memori
 
 ## 🧪 Probar sin tocar producción
 
-El stack de demo **se retiró**: mantener dos ambientes que hacían lo mismo duplicaba el trabajo y era una fuente
-de errores. Para verificar antes de desplegar se usan las **baterías** del repositorio, que no necesitan la VPS:
-
-```bash
-python tests/probar_requerimientos.py     # 115 requerimientos transversales (sin red)
-python tests/probar_helpdesk_mejoras.py   # esperas, escaladas y @menciones (sin red)
-python tests/probar_sistema.py            # circuito completo por HTTP
-```
-
-Si hace falta un ambiente aislado sobre la VPS (para una demostración con datos ficticios), se levanta un stack
-con **otro nombre de proyecto y otro volumen** —`docker compose -p ithos-demo`, con su propio `clientes.json`
-(hay una plantilla en `ITHOS/central/clientes.demo.json.example`) y su propio `.env`— y se baja con `down -v`
-para que no quede nada. **Nunca** poner credenciales de un cliente real en un ambiente de demostración.
+No hay ambiente de demo: el software es uno solo y **se prueba en producción, con pruebas aisladas**
+que no afectan a nadie —tickets rotulados `(test)` en la entidad raíz de GLPI, donde ITHOS no mira, y que se
+purgan al terminar; clientes de prueba sin canales en las baterías—.
 
 ## ✅ Checklist de GO‑LIVE
 - [ ] VPS **Ubuntu** + **UFW** (solo 22/80/443); 8080/8090 NO públicos.

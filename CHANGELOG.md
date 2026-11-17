@@ -146,6 +146,30 @@ y el versionado, [SemVer](https://semver.org/lang/es/).
   omisión; ahora dice **Mesa de Ayuda ITH**, que es además lo que firma el pie de las
   notificaciones. Todo queda versionado y explicado en `docs/glpi/`.
 
+### Removed
+
+- **El modo demo, en todas partes.** Se prueba en producción, con pruebas aisladas que no tocan a
+  nadie (tickets `(test)` en la entidad raíz, clientes de prueba sin canales). Afuera: el `--demo`
+  del agente y su consulta de arranque, la variable `ITHOS_DEMO` del Gestor (canales, métricas
+  aparte y cookie sin `secure`), el atajo de WhatsApp compartido de los notificadores, la plantilla
+  `clientes.demo.json.example` y, en la VPS, `instaladores/demo.sh` y las métricas de demo. La
+  cookie de sesión ahora es `secure` siempre.
+- **Anomalías de fichaje fuera de horario** (`anomalias.py`, `acceso.py`): IVMS no tiene control de
+  horario, así que nunca generaban nada. Salen también del panel y del prompt del asistente.
+- **La lectura del propio código** (`codebase.py`) para contestar preguntas técnicas. El contexto
+  técnico del dueño pasó de ~390 líneas de historia —que describían Zendesk, Jira, HikCentral,
+  BioStar, Telegram y una cadena de IA vieja como si existieran— a un resumen de 43 líneas de lo
+  que hay; el detalle sale del DOCUMENTO_MAESTRO. Si preguntás qué IA usa, contesta con la cadena
+  real del estado de IA, también en las preguntas técnicas.
+- **«Ninguno» en el alta** (sistema de tickets e integrador) y el adaptador nulo: ITHOS es GLPI +
+  IVMS. Un tipo de tickets desconocido ahora da un error claro.
+- **Menciones a canales y sistemas que no hay** (Telegram, email, Teams, Slack, Matrix, Zendesk,
+  Jira, Freshservice, osTicket, BioStar, ZKTeco, Honeywell) en comentarios, en el prompt del
+  asistente —que se los prometía a los clientes—, en el alcance público, en las reglas de
+  pronunciación y en la pista de vocabulario de la transcripción. `PyMySQL` (era para osTicket)
+  sale de los requirements. El parser de ids estilo Jira queda en el número del ticket.
+- `_split_plan.txt` (el plan de cuando se partió el asistente).
+
 ### Fixed
 
 - **Cerrar, reabrir o poner en espera un ticket por chat fallaba después de hacerlo.** Al partir el

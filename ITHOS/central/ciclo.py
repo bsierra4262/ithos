@@ -449,8 +449,7 @@ def gestionar_ciclo(cliente, triage, entidad, estado):
         return _cache_asig[tid]
 
     def anunciar(tid, texto, wa):
-        """Suma un anuncio del ticket con la @mención al asignado (y su nombre en el texto, para los
-        canales sin menciones: Telegram/email/Teams)."""
+        """Suma un anuncio del ticket con la @mención al asignado (y su nombre en el texto)."""
         tels, nombres = asignado(tid)
         if nombres:
             wa = f"{wa}\n👤 Asignado a: {', '.join(nombres)}"

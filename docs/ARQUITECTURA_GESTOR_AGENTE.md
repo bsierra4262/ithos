@@ -218,8 +218,6 @@ ahí sí un instalador — pero por ahora es SaaS nuestro.
   **auto‑update** del agente contra el Gestor (avisar + el usuario decide + descarga/instala por red, §3.1).
 - **Fase 3 — Escala:** métricas de flota (qué agentes conectados, qué versión), despliegue gradual de versiones.
 
-**En la demo:** reflejar el mismo vocabulario y flujo (Gestor + Agente) — la demo ya lanza el agente real como
-subproceso; solo cambia el nombre y el arranque como servicio en producción.
 
 ---
 

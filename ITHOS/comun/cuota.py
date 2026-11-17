@@ -400,7 +400,7 @@ class GestorCuota:
 
 def crear_gestor(cli, notificar=None):
     """Arma el GestorCuota del cliente desde su config (límite, aviso, zona). Un solo lugar
-    para que demo y producción queden IGUALES."""
+    para que todos los caminos queden IGUALES."""
     ia = cli.get("ia") or {}
     return GestorCuota(
         cli.get("nombre") or "cliente",

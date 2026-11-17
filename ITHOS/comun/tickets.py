@@ -2,10 +2,8 @@
 # -*- coding: utf-8 -*-
 """
 Adaptador GENÉRICO de sistemas de tickets. Todo lo que hace ITHOS (KB, acciones del
-agente, reportes, proactivo) habla con ESTA interfaz común, así funciona igual para
-GLPI, Zendesk, Freshservice, Jira, osTicket, etc. Cada sistema se enchufa por su
-adaptador. GLPI está 100% implementado; los demás usan comun/tickets_otros.py (se
-completan/activan por cliente).
+agente, reportes, proactivo) habla con ESTA interfaz común y no con GLPI directamente.
+Hoy el sistema es GLPI.
 
 Interfaz común (todos exponen lo que puedan; lo no soportado avisa):
   abiertos() -> [ {id, asunto, estado} ]
@@ -30,7 +28,7 @@ _ESTADO_TXT = {1: "Nuevo", 2: "En curso", 3: "Planificado", 4: "En espera",
 # Respaldo si el cliente NO tiene definiciones SLA/OLA en GLPI (se fijan las fechas a mano).
 _SLA_HORAS = {"urgente": (1, 4), "alta": (2, 8), "media": (4, 24), "baja": (8, 72)}
 
-# CICLO IGUAL A LA DEMO (triage): en GLPI el SLA/OLA se aplica por IDs de DEFINICIÓN, y GLPI
+# CICLO IGUAL AL TRIAGE AUTOMÁTICO: en GLPI el SLA/OLA se aplica por IDs de DEFINICIÓN, y GLPI
 # calcula solo el TTO/TTR EXTERNO y el INTERNO (TTO interno / TTR interno). El nivel sale de la
 # prioridad. Estos IDs son los de SRT/ITH; se pueden pisar por cliente en integrador_glpi.
 _NIVEL_SLA_DEFAULT = {
@@ -330,7 +328,7 @@ class _GLPI:
         tid = _norm_id(tid)
         n = _PRIO.get(str(prio).lower(), 3)
         c = self._c()
-        try:                                               # urgencia+impacto+prioridad (como la demo)
+        try:                                               # urgencia+impacto+prioridad (como el triage)
             c.request(f"/Ticket/{tid}", "PUT",
                       {"input": {"urgency": n, "impact": n, "priority": n}})
         finally:
@@ -351,7 +349,7 @@ class _GLPI:
             return (f"No reconozco al técnico '{tecnico}'. Los que tengo configurados son: "
                     f"{conocidos}.")
         c = self._c()
-        # Como la demo: además del técnico, ITHOS queda asignado al ticket.
+        # Como el triage: además del técnico, ITHOS queda asignado al ticket.
         for u in (self.ithos_id, uid):
             try:
                 c.request("/Ticket_User", "POST",
@@ -690,7 +688,7 @@ class _GLPI:
         return f"🏷️ Ticket #{tid} categorizado como '{categoria}'."
 
     def cambiar_sla(self, tid, prioridad=None):
-        """Fija el SLA IGUAL QUE LA DEMO: aplica las DEFINICIONES SLA/OLA (slas_id_tto/ttr +
+        """Fija el SLA IGUAL QUE EL TRIAGE: aplica las DEFINICIONES SLA/OLA (slas_id_tto/ttr +
         olas_id_tto/ttr) según el nivel derivado de la prioridad. GLPI calcula solo el TTO/TTR
         EXTERNO y el INTERNO (TTO interno / TTR interno). Si el cliente no tiene definiciones
         SLA/OLA, cae a fijar las fechas a mano. Si no se pasa prioridad, la lee del ticket."""
@@ -704,7 +702,7 @@ class _GLPI:
                     int(t.get("priority", 3)), "media")
             nivel = _NIVEL_POR_PRIO.get(str(prioridad).lower(), "LEVE")
             campos = dict(self.niveles_sla.get(nivel, {}))
-            if campos:                                     # definiciones SLA/OLA (como la demo)
+            if campos:                                     # definiciones SLA/OLA (como el triage)
                 c.request(f"/Ticket/{tid}", "PUT", {"input": campos})
                 detalle = f"nivel {nivel} (SLA+OLA interno y externo)"
             else:                                          # respaldo: fechas a mano (solo externo)
@@ -721,7 +719,7 @@ class _GLPI:
 
     def aplicar_ciclo(self, tid, categoria=None, prioridad="media", responsable="bsierra",
                       primera_respuesta="", necesita_info=False):
-        """CICLO COMPLETO igual a la demo, en una sola pasada: categoría + urgencia/impacto/
+        """CICLO COMPLETO igual al triage automático, en una sola pasada: categoría + urgencia/impacto/
         prioridad + SLA/OLA (interno y externo) + asigna ITHOS y el técnico + 1ª RESPUESTA
         (que pide los datos que falten) + estado (EN ESPERA si falta info, si no EN CURSO)."""
         tid = _norm_id(tid)
@@ -874,84 +872,6 @@ class _GLPI:
         return R.generar(self.gl, self.ent)
 
 
-class _Nulo:
-    """Fallback si el tipo de tickets no está soportado o falta configuración."""
-
-    def __init__(self, tipo):
-        self.tipo = tipo or "desconocido"
-
-    def _na(self, que):
-        return f"({que} no disponible: sistema de tickets '{self.tipo}' sin configurar)"
-
-    def abiertos(self):
-        return []
-
-    def resueltos(self, n=80):
-        return []
-
-    def estado(self, tid):
-        return self._na("estado")
-
-    def detalle(self, tid):
-        return self._na("lectura de ticket")
-
-    def sin_procesar(self, n=60):
-        return []
-
-    def categorizar(self, tid, categoria):
-        return self._na("categorizar")
-
-    def cambiar_sla(self, tid, prioridad=None):
-        return self._na("SLA")
-
-    def aplicar_ciclo(self, tid, categoria=None, prioridad="media", responsable="bsierra",
-                      primera_respuesta="", necesita_info=False):
-        return self._na("ciclo completo")
-
-    def permisos(self):
-        return {"ok": True, "perfil": "?", "puede": {},
-                "resumen": f"Permisos del sistema '{self.tipo}': asumo estándar (a confirmar por API)."}
-
-    def responder(self, tid, texto):
-        return self._na("responder")
-
-    def crear(self, asunto, contenido):
-        return self._na("crear ticket")
-
-    def cambiar_estado(self, tid, estado):
-        return self._na("cambiar estado")
-
-    def cambiar_prioridad(self, tid, prio):
-        return self._na("cambiar prioridad")
-
-    def asignar(self, tid, tecnico):
-        return self._na("asignar")
-
-    def buscar(self, texto):
-        return []
-
-    def casos_similares(self, descripcion, tope=25, estados=(4, 5, 6), excluir=()):
-        return []
-
-    def en_riesgo_sla(self, horas=4):
-        return []
-
-    def sla(self):
-        return {"error": self._na("SLA")}
-
-    def sla_texto(self):
-        return self._na("reporte de SLA")
-
-
-# ===================================================================== TÉCNICOS DEL CLIENTE
-# Config por cliente: "tecnicos": [{nombre, glpi_id, glpi_login, telefonos:[...]}]. Se usa para
-#   · reconocer "mis tickets" por el número de quien escribe (comun/conversacion.py), y
-#   · @MENCIONAR al TÉCNICO ASIGNADO en los avisos de WhatsApp (tickets y SLA).
-# Vale para CUALQUIER sistema de tickets: el id del técnico se busca por 'glpi_id' (GLPI) o por
-# 'id'/'login'/'email'/'nombre' (Zendesk, Freshservice, Jira, osTicket), así el mismo bloque de
-# config sirve para todos sin tocar código.
-
-
 def tecnicos(cli_cfg):
     """Lista de técnicos configurados del cliente (sin las entradas de solo-comentario '_nota')."""
     out = []
@@ -995,8 +915,7 @@ def telefonos_asignados(cli_cfg, uids):
 
 
 def nombres_asignados(cli_cfg, uids):
-    """Nombres de los técnicos asignados (para que el aviso diga a QUIÉN, incluso en los canales
-    que no soportan @mención: Telegram, email, Teams…)."""
+    """Nombres de los técnicos asignados (para que el aviso diga a QUIÉN, además de la @mención)."""
     out = []
     for uid in (uids or []):
         t = tecnico_por_id(cli_cfg, uid)
@@ -1037,12 +956,9 @@ def acompanan_a(cli_cfg, login_o_id):
 
 
 def adaptador(cli_cfg):
-    """Devuelve el adaptador del sistema de tickets del cliente.
-
-    Hoy el único sistema implementado es GLPI. Todo lo que hace ITHOS habla con la INTERFAZ COMÚN
-    de este módulo, no con GLPI directamente, así que sumar otro sistema (Zendesk, Jira,
-    Freshservice, osTicket…) es escribir un adaptador con estos mismos métodos y devolverlo acá:
-    el resto del software no se entera. Mientras tanto, un tipo desconocido devuelve el adaptador
-    NULO, que responde "no disponible" en vez de romper."""
+    """Devuelve el adaptador del sistema de tickets del cliente. Hoy es GLPI: todo ITHOS habla
+    con la interfaz de este módulo, no con GLPI directamente."""
     tipo = ((cli_cfg.get("tickets") or {}).get("tipo")) or "glpi"
-    return _GLPI(cli_cfg) if tipo == "glpi" else _Nulo(tipo)
+    if tipo != "glpi":
+        raise ValueError(f"Sistema de tickets '{tipo}' no soportado: ITHOS trabaja con GLPI.")
+    return _GLPI(cli_cfg)

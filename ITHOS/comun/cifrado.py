@@ -17,7 +17,7 @@ clave es computacionalmente inviable).
 Clave maestra (`ITHOS_MASTER_KEY`, en el `.env` del server, NUNCA en el repo/backup de datos):
   · base64 de 32 bytes (ideal, generá con `openssl rand -base64 32`), o
   · una passphrase cualquiera (se deriva a 32 bytes con SHA-256).
-Si no está seteada, se genera y persiste una clave en un archivo aparte (solo para dev/demo, con
+Si no está seteada, se genera y persiste una clave en un archivo aparte (solo para desarrollo y tests, con
 aviso): en producción SIEMPRE conviene fijar `ITHOS_MASTER_KEY` en el `.env`.
 """
 import os
@@ -58,7 +58,7 @@ def _clave() -> bytes:
         except (ValueError, TypeError):
             _clave_cache = hashlib.sha256(env.encode("utf-8")).digest()
         return _clave_cache
-    # Fallback (dev/demo): clave persistida en un archivo. En prod, fijá ITHOS_MASTER_KEY en el .env.
+    # Fallback (desarrollo y tests): clave persistida en un archivo. En prod, fijá ITHOS_MASTER_KEY en el .env.
     ruta = _archivo_clave()
     try:
         with open(ruta, "rb") as f:

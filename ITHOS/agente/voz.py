@@ -333,7 +333,7 @@ class VozAgente:
             log.debug("Pre-cache falló (%s): %s", texto[:30], e)
 
     def _preparar(self, texto):
-        # Limpia markdown + pausas (compartido con la demo). La fonética (marcas/nombres en inglés)
+        # Limpia markdown + pausas (compartido con el Gestor). La fonética (marcas/nombres en inglés)
         # se aplica solo para la voz local edge (ver _edge). MISMO punto para reproducir y pre-cachear
         # -> la clave de caché coincide (si no, el pre-cacheo no serviría).
         try:

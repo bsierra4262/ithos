@@ -186,7 +186,7 @@ def pendientes(cliente=None):
 
 def iniciar_reactivador(cli_cfg, avisar=None, intervalo=60):
     """Lanza un hilo (daemon) que cada `intervalo`s pasa a EN CURSO los tickets pospuestos cuyo
-    día/hora ya llegó, y opcionalmente avisa(mensaje). Mismo código en demo y producción."""
+    día/hora ya llegó, y opcionalmente avisa(mensaje)."""
     from comun import tickets as _T
     nombre = cli_cfg.get("nombre") or "cliente"
     adap = _T.adaptador(cli_cfg)

@@ -14,10 +14,8 @@ async function loadCats(){
  CATS.integradores=await i.json();CATS.tickets=await t.json();CATS.canales=await c.json();CATS.ia=await a.json();
 }
 function catLabel(cat,t){return (CATS[cat]&&CATS[cat][t]&&CATS[cat][t].label)||t||'—'}
-function tipoInteg(c){return (c&&typeof c.integrador==='object'&&c.integrador)?(c.integrador.tipo||'ninguno'):((c&&c.integrador)||'ninguno')}
-function tipoTicket(c){ if(c&&c.tickets&&c.tickets.tipo) return c.tickets.tipo;
- if(c&&c.integrador_glpi&&c.integrador_glpi.glpi_url) return 'glpi';   // cliente GLPI existente
- return 'ninguno'; }                                                    // alta nueva -> sin sistema por defecto
+function tipoInteg(c){return (c&&typeof c.integrador==='object'&&c.integrador)?(c.integrador.tipo||'ivms'):((c&&c.integrador)||'ivms')}
+function tipoTicket(c){ return (c&&c.tickets&&c.tickets.tipo)||'glpi'; }
 function integName(t){return catLabel('integradores',t)}
 
 // Los grupos de WhatsApp por tema: filas de (nombre del grupo, de qué es).
@@ -59,7 +57,7 @@ function campoInput(pref,f,val){
 function renderCampos(hostSel,cat,tipo,pref,vals){
  let campos=(CATS[cat]&&CATS[cat][tipo]&&CATS[cat][tipo].campos)||[];
  $(hostSel).innerHTML = campos.length ? ('<div class=form style="padding:0">'+campos.map(f=>campoInput(pref,f,(vals||{})[f.k])).join('')+'</div>')
-   : '';   // 'Ninguno' u opciones sin datos: no mostramos nada (más limpio que 'Sin campos.')
+   : '';   // opciones sin datos: no mostramos nada (más limpio que 'Sin campos.')
 }
 function readCampos(cat,tipo,pref){
  let campos=(CATS[cat]&&CATS[cat][tipo]&&CATS[cat][tipo].campos)||[], out={};
@@ -94,7 +92,7 @@ function formHTML(c,admin){
  let terProv=(ia.terciario&&ia.terciario.proveedor)||'';
  let sec3=Object.entries(CATS.ia).map(([k,v])=>`<option value="${k}" ${k===terProv?'selected':''}>${v.label}</option>`).join('');
  let vm=ia.voz_motor||'charon'; let rp=c.reportes||{};
- let pr=c.proactivo||{}; let an=c.anomalias||{};
+ let pr=c.proactivo||{};
  return `<div class=form id=jform>
    <div class="f full"><label>Nombre de la empresa</label><input id=f_nombre value="${esc(c.nombre)}" placeholder="INTELLIHELP S.A."></div>
    <div class=f><label>Email de contacto (también se usa para la facturación)</label><input id=f_email type=email value="${esc(c.email)}" placeholder="soporte@empresa.com"></div>
@@ -130,7 +128,7 @@ function formHTML(c,admin){
    <div class="f full"><div class=chk><input type=checkbox id=f_ilim ${ia.ilimitada?'checked':''}><span>Forzar plan PAGO (opcional — normalmente ITHOS detecta solo si la API es paga o gratis y elige el mejor modelo)</span></div></div>
 
    <div class=sec><span>Sistema de tickets · tu mesa de ayuda</span></div>
-   <div class="f full hint">ITHOS lee y gestiona tus tickets: los clasifica, asigna, responde al cliente y cierra. Elegí el sistema que usás; si todavía no tenés uno, poné <b>Ninguno</b> y ITHOS igual funciona por voz y avisos.</div>
+   <div class="f full hint">ITHOS lee y gestiona tus tickets: los clasifica, asigna, responde al cliente y cierra. Sistema compatible: GLPI.</div>
    <div class="f full"><label>¿Qué sistema de tickets usás?</label><select id=f_tkt onchange="camposTickets()">${optList('tickets',tkt)}</select></div>
    <div class="f full" id=tkHost></div>
 
@@ -139,7 +137,7 @@ function formHTML(c,admin){
    <div class="f full" id=canalesHost></div>
 
    <div class=sec><span>Control de acceso · portero por voz</span></div>
-   <div class="f full hint">Si tenés molinetes o lectores biométricos, ITHOS saluda por voz al fichar y avisa los fichajes fuera de horario. Compatible con IVMS, HikCentral, BioStar 2, ZKTeco y Honeywell. Si no tenés, dejá <b>Ninguno</b>.</div>
+   <div class="f full hint">ITHOS saluda por voz a cada persona que ficha en tus molinetes o lectores. Sistema compatible: IVMS (Hikvision).</div>
    <div class="f full"><label>¿Qué sistema de control de acceso usás?</label><select id=f_integ onchange="camposInteg()">${optList('integradores',t)}</select></div>
    <div class="f full" id=integCampos></div>
 
@@ -167,12 +165,11 @@ function formHTML(c,admin){
    <div class="f full hint">Ejemplo: para recibirlo <b>todos los viernes a las 18:00</b>, elegí <b>Una vez por semana</b>, día <b>Viernes</b> y hora <b>18:00</b>. El informe trae los KPIs (creados, resueltos, backlog), el SLA, el MTTR y el desglose por técnico y categoría, y sale por los canales que configuraste arriba.</div>
 
    <div class=sec><span>ITHOS proactivo · se adelanta a los problemas</span></div>
-   <div class="f full hint">ITHOS no espera a que le preguntes: te avisa antes de que un ticket incumpla su SLA y detecta fichajes fuera de horario. Además arma <b>solo</b> una base de conocimiento con tus tickets resueltos para resolver casos parecidos.</div>
+   <div class="f full hint">ITHOS no espera a que le preguntes: te avisa antes de que un ticket incumpla su SLA. Además arma <b>solo</b> una base de conocimiento con tus tickets resueltos para resolver casos parecidos.</div>
    <div class=f><div class=chk style="margin-top:22px"><input type=checkbox id=f_pro_sla ${pr.sla_enabled?'checked':''}><span>Avisarme antes de que venza un SLA</span></div></div>
    <div class=f><label>Avisar cuando falten (horas)</label><input id=f_pro_horas type=number value="${pr.aviso_horas!=null?pr.aviso_horas:4}"></div>
    <div class=f><label>Revisar cada (min)</label><input id=f_pro_min type=number value="${pr.revisar_min!=null?pr.revisar_min:15}"></div>
-   <div class=f><div class=chk style="margin-top:22px"><input type=checkbox id=f_ano_en ${an.enabled?'checked':''}><span>Anomalías de horario (HikCentral/BioStar2)</span></div></div>
-   <div class="f full hint">Las <b>anomalías de horario</b> vienen apagadas y solo aplican a sistemas con control horario (HikCentral / BioStar 2), que toman su config por API sola (IVMS no aplica). La base de conocimiento se arma sola, por empresa, y es privada.</div>
+   <div class="f full hint">La base de conocimiento se arma sola, por empresa, y es privada.</div>
    <div class="f full"><button class="btn sm" type=button onclick="regenKB()" ${c.api_key?'':'disabled'}>Regenerar base de conocimiento ahora</button></div>
    </div>
  </div>`;
@@ -181,9 +178,6 @@ function camposInteg(){renderCampos('#integCampos','integradores',$('#f_integ').
 function camposTickets(){
  let tkt=$('#f_tkt').value, vals=window._tkv||{};
  if(tkt==='glpi'){let gl=window._gl||{};vals={glpi_url:gl.glpi_url,glpi_app_token:gl.glpi_app_token,glpi_user_token:gl.glpi_user_token,glpi_ithos_token:gl.glpi_ithos_token,glpi_bsierra_token:gl.glpi_bsierra_token,glpi_test_token:gl.glpi_test_token,entity_id:gl.entity_id};}
- // Reportes ITIL + ITHOS proactivo son de la MESA DE AYUDA: si no hay sistema de tickets, se ocultan.
- let dep=document.getElementById('depTickets');
- if(dep) dep.style.display=(tkt==='ninguno')?'none':'contents';
  renderCampos('#tkHost','tickets',tkt,'tk_',vals);
 }
 // --- Canales múltiples ---
@@ -374,7 +368,7 @@ function collectForm(){
    tickets:tickets, notificaciones:notis, terminales:terms,
    kb_outline:{url:(($('#kb_ol_url')||{}).value||'').trim(), token:(($('#kb_ol_tok')||{}).value||'').trim()},
    wa_session:window._waSesion||'',   // sesión de WhatsApp vinculada (se preserva; no perder el QR)
-   reportes:colReportes(), proactivo:colProactivo(), anomalias:colAnomalias()};
+   reportes:colReportes(), proactivo:colProactivo()};
 }
 function colReportes(){
  let frec=$('#f_rep_frec').value, r={enabled:$('#f_rep_en').checked,frecuencia:frec,hora:($('#f_rep_hora')||{}).value||'09:00'};
@@ -386,8 +380,6 @@ function colReportes(){
 }
 function colProactivo(){return {sla_enabled:($('#f_pro_sla')||{}).checked||false,
  aviso_horas:+($('#f_pro_horas')||{}).value||4, revisar_min:+($('#f_pro_min')||{}).value||15}}
-function colAnomalias(){return {enabled:($('#f_ano_en')||{}).checked||false,
- revisar_min:+($('#f_pro_min')||{}).value||10}}
 function regenKB(){let k=($('#f_key')||{}).value;if(!k){toast('Guardá la empresa primero');return;}
  toast('Regenerando base de conocimiento…');
  fetch('/api/kb_generar/'+encodeURIComponent(k)).then(r=>r.json()).then(d=>{

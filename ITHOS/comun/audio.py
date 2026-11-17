@@ -16,7 +16,7 @@ Si el audio no tiene voz humana, NO se transcribe (así ITHOS nunca "inventa" te
 ruido: transcribe SOLO lo que dijo alguien). Extras opcionales:  pip install onnxruntime
 webrtcvad-wheels . (A futuro: identificación por VOZ del dueño para el modo admin.)
 
-Usado por la demo (iniciar_demo.py) y por el agente en producción (agente/escucha.py).
+Usado por el agente (agente/escucha.py).
 """
 
 import logging

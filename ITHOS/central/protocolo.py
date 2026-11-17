@@ -25,7 +25,7 @@ EV_TERMINALES = "terminales_descubiertos"  # el agente DESCUBRE las terminales d
 #   para que las mapee desde el panel: {"terminales": ["Puerta Principal", "Sala Tecnica", ...]}
 EV_ESTADO = "estado_agente"   # el agente reporta su salud para el dashboard: {"microfono":bool,
 #   "integrador":bool, "integrador_tipo":str, "voz":bool}. El gestor lo combina con el estado de los
-#   canales (WhatsApp/email/...) -> en producción TODO debe estar activo.
+#   canales (WhatsApp) -> en producción TODO debe estar activo.
 EV_CONSULTA_VOZ = "consulta_voz"  # el usuario habló ("ITHOS, ...") o mandó un audio:
 #   datos {"audio_b64": "...", "mime": "audio/wav"} o {"texto": "..."}
 EV_PRECACHE = "precache_acceso"   # el agente pide PRE-CACHEAR saludos de personas conocidas

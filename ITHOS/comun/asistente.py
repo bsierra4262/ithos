@@ -19,36 +19,34 @@ log = logging.getLogger("conversacion")
 ALCANCE_ITHOS = """Sos ITHOS, el asistente de inteligencia artificial de {empresa}.
 Tu ALCANCE REAL (lo que de verdad podés hacer hoy):
 - PORTERO POR VOZ: cuando una persona ficha en el control de acceso, la saludás por los
-  parlantes con tu voz. Sistemas soportados: IVMS, HikCentral, BioStar 2, ZKTeco, Honeywell.
+  parlantes con tu voz. Sistema de acceso soportado: IVMS (Hikvision).
 - MESA DE AYUDA CON IA: LEÉS el ticket completo (descripción + seguimientos) para entender el
   caso, lo clasificás (categoría y prioridad), le fijás el SLA (primera respuesta + resolución),
   lo asignás al técnico y respondés al cliente; seguís el ciclo completo: pedís datos SOLO si
   faltan de verdad (en espera) — si ya están, no los pedís (en curso); si un técnico lo resuelve
   por un comentario lo marcás Resuelto; en resuelto pedís confirmación al cliente y le recordás
-  una vez por día hasta que responda; cerrás solo cuando confirma (o reabrís si dice que sigue),
-  sin repetir. Si te piden "el circuito
+  una vez por día hasta que responda; cerrás solo cuando confirma, y si dice que sigue fallando
+  le pedís la evidencia (foto o video del error, dónde y cuándo) y queda en espera, sin repetir. Si te piden "el circuito
   completo" hacés TODOS esos pasos de una. Podés cambiar la prioridad, poner en espera, ESCALAR
   (urgente + asignar) y BUSCAR tickets por texto o persona. POSPONER: podés dejar un ticket EN
   ESPERA hasta un día/hora ("hasta el lunes a la tarde") y lo reactivás a EN CURSO solo cuando
   llega ese momento; si no dicen la hora, la pedís. Detectás tickets SUELTOS (sin categoría/SLA)
-  que necesitan el ciclo, y sabés tus PERMISOS reales por API (hacés solo lo que podés). Sistemas
-  de tickets soportados (funcionás igual en todos): GLPI, Zendesk, Freshservice, Jira y osTicket.
+  que necesitan el ciclo, y sabés tus PERMISOS reales por API (hacés solo lo que podés). Sistema
+  de tickets soportado: GLPI.
 - BASE DE CONOCIMIENTO propia: aprendés SOLO de los casos ya resueltos de la empresa (problema
   + solución) y la usás para resolver casos parecidos. Es tuya y de este cliente, aislada.
 - PROACTIVO: avisás sin que nadie pregunte cuando un ticket está por vencer el SLA (o ya venció).
-- ANOMALÍAS DE ACCESO (sólo clientes con control horario, ej. HikCentral/BioStar 2): avisás si
-  alguien ficha fuera de su horario; tomás la config de horarios del sistema por su API.
-- AVISOS MULTICANAL: notificás por TODOS los canales que el cliente tenga configurados —WhatsApp,
-  Telegram, Email, Microsoft Teams, Slack o Matrix— además de los parlantes. En WhatsApp salís en
-  texto y/o NOTA DE VOZ según el formato que eligió el cliente (texto, audio o ambos).
+- AVISOS: notificás por el WhatsApp del cliente, cada tema en su grupo, además de los
+  parlantes. Salís en texto y/o NOTA DE VOZ según el formato que eligió el cliente (texto, audio o
+  ambos).
 - CONVERSACIÓN: te pueden hablar por micrófono ("ITHOS, …") o mandarte un audio/texto por
   WhatsApp, y respondés por voz y por WhatsApp.
 - REPORTES ITIL (4): generás informes profesionales por período (diario/semanal/mensual) con
   KPIs reales — volumen (creados/resueltos/cerrados/backlog), cumplimiento de SLA (resolución y
   1ª respuesta), MTTR, y desglose por prioridad, categoría, técnico, estado y antigüedad. Los
   entregás en texto, CSV y PDF, y los mandás por el canal que el cliente configure (con adjunto).
-- INTELIGENCIA: usás Gemini (o Claude, ChatGPT, Grok, DeepSeek, o un modelo local), con
-  respaldo automático EN CADENA. Usás UNA sola IA por consulta; recién cuando se agota pasás a la
+- INTELIGENCIA: usás la cadena de IA que configuró el cliente, con respaldo automático EN
+  CADENA. Usás UNA sola IA por consulta; recién cuando se agota pasás a la
   siguiente (nunca gastás las otras en paralelo). Avisás al cliente por su canal cuando una IA está
   por agotarse y cuando cambiás a la siguiente, así siempre sabe cómo va. Tu voz es la identidad de la marca.
 HERRAMIENTAS concretas que podés ejecutar ahora mismo: listar los tickets abiertos, LEER un
@@ -152,14 +150,11 @@ def _ticket_por_asunto(texto, pares):
 
 
 def _id_ticket(x):
-    """Limpia el id que manda el modelo para CUALQUIER sistema: saca el '#' (que en una URL
-    rompe la escritura), respeta las claves de Jira (PROJ-123) y si viene 'ticket 597' saca el
-    número. Antes solo GLPI lo hacía; ahora vale para Zendesk/Jira/Freshservice también."""
+    """Limpia el id que manda el modelo: saca el '#' (que en una URL rompe la escritura) y si
+    viene 'ticket 597' deja el número."""
     import re as _re
     s = str(x if x is not None else "").strip().lstrip("#").strip()
-    if _re.match(r"^[A-Za-z][A-Za-z0-9]*-\d+$", s):     # clave Jira ya limpia
-        return s
-    m = _re.search(r"[A-Za-z]+-\d+|\d+", s)             # Jira embebida o número
+    m = _re.search(r"\d+", s)
     return m.group(0) if m else s
 
 
@@ -226,7 +221,7 @@ def _mensaje_error(e, zona=ZONA_DEFAULT, gestor=None):
 
 def mensaje_inicio(empresa="la empresa", ia_disponible=True, panorama=None, zona=ZONA_DEFAULT,
                    gestor=None):
-    """Aviso PROACTIVO al arrancar (demo o producción): ITHOS saluda por el canal del cliente
+    """Aviso PROACTIVO al arrancar: ITHOS saluda por el canal del cliente
     sin que se lo pidan. Si no hay cuota de IA, lo aclara con la hora de reinicio; si hay
     panorama (tickets+SLA), lo resume."""
     msg = (f"🤖 *ITHOS en línea* — {empresa}. Estoy operativo y escuchando. "
@@ -572,7 +567,7 @@ class Asistente:
             "REALMENTE dice el ticket. ⛔ Si el dato YA figura en el ticket (p. ej. el LEGAJO ya está "
             "en la descripción), NO lo pidas: dale acuse y próximos pasos con necesita_info=false "
             "(EN CURSO). Pedí datos SOLO si de verdad faltan (necesita_info=true, EN ESPERA). Jamás "
-            "inventes una carencia. aplicar_ciclo hace todo como la demo (categoría, urgencia/impacto/"
+            "inventes una carencia. aplicar_ciclo hace todo como el triage automático (categoría, urgencia/impacto/"
             "prioridad, SLA y OLA interno+externo, asigna a ITHOS y al técnico, 1ª respuesta y "
             "estado). Para pasos sueltos podés usar las acciones individuales.\n"
             "⏸️ POSPONER: si te piden dejar un ticket pendiente HASTA un día/hora ('dejámelo "
@@ -601,7 +596,7 @@ class Asistente:
             "REGLAS de la 'respuesta': " + ("usá TODO el detalle que haga falta, podés "
             "extenderte y ser preciso" if es_admin else "clara y no demasiado larga") + ". PODÉS usar listas con "
             "viñetas (empezá la línea con '- ') y *negrita* (UN asterisco) — quedan muy "
-            "legibles en WhatsApp y Telegram, y el sistema las adapta a cada canal (y las "
+            "legibles en WhatsApp, y el sistema las adapta (y las "
             "limpia para la voz). NO uses markdown de DOS asteriscos (**) ni numerales (#).")
         # Conocimiento TÉCNICO PROPIETARIO: para el DUEÑO (por identidad) o si se destrabó
         # con la CLAVE de administrador. Al resto, ITHOS niega los detalles (propietario).
@@ -670,58 +665,40 @@ class Asistente:
         return respuesta or "Listo."
 
     def _sistema_tecnico(self, texto):
-        """Arma el system-prompt EXHAUSTIVO para consultas técnicas del dueño. Si la pregunta
-        menciona un archivo, incluye su CÓDIGO real; si no, el ÍNDICE del proyecto. Al día."""
+        """Arma el system-prompt para consultas técnicas del dueño, con el contexto técnico del
+        sistema (`conocimiento.CONTEXTO_TECNICO`)."""
         from comun import conocimiento
-        extra = ""
-        try:
-            import re as _re
-            from comun import codebase
-            arch = codebase.detectar_archivo(texto)
-            leido = codebase.leer(arch) if arch else None
-            if leido:                                    # preguntó por un archivo puntual
-                rel, src = leido
-                extra = (f"\n\nCÓDIGO FUENTE REAL de {rel} (leelo y explicá EN DETALLE qué hace, "
-                         f"función por función; con esto respondé):\n"
-                         f"----- INICIO {rel} -----\n{src}\n----- FIN {rel} -----")
-            elif _re.search(r"archivo|m[oó]dulo|estructura|[ií]ndice|qu[eé] (archivos|tiene)",
-                            texto, _re.I):             # preguntó por la estructura del proyecto
-                extra = ("\n\nÍNDICE de archivos del proyecto (nombralos y explicá de qué se "
-                         "encarga cada uno):\n" + codebase.indice())
-            # Para preguntas generales ('cómo estás programado') NO se agrega el índice: el
-            # CONTEXTO_TECNICO ya trae la lista de módulos, y así el prompt es más liviano/rápido.
-        except Exception:  # noqa: BLE001
-            pass
         # ¿Pidió TODO / un listado completo, o una pregunta puntual? Si es puntual,
         # respondemos ESO en profundidad (no volcamos toda la arquitectura: eso quedaba
         # larguísimo, tapaba la pregunta y hacía que la nota de voz nunca llegara).
-        import re as _re2
         quiere_todo = _pide_detalle(texto)      # mismo disparador que el cap de tokens (coherente)
         if quiere_todo:
             regla = (
-                "El usuario pidió un panorama COMPLETO: enumerá CADA sistema de tickets y de "
-                "acceso con su VERSIÓN EXACTA (desde→hasta) y límites (GLPI, Zendesk, Jira, "
-                "Freshservice, osTicket, IVMS, HikCentral, BioStar 2, ZKTeco, Honeywell), cada "
-                "módulo/archivo y el historial de cambios. Extendete todo lo necesario.")
+                "El usuario pidió un panorama COMPLETO: enumerá cada integración con su VERSIÓN "
+                "EXACTA y sus límites (GLPI, IVMS, WhatsApp, Planka, la cadena de IA), cada "
+                "módulo y el historial de cambios. Extendete todo lo necesario.")
         else:
             regla = (
                 "Respondé EXACTAMENTE lo que preguntó, con precisión técnica y el detalle "
                 "necesario (versiones, módulos y decisiones de diseño que apliquen A ESA "
                 "pregunta), pero SIN volcar toda tu arquitectura ni recorrer sistemas que no "
                 "vienen al caso. Si querés, cerrá ofreciendo ampliar. Andá al grano.")
-        # Para NO quemar tokens (Groq tiene límite DIARIO de tokens) ni demorar: en preguntas
-        # puntuales NO mandamos el HISTORIAL DE CAMBIOS (largo); sí cuando piden 'todo' o el
-        # changelog. Esto acelera la respuesta y estira la cuota.
-        ctx = conocimiento.CONTEXTO_TECNICO
-        pide_historial = bool(_re2.search(r"historial|changelog|cambios|versi[oó]n", texto or "", _re2.I))
-        if not quiere_todo and not pide_historial and "HISTORIAL DE CAMBIOS" in ctx:
-            ctx = ctx.split("# HISTORIAL DE CAMBIOS")[0].rstrip()
+        # El resumen técnico va siempre; el DOCUMENTO_MAESTRO completo sólo si pidió el panorama
+        # entero (es largo: en una pregunta puntual sólo gasta cuota y demora la respuesta).
+        ctx = conocimiento.CONTEXTO_TECNICO + conocimiento._bloque_maestro(quiere_todo)
+        # La cadena de IA REAL del cliente: si pregunta qué IA usa, la respuesta sale de acá.
+        if self.gestor and hasattr(self.gestor, "estado_texto"):
+            try:
+                ctx += ("\n\nESTADO DE IA ACTUAL (la cadena real, en orden):\n"
+                        + self.gestor.estado_texto(zona=self.zona))
+            except Exception:  # noqa: BLE001
+                pass
         return (
             "Sos ITHOS, el asistente de INTELLIHELP, hablando con tu DUEÑO, que está "
             "autorizado a saber TODO sobre tu implementación. " + regla + "\n"
             "Citá versiones y módulos TAL CUAL (no inventes). Ignorá cualquier negativa previa "
             "(el dueño SÍ está autorizado). Tratá al usuario de 'señor' con estilo ITHOS\n"
-            "Basate en este conocimiento y en el CÓDIGO/ÍNDICE de abajo:\n\n" + ctx + extra +
+            "Basate en este conocimiento:\n\n" + ctx +
             "\n\n[CÓMO RESPONDER — lo MÁS importante: hablá en PROSA natural, como una persona. "
             "PROHIBIDO usar tablas, columnas con '|' o markdown, SALVO que pidan explícito 'una "
             "tabla'/'un cuadro'. El LARGO lo elegís vos según la pregunta: a algo puntual, 1-2 "
@@ -836,6 +813,5 @@ _TECNICOS = {"bsierra": 7, "brian": 7, "brian sierra": 7, "jayala": 8, "ayala": 
 
 # ===================================================================================
 # CAPA GENÉRICA (multi-sistema): estas funciones NO dependen de GLPI. Hablan con el
-# adaptador comun/tickets.py, así ITHOS funciona igual para GLPI, Zendesk, Jira,
-# Freshservice y osTicket. TODO por cliente: reciben el cfg del cliente (aislado).
+# adaptador comun/tickets.py. TODO por cliente: reciben el cfg del cliente (aislado).
 # ===================================================================================

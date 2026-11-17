@@ -40,7 +40,6 @@ pypdf>=4.0                 # leer PDFs de instructivos para la base de conocimie
 
 # --- Bases de datos / integraciones -----------------------------------------
 pyodbc>=5.1                 # IVMS: leer la tabla de fichajes (SQL Server)
-PyMySQL>=1.1                # osTicket: leer/cerrar por su base MySQL
 
 # --- Calidad de código / auditoría (dev/test) -------------------------------
 pyflakes>=3.4               # lint: nombres indefinidos / imports sin usar (auditoría de calidad)

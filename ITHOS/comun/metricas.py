@@ -36,20 +36,13 @@ def _escribir_atomico(ruta, datos):
 
 
 def _archivo(cliente):
-    # DEMO/PRUEBA escribe y lee su PROPIO archivo (metricas_demo_*), AISLADO de producción:
-    # así la actividad real de la demo se VE en su panel sin contaminar los números reales del
-    # cliente en producción (entornos separados). El panel usa el mismo env que quien registra,
-    # por lo que cada entorno muestra lo suyo.
-    entorno = "demo_" if os.environ.get("ITHOS_DEMO") else ""
     seguro = "".join(ch if ch.isalnum() else "_" for ch in cliente)
-    return os.path.join(BASE, f"metricas_{entorno}{seguro}.json")
+    return os.path.join(BASE, f"metricas_{seguro}.json")
 
 
 def registrar(cliente, tipo, n=1):
     """tipo: 'ticket' | 'anuncio' | 'ia_texto' | 'ia_voz' | 'consulta_voz' | 'whatsapp' | ...
-    TODA la actividad REAL cuenta y se ve en el panel del entorno correspondiente. En DEMO se
-    guarda en un archivo aparte (ver _archivo): la demo muestra lo que hace ITHOS de verdad
-    (avisos, triage de tickets, consultas) sin ensuciar las métricas de producción."""
+    TODA la actividad REAL cuenta y se ve en el panel del cliente."""
     mes = datetime.now().strftime("%Y-%m")
     with _LOCK:
         try:

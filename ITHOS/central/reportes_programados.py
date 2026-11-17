@@ -38,7 +38,7 @@ def _guardar(cliente, st):
 
 def texto_reporte(cfg_glpi, entidad, periodo="mensual", zona="America/Argentina/Buenos_Aires",
                   empresa=""):
-    """Resumen ITIL legible (formato WhatsApp/Telegram) del período."""
+    """Resumen ITIL legible (formato WhatsApp) del período."""
     from comun import reportes_itil as RI
     k = RI.calcular(cfg_glpi, entidad, periodo, zona, con_tecnico=True)
     return RI.resumen_texto(k, empresa)

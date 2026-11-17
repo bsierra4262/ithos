@@ -6,10 +6,8 @@
 
 # --- SECRETOS y config real (NUNCA subir) ---
 .env
-.env.demo
 ITHOS/.env
 ITHOS/central/clientes.json
-ITHOS/central/clientes.demo.json
 ITHOS/central/clientes.json.bak-*
 ITHOS/agente/config.json
 ITHOS/agente/config.json.bak-*

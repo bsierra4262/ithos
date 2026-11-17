@@ -3,8 +3,7 @@
 """
 Base de conocimiento AUTOMÁTICA por cliente. ITHOS lee los casos RESUELTOS del sistema
 de tickets del cliente (problema + solución) y arma una base que después usa para
-responder casos parecidos. Funciona con CUALQUIER sistema (GLPI, Zendesk, Jira,
-Freshservice, osTicket…) porque habla con el adaptador genérico comun/tickets.py.
+responder casos parecidos. Habla con el adaptador genérico comun/tickets.py.
 Cada empresa tiene su propia KB, AISLADA (una nunca ve la de otra).
 
 Hoy muchos tickets no explican cómo se resolvieron: se toma la SOLUCIÓN o, si no hay,
@@ -217,7 +216,7 @@ async def vigilar(conf, stop=None):
         return
     gl = conf.get("integrador_glpi") or {}
     tk = conf.get("tickets") or {}
-    if not gl.get("glpi_url") and (tk.get("tipo") in (None, "", "ninguno")):
+    if not gl.get("glpi_url") and not tk.get("tipo"):
         return                                  # sin sistema de tickets no hay de qué aprender solo
     cliente = conf.get("nombre", "cliente")
     ol = conf.get("kb_outline") or {}

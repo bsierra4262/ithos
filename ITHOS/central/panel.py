@@ -119,7 +119,7 @@ def _requiere_admin(method: str, path: str) -> bool:
 async def _auth_mw(request: Request, call_next):
     path, method = request.url.path, request.method
     # NO hay auto-login por query string. Existía un `?k=<ITHOS_ADMIN_TOKEN>` que entraba sin
-    # formulario (lo usaba la demo): la contraseña del Gestor terminaba escrita en los logs de
+    # formulario: la contraseña del Gestor terminaba escrita en los logs de
     # acceso de Caddy, en el historial del navegador y en la cabecera `Referer` de cualquier
     # recurso externo. Se entra por el formulario, que manda la contraseña en el cuerpo del POST.
     if path == "/login":                       # el form de login siempre pasa
@@ -195,7 +195,6 @@ async def cambiar_password(request: Request):
 # integrador del lado del agente, elegirlo no haría nada y el cliente no se
 # enteraría. Sumar uno es escribir su `integrador_<x>.py` y agregarlo acá.
 INTEGRADORES = {
-    "ninguno": {"label": "Ninguno / sólo tickets", "campos": []},
     "ivms": {"label": "IVMS — Hikvision (SQL Server)", "campos": [
         {"k": "db_server", "l": "Servidor SQL (host,puerto)", "ph": "192.168.0.100,1433"},
         {"k": "db_database", "l": "Base de datos", "ph": "ivms_db"},
@@ -246,7 +245,6 @@ IA_PROVEEDORES = {
 # Igual que arriba: acá va lo que tiene adaptador en `comun/tickets.py`. Sumar
 # otra mesa de ayuda es escribir su adaptador con la misma interfaz y listarla.
 TICKETS = {
-    "ninguno": {"label": "Ninguno / todavía no tengo (solo voz y avisos)", "campos": []},
     "glpi": {"label": "GLPI", "campos": [
         {"k": "glpi_url", "l": "URL de la API de GLPI",
          "ph": "https://glpi.tuempresa.com/apirest.php",
@@ -331,8 +329,8 @@ def _cliente_por_key(api_key):
 def _tipo_integrador(c):
     integ = c.get("integrador")
     if isinstance(integ, dict):
-        return integ.get("tipo", "ninguno")
-    return integ or "ninguno"
+        return integ.get("tipo", "")
+    return integ or ""
 
 
 def _armar_ia(b):
@@ -390,7 +388,7 @@ def _armar_cliente(b, api_key):
             "poll_interval": 60,   # cada cuánto se miran los tickets; 5s era pegarle a GLPI 17.280 veces/día
         })
     tickets = {"tipo": tk_tipo, **{k: v for k, v in tk.items() if k != "tipo"}}
-    # Canales de notificación elegidos (whatsapp/telegram/email/teams/slack).
+    # Canal de avisos elegido (WhatsApp, con sus grupos).
     canales = []
     for n in b.get("notificaciones", []) or []:
         if not n.get("tipo"):
@@ -413,7 +411,7 @@ def _armar_cliente(b, api_key):
         "zona_horaria": b.get("zona_horaria", "America/Argentina/Buenos_Aires"),
         "velocidad": 1.25,
         "ia": _armar_ia(b),
-        "integrador": b.get("integrador", "ninguno"),
+        "integrador": b.get("integrador", "ivms"),
         "integrador_config": b.get("integrador_config", {}) or {},
         # Reglas de TERMINALES (control de acceso): mapean cada lector/puerta a un tipo (entrada/salida/
         # sala), su saludo y su frecuencia. El central clasifica cada fichaje por 'device' con esto.
@@ -423,7 +421,6 @@ def _armar_cliente(b, api_key):
         "notificaciones": canales,
         "reportes": b.get("reportes", {}) or {},        # reportes proactivos por cliente
         "proactivo": b.get("proactivo", {}) or {},      # alerta SLA por vencer (por cliente)
-        "anomalias": b.get("anomalias", {}) or {},      # anomalías de horario (OFF por defecto)
         # Wiki Outline para la base de conocimiento (si el cliente la cargó en el alta/portal). Solo
         # se guarda con valores reales (url/token) -> la KB puede importar de ahí sin re-cargarla.
         "kb_outline": {k: v for k, v in (b.get("kb_outline") or {}).items() if v},
@@ -595,7 +592,7 @@ def salud(api_key: str):
     # color aunque el agente todavía no haya reportado su estado.
     integ = c.get("integrador")
     s["integrador_cfg"] = (integ if isinstance(integ, str) else (integ or {}).get("tipo", "")) \
-        if integ not in (None, "", "ninguno") else ""
+        if integ not in (None, "") else ""
     if s.get("mic_habilitado") is None:                          # fallback si el agente no lo reportó
         s["mic_habilitado"] = bool((c.get("microfono") or {}).get("enabled"))
     return s
@@ -751,7 +748,7 @@ def config_agente(api_key: str):
         "central_url": "wss://TU-DOMINIO/ws",
         "api_key": c.get("api_key"),
         "velocidad": c.get("velocidad", 1.25),
-        "integrador": {"tipo": tipo, **integ_cfg} if tipo != "ninguno" else None,
+        "integrador": {"tipo": tipo, **integ_cfg} if tipo else None,
         "ia": {"voz": {"proveedor": "gemini", "voz": "Charon",
                        "gemini_api_key": ia.get("gemini_api_key", ""),
                        "modelo_voz": IA_VOZ.modelo_voz(ia),

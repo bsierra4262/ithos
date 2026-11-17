@@ -8,7 +8,6 @@ pesada: toda la inteligencia vive en el gestor. Solo sale hacia afuera (el clien
 
 Config: agente/config.json. Integrador de acceso: ivms (el que usa INTELLIHELP).
 Correr:  python agente.py            # se conecta y queda escuchando
-         python agente.py --demo     # además manda un fichaje de prueba
 """
 
 import os
@@ -279,18 +278,12 @@ class Agente:
         self._cfg_srv = {}               # config que MANDA el gestor (thin agent): voz+integrador+mic
         self._stop_integ = None          # Event para FRENAR integrador+micrófono al reconectar (sin duplicar)
         self.voz = None                  # se crea con la config del gestor al autenticar
-        # Compat: si la config LOCAL ya trae la voz (la demo arma la config completa), se crea acá.
-        _voz_local = (cfg.get("ia") or {}).get("voz")
-        if _voz_local:
-            self.voz = VozAgente(_voz_local, velocidad=cfg.get("velocidad", 1.25),
-                                 cache_dir=_dir_cache_voz())
-        self._saludo_hecho = False       # consulta de arranque (demo): se manda una sola vez
 
     def _asegurar_voz(self, srv):
         """Crea la voz con lo que MANDA el gestor (la key de Charon del cliente) si no existe aún."""
         if self.voz is None:
-            vc = srv.get("voz") or (self.cfg.get("ia") or {}).get("voz") or {}
-            self.voz = VozAgente(vc, velocidad=srv.get("velocidad", self.cfg.get("velocidad", 1.25)),
+            vc = srv.get("voz") or {}
+            self.voz = VozAgente(vc, velocidad=srv.get("velocidad", 1.25),
                                  cache_dir=_dir_cache_voz())
 
     def ejecutar(self, cmd):
@@ -333,7 +326,7 @@ class Agente:
             asyncio.run_coroutine_threadsafe(
                 ws.send(json.dumps({"tipo": "evento", **ev})), loop)
 
-        # Un integrador nuevo (HikCentral, BioStar 2, ZKTeco, Honeywell…) es un módulo con la misma
+        # Un integrador nuevo es un módulo con la misma
         # interfaz que integrador_ivms: se agrega acá y el resto del agente no cambia.
         try:
             if tipo == "ivms":
@@ -361,7 +354,7 @@ class Agente:
             except Exception as e:  # noqa: BLE001
                 log.error("No se pudo iniciar la escucha por voz: %s", e)
 
-    async def _sesion(self, demo=False):
+    async def _sesion(self):
         async with websockets.connect(self.cfg["central_url"], ping_interval=20,
                                       ping_timeout=20, max_queue=32) as ws:
             from comun import version as VER
@@ -409,17 +402,6 @@ class Agente:
                         return
                     await asyncio.sleep(30)
             tarea_estado = asyncio.create_task(_reportar_estado())
-            if demo:
-                await ws.send(json.dumps({"tipo": "evento", "evento": "acceso",
-                                          "datos": {"nombre": "Brian Sierra",
-                                                    "tipo": "bienvenida"}}))
-            # Consulta de arranque REAL (opcional, la usa la demo): ITHOS responde con datos
-            # reales y queda registrada como consulta. Solo una vez (no en cada reconexión).
-            saludo = os.environ.get("ITHOS_AGENTE_CONSULTA_INICIO")
-            if saludo and not self._saludo_hecho:
-                self._saludo_hecho = True
-                await ws.send(json.dumps({"tipo": "evento", "evento": "consulta_voz",
-                                          "datos": {"texto": saludo}}))
             try:
                 async for raw in ws:
                     msg = json.loads(raw)
@@ -429,7 +411,7 @@ class Agente:
                 tarea_estado.cancel()
         return True
 
-    async def correr(self, demo=False):
+    async def correr(self):
         """Se conecta y se RECONECTA solo al GESTOR (backoff exponencial + JITTER) si se cae, sin
         quedar colgado ni duplicar procesos. El jitter evita que TODOS los agentes reconecten a la
         vez tras una caída (thundering herd)."""
@@ -437,14 +419,12 @@ class Agente:
         espera = 2
         while True:
             try:
-                await self._sesion(demo=demo)
+                await self._sesion()
                 espera = 2                       # reconexión limpia -> reset backoff
             except (OSError, websockets.WebSocketException) as e:
                 log.warning("Conexión con el gestor perdida (%s). Reintento en ~%ss...", e, espera)
             except Exception as e:  # noqa: BLE001
                 log.warning("Error de sesión: %s. Reintento en ~%ss...", e, espera)
-            if demo:
-                return                            # el modo demo es una sola pasada
             # backoff con JITTER (±30%): con conexión mínima reconecta enseguida; sin ella, espera
             # progresivamente hasta 30s, repartido para no golpear todos juntos al volver la red.
             await asyncio.sleep(max(0.5, espera * (0.7 + random.random() * 0.6)))
@@ -601,7 +581,7 @@ def _borrar_datos():
     locales del ejecutable. En desarrollo NO toca la carpeta del proyecto (solo config.json + voz_cache)."""
     import shutil
     forzado = os.environ.get("ITHOS_AGENTE_CONFIG")
-    if forzado:                                  # dev/demo con config alternativa: borra solo ese archivo
+    if forzado:                                  # config alternativa (tests): borra solo ese archivo
         try:
             os.remove(forzado)
         except OSError:
@@ -653,7 +633,7 @@ def _arrancar():
     print()
     ag = Agente(cfg)
     try:
-        asyncio.run(ag.correr(demo=False))
+        asyncio.run(ag.correr())
     except KeyboardInterrupt:
         pass
 
@@ -685,10 +665,9 @@ def main():
     #                    consola (server Linux headless); si está configurado y es headless -> corre.
     #   · --run       -> corre el agente HEADLESS (lo usa la tarea/servicio 24/7). Nunca abre ventana.
     #   · --menu      -> menú de consola (fallback por SSH/sin GUI).
-    #   · --demo      -> una pasada de prueba (lo usa la demo).
     cfg = _leer_cfg()
     configurado = bool(cfg.get("api_key") and cfg.get("agente_token"))
-    headless = "--run" in sys.argv or "--demo" in sys.argv
+    headless = "--run" in sys.argv
     interactivo = sys.stdin is not None and sys.stdin.isatty()
 
     if not headless:
@@ -708,7 +687,7 @@ def main():
         if not configurado:
             log.error("Agente sin configurar. Abrí 'ITHOS Agente' para conectarlo.")
             return
-    if not cfg.get("api_key") and "--demo" not in sys.argv:
+    if not cfg.get("api_key"):
         log.error("Agente sin configurar. Abrí 'ITHOS Agente' para conectarlo.")
         return
     # Modo servicio (--run): SINGLETON (1 agente por PC) + PID + log a archivo (la GUI lo lee). Si ya
@@ -772,7 +751,7 @@ def main():
         pass
     ag = Agente(cargar_config())
     try:
-        asyncio.run(ag.correr(demo="--demo" in sys.argv))
+        asyncio.run(ag.correr())
     except KeyboardInterrupt:
         pass
 

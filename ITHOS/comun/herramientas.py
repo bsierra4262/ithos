@@ -227,7 +227,7 @@ def _resolver_tecnico(persona, remitente, tecnicos):
 def acciones_tickets(cli_cfg, avisar=None):
     """Acciones de ESCRITURA que el agente puede EJECUTAR sobre el sistema de tickets
     del CLIENTE (el que sea). Por cliente. SIN alta de usuarios (a propósito).
-    `avisar(mensaje)`: callback OPCIONAL para notificar a los canales (WhatsApp/Telegram/email) cuando
+    `avisar(mensaje)`: callback OPCIONAL para notificar por WhatsApp cuando
     una acción CAMBIA EL ESTADO del ticket (en espera / cerrado / reabierto / pospuesto). Así el equipo
     se entera igual que con los avisos automáticos del ciclo. Best-effort (nunca rompe la acción)."""
     from comun import tickets as T
@@ -373,7 +373,7 @@ def acciones_tickets(cli_cfg, avisar=None):
         "responder_ticket": {"desc": "Responder al cliente en un ticket (primera respuesta / seguimiento). args:{id,texto}", "fn": responder},
         "categorizar_ticket": {"desc": "Poner la categoría del ticket. args:{id,categoria}", "fn": categorizar},
         "asignar_sla": {"desc": "Fijar el SLA/OLA (interno y externo) según prioridad. args:{id,prioridad?}", "fn": asignar_sla},
-        "aplicar_ciclo": {"desc": "CICLO COMPLETO igual a la demo en UNA acción: categoría + prioridad + SLA/OLA + asigna ITHOS y técnico + 1ª respuesta (pide datos faltantes) + estado. args:{id,categoria,prioridad,responsable,primera_respuesta,necesita_info}", "fn": aplicar_ciclo},
+        "aplicar_ciclo": {"desc": "CICLO COMPLETO igual al triage automático en UNA acción: categoría + prioridad + SLA/OLA + asigna ITHOS y técnico + 1ª respuesta (pide datos faltantes) + estado. args:{id,categoria,prioridad,responsable,primera_respuesta,necesita_info}", "fn": aplicar_ciclo},
         "crear_ticket": {"desc": "Crear un ticket nuevo. args:{asunto,contenido}", "fn": crear},
         "cambiar_prioridad": {"desc": "Cambiar prioridad. args:{id,prioridad:baja|media|alta|urgente}", "fn": prioridad},
         "escalar_ticket": {"desc": "Escalar (urgente + asignar). args:{id,responsable?}", "fn": escalar},

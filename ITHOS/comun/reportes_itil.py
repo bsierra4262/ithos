@@ -3,7 +3,7 @@
 """
 Reportes ITIL (4) de mesa de ayuda, por cliente. Calcula KPIs REALES desde el sistema de
 tickets (GLPI hoy; el resto por el adaptador) y los entrega en 3 formatos:
-  - texto   -> resumen legible por canal (WhatsApp/Telegram/Email)
+  - texto   -> resumen legible para WhatsApp y para la voz
   - CSV     -> datos crudos para planillas
   - PDF     -> informe profesional con diseño (reportlab)
 
@@ -407,7 +407,7 @@ def _mttr_txt(h):
 
 
 def resumen_texto(k, empresa="", canal="whatsapp"):
-    """Resumen legible del reporte. *negrita* para WhatsApp/Telegram; plano para Email/voz."""
+    """Resumen legible del reporte. *negrita* para WhatsApp; plano para la voz."""
     def top(d, n=5):
         return sorted(d.items(), key=lambda x: -x[1])[:n]
     L = []

@@ -34,8 +34,8 @@ def _hash_file() -> str:
 
 
 def _alta_path() -> str:
-    """Archivo de tokens de alta. En la demo se aísla con `ITHOS_ALTA_FILE` (env) para no
-    tocar los de producción y poder borrarlo al cerrar (la demo no deja nada registrado)."""
+    """Archivo de tokens de alta. `ITHOS_ALTA_FILE` (env) lo lleva al volumen persistente en
+    producción y a un archivo temporal en los tests."""
     return (os.environ.get("ITHOS_ALTA_FILE") or "").strip() or os.path.join(BASE, "_alta_tokens.json")
 
 
@@ -206,11 +206,9 @@ def es_admin(request) -> bool:
 
 
 def set_cookie(response) -> None:
-    # secure=True (cookie SOLO por HTTPS) en producción; en la demo (http://localhost) no, si no el
-    # navegador no la manda y el login entra en loop. httponly: no accesible por JS (anti-XSS).
-    seguro = not os.environ.get("ITHOS_DEMO")
+    # secure: la cookie viaja SOLO por HTTPS. httponly: no accesible por JS (anti-XSS).
     response.set_cookie(COOKIE, _cookie_val(), httponly=True, samesite="lax",
-                        secure=seguro, max_age=MAX_EDAD_SESION)
+                        secure=True, max_age=MAX_EDAD_SESION)
 
 
 def borrar_cookie(response) -> None:

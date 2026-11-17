@@ -66,7 +66,7 @@ def _sys_voz(idioma="es-AR"):
 # frase-clave de administrador: este texto viaja al proveedor de transcripción en CADA audio, y una
 # contraseña no se le manda a un tercero una y otra vez (ni se versiona en el repositorio).
 HINT_TRANSCRIPCION = (
-    "ITHOS, ticket, SLA, GLPI, Zendesk, Jira, Freshservice, HikCentral, BioStar, "
+    "ITHOS, ticket, SLA, GLPI, IVMS, Hikvision, HikCentral, "
     "fichaje, molinete, legajo, entrepiso.")
 
 # Nombres de idioma para instruir a Gemini (los más comunes; el resto usa el código ISO,

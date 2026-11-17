@@ -1,6 +1,6 @@
 FROM python:3.12-slim
 
-# ffmpeg: notas de voz (respuesta por audio) en WhatsApp/Telegram.
+# ffmpeg: notas de voz (respuesta por audio) en WhatsApp.
 # libmagic1: lo necesita neonize (python-magic) para WhatsApp NO-OFICIAL; sin él, neonize NO importa
 #   y la vinculación por QR + el envío/respuesta por WhatsApp quedan deshabilitados.
 RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg libmagic1 \

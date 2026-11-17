@@ -399,7 +399,7 @@ class WhatsAppNoOficial:
 
     @grupo_jid.setter
     def grupo_jid(self, jid):
-        """Compatibilidad: fijar el jid a mano (la demo, los tests) apunta al primer grupo. Si no
+        """Compatibilidad: fijar el jid a mano (los tests) apunta al primer grupo. Si no
         hay ninguno configurado, se crea uno que recibe todo."""
         if not self.grupos:
             from comun import ambitos as _AMB

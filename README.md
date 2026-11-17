@@ -60,11 +60,9 @@ datos) es liviano, corre en el equipo del cliente y sólo ejecuta lo que el Gest
 comunican por WebSocket autenticado. Cada empresa es un inquilino aislado: su propia memoria,
 su configuración y sus secretos cifrados; un cliente nunca ve el contexto de otro.
 
-> Demo y despliegue de referencia (privados): gestionados por INTELLIHELP.
-
 ## La aplicación por dentro
 
-Capturas tomadas con la aplicación corriendo en un entorno local de demostración: empresas,
+Capturas tomadas con la aplicación corriendo en un entorno local de prueba: empresas,
 personas, tickets y números ficticios, sin conexión a sistemas reales.
 
 ### Centro de mando del Gestor
@@ -109,7 +107,7 @@ opciones de mantenimiento del caché de voz.
 ### Asistente en el grupo de la mesa de ayuda
 
 ITHOS avisa cuando entra en línea y cuando llega un ticket nuevo, y responde cuando lo llaman
-con «Hey ITHOS». Los mensajes son los que genera la aplicación con los datos de demostración.
+con «Hey ITHOS». Los mensajes son los que genera la aplicación con los datos de prueba.
 
 <p align="center"><img src="docs/capturas/06-asistente.png" alt="Asistente en el grupo de la mesa de ayuda" width="80%"></p>
 
@@ -342,7 +340,6 @@ flowchart TD
     CAC -->|"sí"| PAR["Parlantes<br/>(al instante, también con la sesión<br/>bloqueada o después de RDP)"]
     CAC -->|"no"| TTS["TTS Charon → edge de respaldo"] --> PAR
     PRE["Pre-cacheo del padrón<br/>(todas las variantes × 3 franjas;<br/>o sólo las personas nuevas)"] --> CAC
-    EV -.->|"si el sistema hace control horario"| ANO["Anomalías: fichaje fuera de horario<br/>o denegado → aviso por los canales"]
 ```
 
 | Campo de la regla | Para qué sirve |
@@ -685,7 +682,6 @@ versionan**: el repositorio incluye únicamente plantillas (`ITHOS/central/clien
 | `horario.py` | Horario de atención y días hábiles del cliente: puerta de todo lo que sale hacia afuera. |
 | `tickets.py` | Adaptador de la mesa de ayuda detrás de una INTERFAZ COMÚN (hoy GLPI), más la búsqueda de antecedentes sobre todo el histórico. |
 | `glpi.py` | Cliente REST de GLPI (sesiones reutilizadas por token/rol, lecturas masivas, saludo al solicitante). |
-| `acceso.py` | Adaptador de control de acceso detrás de una interfaz común (hoy IVMS, que lee el agente). |
 | `whatsapp.py` · `whatsapp_link.py` · `ambitos.py` | WhatsApp con el número propio (neonize): avisos, @menciones, notas de voz, vinculación por QR y los **grupos por ámbito**. |
 | `notificadores.py` | Agrupa los canales del cliente y reparte cada aviso según su TIPO (tickets, SLA, tablero, sistema). Sumar un canal es una clase con `enviar()`. |
 | `voz_tts.py` · `locucion.py` · `audio.py` · `vozid.py` | TTS de respaldo, pronunciación/locución sin emojis, captura + VAD (Silero/webrtc/energía) e identificación por voz del dueño. |
@@ -696,7 +692,7 @@ versionan**: el repositorio incluye únicamente plantillas (`ITHOS/central/clien
 | `cifrado.py` | Cifrado en reposo AES-256-GCM de los secretos de cada cliente (clave maestra aparte). |
 | `agenda.py` | Reactivaciones programadas (posponer un ticket, reapertura por horario). |
 | `despierto.py` | Evita que el equipo se suspenda mientras ITHOS corre (Windows/Linux/Mac). |
-| `codebase.py` · `version.py` · `estilo_ithos.py` | Autoconocimiento del código, versionado SemVer y estilo visual compartido. |
+| `version.py` · `estilo_ithos.py` | Versionado SemVer y estilo visual compartido. |
 
 **`ITHOS/central/` — el Gestor (lo que hosteamos)**
 
@@ -713,7 +709,6 @@ versionan**: el repositorio incluye únicamente plantillas (`ITHOS/central/clien
 | `proactivo.py` | Alerta de SLA en riesgo/vencido, agrupada por técnico asignado y dentro del horario de atención. |
 | `reportes.py` · `reportes_programados.py` | Reportes ITIL y su envío automático (diario/semanal/mensual, período cerrado, zona y días hábiles del cliente). |
 | `kb_auto.py` | Regeneración automática de la base de conocimiento desde los casos resueltos. |
-| `anomalias.py` | Anomalías de acceso por horario (sistemas que hacen control horario). |
 | `planka_integrador.py` · `planka_rollover.py` | Tareas del equipo: resumen 9:00, seguimiento horario, alta/movimiento por WhatsApp y rollover semanal/mensual/anual. |
 | `panel.py` · `panel_ui.py` | Panel superadmin, alta de empresas y dashboard del cliente (responsive, con login). |
 | `autenticacion.py` | Login del Gestor (hash scrypt), cookies seguras, enlaces de alta de un solo uso y revocación. |

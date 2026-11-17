@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 WAKE-WORD de ITHOS — una sola fuente de verdad para TODOS los caminos de activación:
-  · TEXTO (Gestor): WhatsApp (oficial y no-oficial), Telegram, Email, Element  -> comun/whatsapp.menciona
+  · TEXTO (Gestor): WhatsApp                                                    -> comun/whatsapp.menciona
   · VOZ (agente): micrófono con Vosk (STT local)                              -> agente/escucha.py
   · Planka: el mismo gateo para mover/crear tarjetas del equipo
 

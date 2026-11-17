@@ -29,7 +29,6 @@
 | **Reportes ITIL** | Volumen, SLA, MTTR, backlog y desglose por técnico/categoría, en la zona horaria y los días hábiles del cliente. |
 | **Tareas del equipo** | Mantiene el Kanban (Planka) al día desde WhatsApp: resumen diario, seguimiento y rollover automático. |
 | **Base de conocimiento** | Se regenera sola desde los casos resueltos y alimenta las respuestas. |
-| **Anomalías de acceso** | Detecta accesos fuera del horario permitido, en los sistemas que hacen control horario. |
 | **Panel y dashboard** | Superadmin para INTELLIHELP (empresas, altas, estado, métricas) y portal propio para cada cliente. |
 
 Cada cliente **activa sólo lo que usa** y todo se configura por `clientes.json` (copy-paste, sin tocar
@@ -159,7 +158,6 @@ flowchart TD
     CAC -->|"sí"| PAR["Parlantes<br/>(al instante, también con la sesión<br/>bloqueada o después de RDP)"]
     CAC -->|"no"| TTS["TTS Charon → edge de respaldo"] --> PAR
     PRE["Pre-cacheo del padrón<br/>(todas las variantes × 3 franjas;<br/>o sólo las personas nuevas)"] --> CAC
-    EV -.->|"si el sistema hace control horario"| ANO["Anomalías: fichaje fuera de horario<br/>o denegado → aviso por los canales"]
 ```
 
 ### 2.4 Ciclo de vida de un ticket (cualquier mesa de ayuda)
@@ -241,7 +239,6 @@ de WhatsApp, memorias, métricas, cachés de voz, tokens de alta, certificados y
 | `horario.py` | Horario de atención y días hábiles del cliente: puerta de todo lo que sale hacia afuera. |
 | `tickets.py` | Adaptador de la mesa de ayuda detrás de una INTERFAZ COMÚN (hoy GLPI), más la búsqueda de antecedentes sobre todo el histórico. |
 | `glpi.py` | Cliente REST de GLPI (sesiones reutilizadas por token/rol, lecturas masivas, saludo al solicitante). |
-| `acceso.py` | Adaptador de control de acceso detrás de una interfaz común (hoy IVMS, que lee el agente). |
 | `whatsapp.py` · `whatsapp_link.py` · `ambitos.py` | WhatsApp con el número propio (neonize): avisos, @menciones, notas de voz, vinculación por QR y los **grupos por ámbito**. |
 | `notificadores.py` | Agrupa los canales del cliente y reparte cada aviso según su TIPO (tickets, SLA, tablero, sistema). Sumar un canal es una clase con `enviar()`. |
 | `voz_tts.py` · `locucion.py` · `audio.py` · `vozid.py` | TTS de respaldo, pronunciación/locución sin emojis, captura + VAD (Silero/webrtc/energía) e identificación por voz del dueño. |
@@ -252,7 +249,7 @@ de WhatsApp, memorias, métricas, cachés de voz, tokens de alta, certificados y
 | `cifrado.py` | Cifrado en reposo AES-256-GCM de los secretos de cada cliente (clave maestra aparte). |
 | `agenda.py` | Reactivaciones programadas (posponer un ticket, reapertura por horario). |
 | `despierto.py` | Evita que el equipo se suspenda mientras ITHOS corre (Windows/Linux/Mac). |
-| `codebase.py` · `version.py` · `estilo_ithos.py` | Autoconocimiento del código, versionado SemVer y estilo visual compartido. |
+| `version.py` · `estilo_ithos.py` | Versionado SemVer y estilo visual compartido. |
 
 **`ITHOS/central/` — el Gestor (lo que hosteamos)**
 
@@ -269,7 +266,6 @@ de WhatsApp, memorias, métricas, cachés de voz, tokens de alta, certificados y
 | `proactivo.py` | Alerta de SLA en riesgo/vencido, agrupada por técnico asignado y dentro del horario de atención. |
 | `reportes.py` · `reportes_programados.py` | Reportes ITIL y su envío automático (diario/semanal/mensual, período cerrado, zona y días hábiles del cliente). |
 | `kb_auto.py` | Regeneración automática de la base de conocimiento desde los casos resueltos. |
-| `anomalias.py` | Anomalías de acceso por horario (sistemas que hacen control horario). |
 | `planka_integrador.py` · `planka_rollover.py` | Tareas del equipo: resumen 9:00, seguimiento horario, alta/movimiento por WhatsApp y rollover semanal/mensual/anual. |
 | `panel.py` · `panel_ui.py` | Panel superadmin, alta de empresas y dashboard del cliente (responsive, con login). |
 | `autenticacion.py` | Login del Gestor (hash scrypt), cookies seguras, enlaces de alta de un solo uso y revocación. |
@@ -329,15 +325,6 @@ eso, sin tocar código:
 
 Un fichaje **denegado** (`es_fallo`) se anuncia distinto del autorizado. Un agente viejo que no manda
 `device` sigue funcionando: se respeta el `tipo` que informe (compatibilidad hacia atrás).
-
-### 4.2 Anomalías de acceso (opcional, apagado por defecto)
-
-Avisa por los canales del cliente cuando alguien ficha **fuera de su horario** o es **denegado por
-franja horaria**. Se apoya en el adaptador de acceso: funciona con los sistemas que **traen su propia
-configuración de horarios por API**, así el cliente no los carga a mano.
-Con IVMS no aplica y nunca corre, aunque
-esté prendido. Anti-spam: un aviso por evento por día. Se activa por cliente
-(`"anomalias": {"enabled": true, "revisar_min": 10}`) y **nunca se enciende solo**.
 
 ---
 

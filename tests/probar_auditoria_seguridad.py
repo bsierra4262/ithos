@@ -247,17 +247,16 @@ ok(E.cargar("prueba", "EMPRESA X")["avisados"] == [1, 2, 3], "se guarda y se rel
 ok(not os.path.exists(E.ruta("prueba", "EMPRESA X") + ".tmp"),
    "no deja temporales dando vueltas")
 ok(E.cargar("prueba", "NO EXISTE") == {}, "un cliente sin estado devuelve vacío, no explota")
-import proactivo as PRO, anomalias as ANO, reportes_programados as RP   # noqa: E402
-for mod, nom in ((PRO, "proactivo"), (ANO, "anomalías"), (RP, "reportes")):
+import proactivo as PRO, reportes_programados as RP   # noqa: E402
+for mod, nom in ((PRO, "proactivo"), (RP, "reportes")):
     mod._guardar("EMPRESA X", {"dia": "hoy"})
     ok(mod._cargar("EMPRESA X") == {"dia": "hoy"}, f"{nom}: guarda en el volumen")
 
 seccion("A4 + A5 · las horas son las del CLIENTE, no las del servidor")
 fuente = open(os.path.join(APP, "central", "proactivo.py"), encoding="utf-8").read()
-fuente += open(os.path.join(APP, "central", "anomalias.py"), encoding="utf-8").read()
 fuente += open(os.path.join(APP, "comun", "asistente.py"), encoding="utf-8").read()
 ok("datetime.now()" not in fuente,
-   "ni la alerta de SLA, ni las anomalías, ni el asistente usan el reloj del servidor")
+   "ni la alerta de SLA ni el asistente usan el reloj del servidor")
 from comun.horario import ahora_zona    # noqa: E402
 a = ahora_zona({"zona_horaria": "America/Argentina/Buenos_Aires"})
 b = ahora_zona({"zona_horaria": "Asia/Tokyo"})

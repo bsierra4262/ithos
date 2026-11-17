@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
-Preparación del TEXTO para la LOCUCIÓN (voz), compartida por el agente (producción)
-y la demo. Hace 3 cosas:
+Preparación del TEXTO para la LOCUCIÓN (voz), compartida por el agente y el Gestor.
+Hace 3 cosas:
   1. sin_markdown(): saca asteriscos, numerales, viñetas (para que la voz no lea
      "asterisco", "numeral", etc.).
   2. pronunciacion(): ajusta marcas/siglas/nombres en inglés a su fonética en
@@ -25,9 +25,6 @@ PRONUNCIA = [
     (r"\bGLPI\b", "Ge Éle Pe I"),
     (r"\bIVMS\b", "I Ve Éme Ése"),
     (r"\bHikCentral\b", "Jik Céntral"),
-    (r"\bBioStar\s*2?\b", "Báio Star dos"),
-    (r"\bZKTeco\b", "Zeta Ka Téco"),
-    (r"\bHoneywell\b", "Jóni Güel"),
     (r"\bSLA\b", "Ése Éle A"),
     (r"\bTTO\b", "Te Te O"),
     (r"\bTTR\b", "Te Te Érre"),
@@ -118,12 +115,6 @@ PRONUNCIA = [
     (r"\bOpenAI\b", "Óupen A I"),
     (r"\bDeepSeek\b", "Dip Sík"),
     (r"\bOllama\b", "Oyáma"),
-    (r"\bZendesk\b", "Séndesk"),
-    (r"\bFreshservice\b", "Frésh sérvis"),
-    (r"\bosTicket\b", "O Ése Tíket"),
-    (r"\bTeams\b", "Tíms"),
-    (r"\bSlack\b", "Slák"),
-    (r"\bTelegram\b", "Télegram"),
     (r"\bPicovoice\b", "Píco vóis"),
     (r"\bPorcupine\b", "Pórkiupain"),
     (r"\bCharon\b", "Cáron"),
@@ -186,8 +177,6 @@ PRONUNCIA = [
     # Productos/plataformas de acceso y tickets
     (r"\bHikvision\b", "Jikvíchon"),
     (r"\bHikCentral\b", "Jik Céntral"),
-    (r"\bZKBio\s*CVSecurity\b", "Zeta Ka Báio Ce Ve Sekiúriti"),
-    (r"\bZKBio(Time| CVSecurity)?\b", "Zeta Ka Báio"),
     (r"\bBioTime\b", "Báio Táim"),
     (r"\bArtemis\b", "Ártemis"),
     (r"\bSuprema\b", "Supréma"),
@@ -214,9 +203,6 @@ PRONUNCIA = [
     (r"\bHMAC\b", "Áche Mac"),
     (r"\bJWT\b", "Yot"),
     (r"\bMySQL\b", "Mái Ése Cu Éle"),
-    (r"\bPyMySQL\b", "Pái Mái Ése Cu Éle"),
-    (r"\bIMAP\b", " Imap"),
-    (r"\bSMTP\b", "Ése Éme Te Pe"),
     (r"\bSSML\b", "Ése Ése Éme Éle"),
     # Términos de negocio / técnicos comunes
     (r"\bdashboard\b", "dásbord"),

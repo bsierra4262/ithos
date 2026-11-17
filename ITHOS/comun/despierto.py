@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Mantener el sistema DESPIERTO mientras ITHOS corre (producción y demo).
+Mantener el sistema DESPIERTO mientras ITHOS corre.
 
 Aunque se BLOQUEE la pantalla, el proceso sigue: eso no lo detiene el bloqueo. El problema es la
 SUSPENSIÓN del sistema (dormir), que sí pausa todo (voz, portero, micrófono, polling). Esto evita

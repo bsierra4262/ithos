@@ -1,15 +1,14 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-TTS COMPARTIDO para las NOTAS DE VOZ que se ENVÍAN por los canales (WhatsApp oficial/no-oficial,
-Telegram, etc.). Estas notas usan **edge-tts** (rápido, gratis, sin cuota): los canales llaman a
+TTS COMPARTIDO para las NOTAS DE VOZ que se ENVÍAN por WhatsApp. Estas notas usan **edge-tts** (rápido, gratis, sin cuota): los canales llaman a
 `audio()` SIN `ia_cfg`. La voz de MARCA **Charon** es para los PARLANTES (respuestas habladas en el
 lugar + portero → `agente/voz.py`), NO para las notas que se mandan por chat.
     · edge-tts (GRATIS)  -> notas de voz de los canales (default, sin API key).
     · Charon (Gemini)    -> disponible como opción si un caller pasa `ia_cfg` y el texto es corto;
                             hoy los canales no lo hacen (priorizan velocidad y costo cero).
 Aplica la misma limpieza/pronunciación/pausas (comun/locucion.py) y devuelve OGG/opus
-(formato de nota de voz de WhatsApp y Telegram); sin ffmpeg devuelve lo que tenga (mp3/wav).
+(formato de nota de voz de WhatsApp); sin ffmpeg devuelve lo que tenga (mp3/wav).
 """
 
 import shutil
@@ -68,7 +67,7 @@ _PRECALENTADO = False
 def precalentar():
     """Calienta la ruta de la nota de voz (edge-tts) EN SEGUNDO PLANO: hace una síntesis mínima y la
     descarta, así el PRIMER audio real no paga el arranque en frío (import + DNS/TLS a edge). Una
-    sola vez, best-effort, no bloquea ni rompe. Aplica a demo y producción."""
+    sola vez, best-effort, no bloquea ni rompe."""
     global _PRECALENTADO
     if _PRECALENTADO:
         return

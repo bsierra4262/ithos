@@ -9,8 +9,7 @@ agente liviano por cliente, con aislamiento total entre empresas. Se instala en 
   de entrada es coherente con la hora —buenos días, buenas tardes o buenas noches—, cambia de fórmula día a día
   para que no suene repetitivo y no vuelve a saludar a la misma persona en la jornada. Cada terminal se reconoce
   sola y se configura como entrada, salida o sala, con su propio saludo y su frecuencia.
-- **Mesa de ayuda con IA.** Detecta los tickets nuevos del sistema del cliente —GLPI, Zendesk, Freshservice, Jira,
-  osTicket, o ninguno si aún no tiene— y los clasifica, prioriza, asigna, responde y cierra, pidiendo confirmación.
+- **Mesa de ayuda con IA.** Detecta los tickets nuevos de la mesa de ayuda del cliente (GLPI) y los clasifica, prioriza, asigna, responde y cierra, pidiendo confirmación.
   Pide datos solo si faltan de verdad; si un técnico resuelve por un comentario, lo marca resuelto y le pide al
   cliente que confirme, con recordatorio diario hasta la respuesta. **Ninguna espera queda olvidada:** mientras el
   ticket depende del cliente —porque falta un dato o porque tiene que confirmar un trabajo— el SLA queda detenido y

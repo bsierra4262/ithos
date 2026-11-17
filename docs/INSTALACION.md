@@ -90,7 +90,7 @@ Instala Docker (Linux), pide el dominio (configura el `Caddyfile`) y levanta 3 c
 Todo desde el **panel** (`http://IP-DEL-KVM2:8090/`), con un formulario profesional
 (sin tocar archivos). Cada empresa elige **su** configuración:
 
-- **Sistema de tickets:** GLPI (o ninguno, si todavía no tiene).
+- **Sistema de tickets:** GLPI.
 - **Canal:** WhatsApp con el número propio, con sus grupos separados por ámbito (consultas, soporte, tareas, sistema).
 - **Sistema de control de acceso:** IVMS.
 - **IA:** su propia API key de Gemini, límites de cuota, idioma.
@@ -152,8 +152,7 @@ python tests/probar_portero_saludo.py     # saludo por hora y una vez por día p
 python tests/probar_sistema.py            # circuito completo por HTTP (alta, panel, portal)
 ```
 
-Para escuchar **solo la voz** en el equipo, el agente trae una pasada de prueba:
-`python ITHOS/agente/agente.py --demo` manda un fichaje de prueba y ITHOS saluda por los parlantes.
+Para escuchar **la voz** en el equipo, fichá en una terminal: ITHOS saluda por los parlantes.
 
 ---
 
@@ -183,7 +182,7 @@ Para hablarle (“**ITHOS**, ¿cuántos tickets hay abiertos?”), en `agente/co
 - [ ] Cliente dado de alta (panel o `/alta`) → tengo su API key.
 - [ ] `agente/config.json` con `central_url`, `api_key` y el `integrador` del control de acceso.
 - [ ] Agente instalado como tarea/servicio (arranca solo).
-- [ ] Prueba `--demo` → ITHOS saluda por los parlantes.
+- [ ] Fichar en una terminal → ITHOS saluda por los parlantes.
 
 ---
 

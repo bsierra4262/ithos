@@ -1,5 +1,5 @@
 # ITHOS Gestor (cerebro en la nube). Instala: pip install -r requirements.txt
-# Nota: para NOTAS DE VOZ por WhatsApp/Telegram hace falta ffmpeg (sistema) — ver INSTALACION.md
+# Nota: para NOTAS DE VOZ por WhatsApp hace falta ffmpeg (sistema) — ver INSTALACION.md
 fastapi>=0.110
 uvicorn[standard]>=0.29
 python-multipart>=0.0.9     # login por formulario del panel + subida de archivos KB (FastAPI Form/File)
@@ -14,7 +14,6 @@ edge-tts>=7.3.1            # voz GRATIS de respaldo + notas de voz. MINIMO 7.3.1
 numpy>=1.24                 # audio / VAD (entrenamiento de voz)
 onnxruntime>=1.17           # Silero VAD + identificación por voz
 webrtcvad-wheels>=2.0.14    # VAD de respaldo (import: webrtcvad)
-PyMySQL>=1.1                # osTicket por su base MySQL (opcional)
 reportlab>=4.0            # reportes ITIL en PDF
 pypdf>=4.0                # instructivos PDF en la KB
 

@@ -1,16 +1,12 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Canales de notificación (por cliente). Un cliente puede tener VARIOS canales; hoy el que usa
-INTELLIHELP es WhatsApp (ver comun/whatsapp.py), con sus grupos por ámbito (comun/ambitos.py).
+Canal de avisos del cliente: su WhatsApp (ver comun/whatsapp.py), con un grupo por tema
+(comun/ambitos.py).
 
-Config: lista en "notificaciones", cada uno {"tipo": ...}. Todos exponen `enviar(texto)`; los que
-saben separar por grupo aceptan además `tipo=` (el tipo de aviso).
-crear_notificadores(cfg) -> objeto con enviar(texto) que manda a TODOS los canales del cliente.
-
-Sumar otro canal (Telegram, email, Teams/Slack, Matrix…) es escribir una clase con `enviar()` y
-agregarla en `crear_notificadores`: el resto del software no se entera. Las implementaciones que
-teníamos quedaron congeladas en la rama `saas`.
+Config: lista en "notificaciones", cada una {"tipo": "whatsapp_no_oficial", ...}. `enviar(texto,
+tipo=...)` manda el aviso al grupo que corresponde a ese tipo.
+crear_notificadores(cfg) -> el objeto que usa el Gestor para avisar.
 """
 
 import logging
@@ -70,9 +66,8 @@ class Notificadores:
 
     def enviar_mencion(self, texto, telefonos, tipo=None):
         """Aviso @MENCIONANDO a `telefonos` (el TÉCNICO ASIGNADO) en los canales que lo soportan
-        (WhatsApp). Los canales que NO tienen menciones (Telegram/email/Teams/Element) reciben el
-        MISMO texto sin @ — el aviso nunca se pierde y el texto ya dice a quién está asignado.
-        Sin teléfonos, es un envío normal."""
+        (WhatsApp). Un canal sin menciones recibe el MISMO texto sin @ —el texto ya dice a quién
+        está asignado—. Sin teléfonos, es un envío normal."""
         if not telefonos:
             return self.enviar(texto, tipo=tipo)
         ok = False
@@ -99,30 +94,22 @@ class Notificadores:
         return ok
 
 
-def crear_notificadores(cfg_cliente, wa_compartido=None):
-    """Arma el notificador multicanal con TODOS los canales que el cliente configuró.
-    `wa_compartido`: si se pasa una conexión WhatsApp ya abierta (p. ej. la de la demo), se REUSA
-    y NO se crea otra —así no se abren dos sesiones del mismo número—; los canales que no sean
-    WhatsApp se agregan igual. Sin él (producción), se crea la conexión WhatsApp propia."""
+def crear_notificadores(cfg_cliente):
+    """Arma el notificador con el WhatsApp que el cliente configuró."""
     canales = []
-    if wa_compartido is not None:
-        canales.append(wa_compartido)       # reusa la conexión WhatsApp ya abierta (demo)
-    # WhatsApp (compat: bloque 'whatsapp' suelto). Solo si NO hay uno compartido.
+    # WhatsApp (compat: bloque 'whatsapp' suelto).
     wa_cfg = cfg_cliente.get("whatsapp")
-    if wa_compartido is None and wa_cfg and wa_cfg.get("enabled"):
+    if wa_cfg and wa_cfg.get("enabled"):
         from comun import whatsapp
         wa = whatsapp.crear_whatsapp(wa_cfg)
         if wa:
             canales.append(wa)
-    # Lista de canales que configuró el cliente. Acá se enchufa un canal nuevo: una clase con
-    # `enviar(texto)` y una rama más en este `for`.
+    # Lista de canales que configuró el cliente (hoy, WhatsApp).
     for n in cfg_cliente.get("notificaciones", []):
         if not n.get("enabled", True):
             continue
         tipo = (n.get("tipo") or "").lower()
         if tipo in ("whatsapp", "whatsapp_no_oficial"):
-            if wa_compartido is not None:   # ya usamos el WhatsApp compartido -> no duplicar sesión
-                continue
             from comun import whatsapp
             wa = whatsapp.crear_whatsapp({**n, "enabled": True, "tipo": "no_oficial"})
             if wa:

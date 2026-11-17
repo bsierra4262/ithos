@@ -116,9 +116,9 @@ def main():
     check("sin credenciales el panel NO deja entrar (401)", st == 401, f"HTTP {st}")
     # El catálogo ofrece SÓLO lo que hay: elegir algo sin implementación sería
     # configurar un cliente que nunca recibe nada y no enterarse.
-    for cat, esperados in (("tickets", ["ninguno", "glpi"]),
+    for cat, esperados in (("tickets", ["glpi"]),
                            ("canales", ["whatsapp_no_oficial"]),
-                           ("integradores", ["ninguno", "ivms"])):
+                           ("integradores", ["ivms"])):
         st, cc = req("GET", f"/api/{cat}")
         check(f"catálogo {cat} = exactamente lo implementado",
               st == 200 and sorted(cc) == sorted(esperados), ", ".join(cc.keys()))
@@ -126,7 +126,7 @@ def main():
     from comun import notificadores as NOTIF
     st, cc = req("GET", "/api/tickets")
     check("cada sistema de tickets del catálogo tiene adaptador real",
-          all(t == "ninguno" or TK.adaptador({"tickets": {"tipo": t}}).tipo == t for t in cc))
+          all(TK.adaptador({"tickets": {"tipo": t}}).tipo == t for t in cc))
     st, cc = req("GET", "/api/canales")
     check("cada canal del catálogo se construye de verdad",
           all(NOTIF.crear_notificadores(
