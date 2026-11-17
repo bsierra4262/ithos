@@ -47,9 +47,11 @@ NIVEL_POR_PRIORIDAD = {"Baja": "LEVE", "Media": "LEVE", "Alta": "GRAVE",
 # El equipo, los textos y el ciclo viven en sus propios módulos. Se re-exportan acá porque `triage`
 # es la puerta de entrada de todo lo de tickets del Gestor, y para no romper a quien ya lo importa.
 from equipo import (RESPONSABLES, NOMBRES, ITHOS_ID, TECNICOS,            # noqa: E402,F401
+                    MESA, MESA_PENDIENTE, menos_cargado, cuentas_internas,
                     TECNICOS_HUMANOS, ids_humanos, ids_tecnicos,
                     _asignados_humanos, _nombres_por_id)
 from textos_ticket import (_MARCA_ESPERA_CLIENTE, _MARCA_SIN_ATENDER,     # noqa: E402,F401
+                           _MARCA_PEDIDO_TECNICO,
                            _CIERRE_ESPERA, _DIAS_HABILES_ESCALADA, _HORAS_SIN_ATENDER,
                            _RE_DESPEDIDA_ESPERA, _RE_FIRMA_FINAL, _ALCANCE_TXT,
                            _NOTA_PEDIR_PROCEDIMIENTO, _nota_alcance, _nota_interna_horario,
@@ -69,40 +71,35 @@ from comun.horario import (ZONA_DEFAULT, HORARIO_DEFAULT as _HORARIO_DEFAULT,  #
 # El saludo al solicitante vive en comun/glpi.py (compartido con el camino de voz aplicar_ciclo).
 _saludo_solicitante = G.saludo_solicitante
 
-# Lo que la SOLUCIÓN que lee el cliente no puede ser: una copia de lo que el técnico ya escribió.
-_TOPE_RESUMEN = 700          # caracteres: una solución para el cliente es corta, no un informe
-_VENTANA_COPIA = 10          # palabras seguidas iguales -> es un pegado, no un resumen
+def _si_o_no(respuesta, clave):
+    """El sí/no que devolvió la IA en `{clave: ...}`, o None si no se puede saber.
 
+    POR QUÉ NO ALCANZA CON `bool(...)`. Era lo que había, y tiene dos agujeros que deciden cosas
+    sobre tickets de verdad:
 
-def _palabras(texto):
-    """Las palabras de un texto, en minúscula y sin puntuación, para poder compararlo."""
-    return re.findall(r"\w+", str(texto or "").lower(), flags=re.UNICODE)
+      · si la IA devuelve el JSON SIN la clave, `bool(None)` da False. Para `confirma` eso es
+        «el cliente dice que sigue igual»: se REABRE un ticket que el cliente acababa de dar por
+        bueno. Le pasó a la IA local con «listo afirmativamente!»;
+      · si la IA devuelve el valor como TEXTO —«"false"»—, `bool("false")` da True. Para `confirma`
+        eso CIERRA un ticket que el cliente dijo que seguía roto.
 
-
-def _repite_al_tecnico(resumen, original):
-    """¿El `resumen` es en realidad el texto del técnico otra vez?
-
-    POR QUÉ EXISTE. La solución que ve el cliente tiene que ser un resumen corto, NO el comentario
-    del técnico copiado: en el ticket #803 el cliente leyó dos veces el mismo procedimiento interno
-    (nombres de scripts, consultas a la base, parámetros de la terminal). Pedirle a la IA que
-    resuma no alcanza como garantía —puede devolver el texto casi intacto—, así que se comprueba.
-
-    Se considera copia si el resumen es casi tan largo como el original, o si arrastra una tirada
-    de `_VENTANA_COPIA` palabras seguidas igual que el original. Comparar palabra por palabra (y no
-    el texto crudo) evita que un cambio de comillas o de salto de línea lo dé por distinto."""
-    pr, po = _palabras(resumen), _palabras(original)
-    if not pr or not po:
-        return False
-    # El piso de palabras va por encima de lo que se le pide a la IA (50), así que un resumen
-    # legítimo de un comentario corto nunca se descarta por largo: lo descarta la regla de abajo,
-    # que es la que mira si el texto es el mismo.
-    if len(resumen) > _TOPE_RESUMEN or len(pr) > max(len(po) * 0.6, 55):
-        return True
-    if len(po) < _VENTANA_COPIA:
-        return False
-    tiradas = {" ".join(po[i:i + _VENTANA_COPIA]) for i in range(len(po) - _VENTANA_COPIA + 1)}
-    unido = " ".join(pr)
-    return any(t in unido for t in tiradas)
+    Acá sólo cuentan los sí/no inequívocos. Cualquier otra cosa es None, que todos los que llaman
+    ya tratan como «la IA no supo»: no se toca el ticket y se vuelve a mirar en la próxima vuelta.
+    Ante la duda, no actuar."""
+    import json as _j
+    try:
+        valor = _j.loads(respuesta).get(clave)
+    except Exception:  # noqa: BLE001
+        return None
+    if isinstance(valor, bool):
+        return valor
+    if isinstance(valor, str):
+        v = valor.strip().lower()
+        if v in ("true", "si", "sí", "yes"):
+            return True
+        if v in ("false", "no"):
+            return False
+    return None
 
 
 class Triage:
@@ -226,7 +223,14 @@ class Triage:
         prioridad = a.get("prioridad", "Media")
         nivel = NIVEL_POR_PRIORIDAD.get(prioridad, "LEVE")
         num = PRIORIDAD_NUM.get(prioridad, 3)
-        resp_login = a.get("responsable", "bsierra")
+        resp_login = a.get("responsable", MESA_PENDIENTE)
+        # "mesa" no es una persona: es el día a día, y se lo lleva el que tenga MENOS tickets
+        # abiertos ahora. La cuenta se le pide a GLPI en este momento, no se lleva en memoria: en
+        # cuanto alguien asigna un ticket a mano —y acá pasa todo el tiempo— un contador nuestro
+        # quedaría mintiendo.
+        if resp_login == MESA_PENDIENTE:
+            resp_login = menos_cargado(self.cfg_glpi)
+            log.info("Triage #%s: lo trabaja la mesa -> %s (el de menos carga).", tid, resp_login)
         from comun import tickets as TK
         _ficha = TK.tecnico_por_id(self.cfg_glpi, resp_login) or {}
         try:
@@ -434,12 +438,26 @@ class Triage:
         responder), y rompe el circuito entero, porque la confirmación del cierre la da el cliente.
 
         Se los suma como solicitantes —sin sacarles el rol de observador— y sólo a ellos: los
-        técnicos y ITHOS no se tocan."""
+        técnicos y ITHOS no se tocan.
+
+        LAS CUENTAS INTERNAS (`admin`) SE SACAN DEL TICKET, en cualquier rol. No son gente del
+        cliente: antes esta misma función la tomaba por una observadora más y la volvía
+        SOLICITANTE (17 tickets, desde el #798). Admin ve todos los tickets igual; que figure no le
+        suma nada a nadie y ensucia quién pidió qué."""
         try:
             actores = self.cli.request(f"/Ticket/{tid}/Ticket_User") or []
         except Exception:  # noqa: BLE001
             return
-        equipo = set(humanos or ()) | {ITHOS_ID}
+        internas = cuentas_internas(self.cfg_glpi)
+        for u in actores:
+            if int(u.get("users_id") or 0) in internas and u.get("id"):
+                try:
+                    self.cli.request(f"/Ticket_User/{u['id']}", "DELETE")
+                    log.info("Triage #%s: saqué la cuenta interna %s del ticket (no es del "
+                             "cliente ni del equipo).", tid, u.get("users_id"))
+                except Exception:  # noqa: BLE001
+                    pass                       # no es fatal
+        equipo = set(humanos or ()) | {ITHOS_ID} | internas
         solicitantes = {int(u.get("users_id") or 0) for u in actores if int(u.get("type", 0)) == 1}
         for u in actores:
             uid = int(u.get("users_id") or 0)
@@ -453,99 +471,89 @@ class Triage:
             except Exception:  # noqa: BLE001
                 pass                           # no es fatal: el ticket igual queda atendido
 
-    def _sesion_de(self, uid):
-        """Sesión de GLPI con el token del TÉCNICO `uid`, o None si no lo tiene configurado.
+    def dejar_solo_al_que_resolvio(self, tid, autor):
+        """El que resolvió se QUEDA con el ticket: se le asigna a él y se saca al resto del equipo.
 
-        Sirve para que lo que hace un técnico quede a SU nombre: si la solución la carga ITHOS (o
-        peor, el usuario administrador), el historial dice que resolvió alguien que no resolvió."""
+        POR QUÉ (pedido de Brian, 17-nov-2026). Un ticket puede terminar asignado a varias personas
+        —entra con un responsable, alguien lo toma, otro lo mira—, y el que al final lo resuelve
+        capaz no era ninguno de ellos. Mientras queden todos asignados pasan dos cosas malas:
+
+          · EL REPORTE MIENTE. GLPI cuenta el SLA por técnico asignado, así que un mismo ticket
+            resuelto se le suma a los cuatro y no se sabe quién resolvió qué.
+          · LA @MENCIÓN VA A TODOS. Los avisos de WhatsApp mencionan al asignado; con cuatro
+            asignados los menciona a los cuatro y nadie se da por aludido.
+
+        ITHOS se queda asignado a propósito: es el agente que sigue trabajando el ticket —recuerda,
+        escala, cierra—, no una persona que compita en el reporte.
+
+        NO ES FATAL: si algo de esto falla, el ticket ya quedó resuelto. Se avisa y se sigue."""
         try:
-            from comun import tickets as TK
-            ficha = TK.tecnico_por_id(self.cfg_glpi, uid) or {}
-            login = str(ficha.get("glpi_login") or "").strip()
-            token = self.cfg_glpi.get(f"glpi_{login}_token") if login else None
-            return G.sesion(self.cfg_glpi, token) if token else None
-        except Exception:  # noqa: BLE001
-            return None
-
-    def resumen_para_el_cliente(self, texto):
-        """El comentario del técnico, resumido en una o dos líneas PARA EL CLIENTE.
-
-        EL PROBLEMA QUE RESUELVE (ticket #803). La solución se cargaba con el comentario del
-        técnico copiado tal cual. Como ese comentario es PÚBLICO, el cliente terminaba leyendo dos
-        veces exactamente lo mismo, y encima el detalle interno —nombres de scripts, consultas a la
-        base de datos, parámetros de la terminal— que no es para él.
-
-        La explicación técnica NO se pierde ni se mueve: sigue donde estaba, en el comentario del
-        técnico. Lo único que cambia es la SOLUCIÓN, que pasa a decir en criollo qué quedó resuelto.
-
-        Si la IA no contesta, o contesta algo que es el texto del técnico otra vez, se carga un
-        texto genérico. Es a propósito: una solución corta y sin detalle sigue cumpliendo lo único
-        que GLPI necesita de ella —que el cliente tenga qué aprobar o rechazar—, y el detalle ya lo
-        tiene a la vista. Repetirle el texto sería peor que no resumirlo."""
-        generico = ("El equipo técnico resolvió el inconveniente reportado. El detalle de lo "
-                    "realizado quedó asentado en el ticket.")
-        limpio = str(texto or "").strip()
-        if not limpio:
-            return generico
-        try:
-            r = (self.ia.chat(
-                "Sos de la mesa de ayuda ITH. Un TÉCNICO dejó un comentario explicando cómo "
-                "resolvió un ticket. Escribí la SOLUCIÓN que va a leer el CLIENTE.\n"
-                "- UNA o DOS oraciones. Nunca más de 50 palabras.\n"
-                "- Decí QUÉ quedó resuelto y qué puede hacer ahora el cliente, no CÓMO se hizo.\n"
-                "- PROHIBIDO copiar frases del comentario: es un resumen, no un recorte.\n"
-                "- PROHIBIDO nombrar detalle interno: scripts, archivos .sql, consultas, tablas, "
-                "bases de datos, rutas, direcciones IP, comandos, parámetros de configuración ni "
-                "herramientas nuestras.\n"
-                "- Español rioplatense, de usted, cordial y sobrio. Sin emojis, sin saludo inicial "
-                "y sin firma: eso lo pone el sistema aparte.\n"
-                "Respondé SOLO el texto de la solución, sin comillas.",
-                limpio, json_out=False) or "").strip()
-        except Exception as e:  # noqa: BLE001
-            log.info("Triage: no pude resumir la solución para el cliente (%s); va la genérica.",
-                     str(e)[:90])
-            return generico
-        r = re.sub(r"<[^>]+>", " ", r)
-        r = re.sub(r"\s+", " ", r).strip().strip('"').strip()
-        if not r or _repite_al_tecnico(r, limpio):
-            log.info("Triage: el resumen de la solución repetía el texto del técnico; va la "
-                     "genérica (al cliente no se le repite lo que ya leyó).")
-            return generico
-        return r
-
-    def a_confirmacion_del_cliente(self, tid, solucion, autor=None):
-        """El técnico resolvió: el ticket queda ESPERANDO QUE EL CLIENTE CONFIRME.
-
-        QUÉ SE CARGA COMO SOLUCIÓN: un RESUMEN corto escrito para el cliente
-        (`resumen_para_el_cliente`), NO el comentario del técnico copiado. Su explicación ya está
-        en el ticket y es pública: repetirla entera en la solución le hacía leer dos veces lo mismo.
-
-        A NOMBRE DE QUIÉN: del técnico que resolvió (`autor`), cuando tiene su token configurado.
-        Si la carga ITHOS, el historial del ticket dice que resolvió ITHOS, y no es verdad.
-
-        POR QUÉ QUEDA EN 'RESUELTO' Y NO EN 'EN ESPERA': se probó dejarlo en espera, que describe
-        mejor la situación, y la mesa de ayuda entonces NO le dibuja al cliente los botones de
-        APROBAR / RECHAZAR —sólo el cuadro de responder—. Esos botones son el modo natural en que
-        el cliente cierra o rechaza, así que se elige tenerlos. No se pierde nada de lo otro: al
-        resolver queda grabada la fecha de solución, con lo cual el SLA de resolución deja de
-        correr, y el vigilante tampoco alerta por un ticket resuelto. Y si el cliente contesta
-        escribiendo en vez de apretar el botón, también se cierra o se reabre."""
-        if not self.marcar_resuelto(tid, self.resumen_para_el_cliente(solucion), autor=autor):
+            autor = int(autor or 0)
+        except (TypeError, ValueError):
             return False
+        if not autor or autor == ITHOS_ID:
+            return False
+        try:
+            self.cli.abrir()
+            actores = self.cli.request(f"/Ticket/{tid}/Ticket_User") or []
+            asignados = [u for u in actores if int(u.get("type") or 0) == 2]
+            sobran = [u for u in asignados
+                      if int(u.get("users_id") or 0) not in (autor, ITHOS_ID)]
+            if not any(int(u.get("users_id") or 0) == autor for u in asignados):
+                self.cli.request("/Ticket_User", "POST", {"input": {
+                    "tickets_id": tid, "users_id": autor, "type": 2}})
+            for u in sobran:
+                self.cli.request(f"/Ticket_User/{u['id']}", "DELETE")
+            if sobran:
+                log.info("Triage #%s: lo resolvió %s y se queda con el ticket; saqué a %s de los "
+                         "asignados (si no, el SLA se le suma a todos).",
+                         tid, autor, [int(u.get("users_id") or 0) for u in sobran])
+            return True
+        except Exception as e:  # noqa: BLE001
+            log.warning("Triage #%s: no pude dejar sólo al que resolvió (%s). El ticket queda "
+                        "resuelto igual, pero el reporte le suma el SLA a varios.", tid, str(e)[:120])
+            return False
+        finally:
+            self.cli.cerrar()
+
+    def a_confirmacion_del_cliente(self, tid, autor=None):
+        """El técnico resolvió: el ticket pasa a RESUELTO y se le pide al cliente que confirme.
+
+        ITHOS NO CARGA NINGUNA SOLUCIÓN. El comentario del técnico ES la resolución: ya está en el
+        ticket, con su redacción, su formato, sus capturas y su nombre. Lo único que agrega ITHOS
+        es el pedido de confirmación (`pedir_confirmacion`), que es otra cosa.
+
+        Cómo se llegó acá, porque se probó todo lo demás y todo terminaba repitiendo:
+          · copiar el comentario a la solución -> el cliente leía dos veces lo mismo, y encima sin
+            las capturas (#803);
+          · un resumen redactado por ITHOS -> la misma cosa dicha dos veces, sólo que más corta
+            (#831);
+          · el comentario crudo, tal cual, como solución -> dos veces lo mismo, ahora idéntico
+            (#844).
+        Decisión de Brian: «que deje mi respuesta como autorización y ITHOS no escriba nada».
+
+        LO QUE SE RESIGNA, a sabiendas: sin una solución cargada, la mesa de ayuda no le dibuja al
+        cliente los botones de APROBAR / RECHAZAR. Contesta escribiendo —el pedido de confirmación
+        se lo dice— y el ciclo lee esa respuesta igual: cierra si confirma, reabre si sigue. De paso
+        se va un problema real: en el #803 el cliente apretó «aprobar» mientras escribía que seguía
+        sin poder fichar, y el ticket se cerró solo.
+
+        LO QUE NO SE PIERDE: al pasar a Resuelto queda grabada la fecha de solución, así que el SLA
+        de resolución deja de correr igual que antes.
+
+        Y el que resolvió SE QUEDA con el ticket (`dejar_solo_al_que_resolvio`): el SLA del reporte
+        es suyo y la @mención va a él solo."""
+        if not self.marcar_resuelto(tid):
+            return False
+        self.dejar_solo_al_que_resolvio(tid, autor)
         self.pedir_confirmacion(tid)
         try:
             self.cli.abrir()
-            # Que haya quedado como corresponde no se da por hecho: se comprueba. El ticket tiene
-            # que estar RESUELTO y la solución PENDIENTE de aprobación; si algo lo movió, se
-            # corrige (un ticket a medio camino no se lo nota nadie hasta que es tarde).
+            # Que haya quedado como corresponde no se da por hecho: se comprueba. Si algo lo movió
+            # de Resuelto, se corrige (un ticket a medio camino no se lo nota nadie hasta que es
+            # tarde).
             if int((self.cli.request(f"/Ticket/{tid}") or {}).get("status", 0)) != 5:
                 self.cli.request(f"/Ticket/{tid}", "PUT", {"input": {"status": 5}})
-            sol = self.cli.request(f"/Ticket/{tid}/ITILSolution") or []
-            if sol:
-                ultima = sorted(sol, key=lambda s: int(s.get("id") or 0))[-1]
-                if int(ultima.get("status") or 0) != 2:
-                    self.cli.request(f"/ITILSolution/{ultima['id']}", "PUT", {"input": {
-                        "id": ultima["id"], "status": 2}})     # 2 = pendiente del cliente
             return True
         except Exception as e:  # noqa: BLE001
             log.warning("Triage #%s: no pude dejarlo esperando la confirmación: %s", tid, e)
@@ -553,59 +561,14 @@ class Triage:
         finally:
             self.cli.cerrar()
 
-    def marcar_resuelto(self, tid, solucion="", autor=None):
-        """Pasa el ticket a RESUELTO (status 5), cargando la SOLUCIÓN cuando se le pasa el texto.
+    def marcar_resuelto(self, tid):
+        """Pasa el ticket a RESUELTO (status 5). Sólo el estado: no carga ninguna solución.
 
-        POR QUÉ IMPORTA LA SOLUCIÓN: en GLPI el cliente aprueba o rechaza LA SOLUCIÓN. Un ticket
-        que pasa a Resuelto sin cargar ninguna no le deja al solicitante nada que aprobar ni que
-        rechazar: ve el ticket resuelto y no tiene cómo decir "sigue igual". Con la solución
-        cargada, la mesa de ayuda la deja pendiente de su aprobación y le muestra los dos botones.
-
-        A NOMBRE DE QUIÉN SE CARGA: de `autor`, el técnico que resolvió, siempre que tenga su
-        token configurado (`_sesion_de`). Si la carga ITHOS, el historial dice que el que resolvió
-        fue ITHOS —y en el ticket #803 lo dijo, con la resolución escrita por una técnica que sí
-        tenía token—. Cuando no hay token para ese técnico, la carga ITHOS: es el último recurso,
-        porque sin solución cargada el cliente se queda sin los botones.
-
-        El TEXTO que se le pasa acá ya viene resumido para el cliente (ver
-        `a_confirmacion_del_cliente`): esta función no reescribe nada, carga lo que recibe.
-
-        Sin texto sólo cambia el estado (compatibilidad)."""
-        if not solucion:
-            try:
-                self.cli.abrir()
-                self.cli.request(f"/Ticket/{tid}", "PUT", {"input": {"status": 5}})
-                return True
-            except Exception as e:  # noqa: BLE001
-                log.warning("Triage: no pude marcar resuelto #%s: %s", tid, e)
-                return False
-            finally:
-                self.cli.cerrar()
-        propia = self._sesion_de(autor)
-        if propia is not None:
-            try:
-                propia.request("/ITILSolution", "POST", {"input": {
-                    "itemtype": "Ticket", "items_id": tid,
-                    "content": solucion or "Resuelto por el equipo de soporte técnico."}})
-                return True
-            except Exception as e:  # noqa: BLE001
-                log.info("Triage #%s: no pude cargar la solución con el usuario del técnico (%s); "
-                         "la carga ITHOS.", tid, str(e)[:90])
-            finally:
-                propia.cerrar()
+        Al pasar a Resuelto GLPI graba la fecha de solución, y con eso el SLA de resolución deja de
+        correr. La resolución en sí es el comentario del técnico, que ya está en el ticket."""
         try:
             self.cli.abrir()
-            try:
-                self.cli.request("/ITILSolution", "POST", {"input": {
-                    "itemtype": "Ticket", "items_id": tid,
-                    "content": solucion or "Resuelto por el equipo de soporte técnico."}})
-            except Exception as e:  # noqa: BLE001
-                # Último recurso: dejarlo resuelto igual. Pero SIN solución el cliente no tiene en
-                # la mesa de ayuda los botones de aprobar/rechazar, así que esto se avisa fuerte:
-                # es un ticket que va a quedar esperando una confirmación que él no puede dar.
-                log.warning("Triage #%s: NO pude cargar la solución (%s). El ticket queda resuelto "
-                            "pero el cliente no va a poder aprobarla ni rechazarla.", tid, str(e)[:120])
-                self.cli.request(f"/Ticket/{tid}", "PUT", {"input": {"status": 5}})
+            self.cli.request(f"/Ticket/{tid}", "PUT", {"input": {"status": 5}})
             return True
         except Exception as e:  # noqa: BLE001
             log.warning("Triage: no pude marcar resuelto #%s: %s", tid, e)
@@ -720,6 +683,50 @@ class Triage:
         finally:
             self.cli.cerrar()
 
+    def cerrar_cancelado(self, tid):
+        """El cliente DIO DE BAJA su propio pedido -> se cierra el ticket.
+
+        Caso real (#827): el solicitante escribió «Se cancela el ticket por corrección de Asunto»
+        —lo había cargado mal y lo iba a abrir de nuevo— y el ticket se quedó En curso, con el SLA
+        corriendo contra un pedido que ya no existía. Lo que el cliente da de baja no hay que
+        resolverlo: se cierra.
+
+        Se deja UNA línea, no un discurso: él ya explicó por qué lo cancela y repetírselo no suma."""
+        try:
+            self.cli.abrir()
+            self._followup(tid, "Cerramos el ticket a pedido suyo. Si lo necesita, puede abrir uno "
+                                "nuevo cuando quiera. Soporte ITH.")
+            self.cli.request(f"/Ticket/{tid}", "PUT", {"input": {"status": 6}})
+            return True
+        except Exception:  # noqa: BLE001
+            return False
+        finally:
+            self.cli.cerrar()
+
+    def cliente_cancela(self, texto):
+        """¿El cliente está DANDO DE BAJA su pedido? True/False, o None si la IA no está.
+
+        OJO con la diferencia, que es la que puede cerrar un ticket vivo por error: «ya se
+        solucionó» NO es cancelar (eso es confirmar, y tiene su propio camino), y «no hace falta
+        que vengan hoy» tampoco (eso es reprogramar). Cancelar es retirar el pedido: lo cargó mal,
+        lo va a abrir de nuevo, era un duplicado, o ya no lo necesita."""
+        try:
+            r = self.ia.chat(
+                "Un CLIENTE escribió en su ticket de soporte. Decidí si está DANDO DE BAJA el "
+                "pedido, es decir que ya no quiere que se trabaje en él.\n"
+                "- cancela=true si pide anularlo, cancelarlo, descartarlo o cerrarlo sin "
+                "resolverlo: lo cargó mal y lo va a abrir de nuevo, está repetido o duplicado, se "
+                "equivocó, o ya no lo necesita.\n"
+                "- cancela=false si el problema SE RESOLVIÓ (eso es otra cosa), si pide "
+                "reprogramar o posponer, si da un dato, si pregunta, si reclama o si sigue "
+                "esperando una respuesta.\n"
+                "ANTE LA DUDA, false: cerrar por error un ticket que el cliente necesita es peor "
+                "que dejarlo abierto. Respondé SOLO JSON: {\"cancela\": true|false}.",
+                texto, json_out=True)
+            return _si_o_no(r, "cancela")
+        except Exception:  # noqa: BLE001
+            return None
+
     def reabrir(self, tid):
         try:
             self.cli.abrir()
@@ -743,8 +750,7 @@ class Triage:
                 "funciona / que está conforme. Si duda, se queja, pregunta o dice que sigue "
                 "igual: false. Respondé SOLO JSON: {\"confirma\": true|false}.",
                 texto, json_out=True)
-            import json as _j
-            return bool(_j.loads(r).get("confirma"))
+            return _si_o_no(r, "confirma")
         except Exception:  # noqa: BLE001
             return None
 
@@ -770,8 +776,7 @@ class Triage:
                 "que sigue en gestión (resuelto=false). Ante la duda, false. "
                 "Respondé SOLO JSON: {\"resuelto\": true|false}.",
                 texto, json_out=True)
-            import json as _j
-            return bool(_j.loads(r).get("resuelto"))
+            return _si_o_no(r, "resuelto")
         except Exception:  # noqa: BLE001
             return None
 
@@ -787,8 +792,7 @@ class Triage:
                 "tipo 'solucionado', 'listo', 'ya funciona', 'resuelto', 'ok' SIN explicar cómo se hizo "
                 "(explica=false). Ante la duda, false. Respondé SOLO JSON: {\"explica\": true|false}.",
                 texto, json_out=True)
-            import json as _j
-            return bool(_j.loads(r).get("explica"))
+            return _si_o_no(r, "explica")
         except Exception:  # noqa: BLE001
             return None
 
@@ -832,63 +836,38 @@ class Triage:
                 "ninguna gestión del cliente.\n"
                 "Respondé SOLO JSON: {\"pide_confirmacion\": true|false}.",
                 texto, json_out=True)
-            import json as _j
-            return bool(_j.loads(r).get("pide_confirmacion"))
+            return _si_o_no(r, "pide_confirmacion")
         except Exception:  # noqa: BLE001
             return None
 
-    def poner_en_espera_pedido(self, tid, comentario_tecnico):
-        """El técnico pidió coordinar/confirmar algo con el cliente -> EN ESPERA (status 4) + un
-        followup pidiéndole al CLIENTE que confirme/responda respecto de lo que planteó el técnico."""
+    def poner_en_espera_pedido(self, tid, comentario_tecnico=""):
+        """El técnico le pidió algo al cliente -> el ticket pasa a EN ESPERA (status 4) y el SLA se
+        pausa. ITHOS NO le escribe nada al cliente.
+
+        POR QUÉ NO ESCRIBE (ticket #826). Antes ITHOS leía el comentario del técnico y redactaba su
+        propio pedido, más largo y numerado. El cliente terminaba leyendo dos veces lo mismo: el
+        pedido del técnico y, un minuto después, la versión de ITHOS. Quedaba poco profesional. El
+        pedido del técnico ya está escrito y es público: alcanza.
+
+        LO QUE SÍ QUEDA es una NOTA INTERNA (el cliente no la ve) con `_MARCA_PEDIDO_TECNICO`. No es
+        decorativa: es el registro de que la pelota pasó al cliente. El ciclo lo lee para recordarle
+        una vez por día hábil, para escalar al técnico a los días hábiles sin respuesta, y para no
+        volver a procesar el MISMO comentario después de un reinicio —el estado en memoria se pierde,
+        el ticket no—."""
+        # `nota_interna` abre y cierra su propia sesión, así que va ANTES: meterla adentro del
+        # try/finally de abajo le cerraría la sesión al PUT que viene después.
+        self.nota_interna(
+            tid, f"Nota interna (el cliente no la ve): el ticket {_MARCA_PEDIDO_TECNICO}. Lo dejé "
+                 "En espera, así el SLA no corre mientras esperamos su respuesta. No hace falta "
+                 "escribirle: su pedido ya está en el ticket y el cliente lo ve.")
         try:
-            msg = self._mensaje_pedir_confirmacion(comentario_tecnico)
             self.cli.abrir()
-            self._followup(tid, msg)
             self.cli.request(f"/Ticket/{tid}", "PUT", {"input": {"status": 4}})
             return True
         except Exception:  # noqa: BLE001
             return False
         finally:
             self.cli.cerrar()
-
-    def _mensaje_pedir_confirmacion(self, comentario_tecnico):
-        """Redacta, PARA EL CLIENTE, qué necesitamos de él, a partir de lo que planteó el técnico.
-
-        Tiene que quedar claro QUÉ TIENE QUE HACER, no sólo que estamos esperando: si el técnico
-        avanzó una parte y falta algo del lado del cliente (que lo derive a otra área suya, que
-        revise un equipo propio), el mensaje lo dice con todas las letras. Si la IA no está, va un
-        texto genérico."""
-        try:
-            r = self.ia.chat(
-                "Un TÉCNICO de soporte dejó un comentario en un ticket y para seguir hace falta algo "
-                "DEL CLIENTE. Redactá un mensaje BREVE y profesional PARA EL CLIENTE (de usted).\n"
-                "Tiene que tener, en este orden y en pocas líneas:\n"
-                "1. Qué se hizo o qué se resolvió hasta ahora, si el comentario lo dice.\n"
-                "2. QUÉ FALTA y POR QUÉ el caso todavía no se puede dar por cerrado.\n"
-                "3. QUÉ NECESITAMOS DE ÉL, concreto y accionable: coordinar un día y horario, dar el "
-                "OK, o gestionar algo de su lado. Que quede claro qué tiene que hacer, no sólo que "
-                "estamos esperando.\n"
-                "REGLA para el punto 3: si lo que falta está en la INFRAESTRUCTURA DEL CLIENTE —un "
-                "equipo o una terminal desconectada, sin energía o sin red—, pedile expresamente que "
-                "lo ESCALE al área de sistemas/IT de su organización para que revisen ese equipo, y "
-                "que verifiquen que esté ENERGIZADO y que tenga CONEXIÓN DE RED. Aclarále que en "
-                "cuanto vuelva a estar en línea podemos sincronizarlo y dar el caso por cerrado.\n"
-                "No inventes datos ni pasos que el comentario no diga; no uses tecnicismos internos "
-                "ni nombres de consultas o archivos. Terminá con 'Quedamos a la espera de su "
-                "respuesta. Soporte ITH.'. Respondé SOLO el mensaje.",
-                comentario_tecnico, json_out=False)
-            r = (r or "").strip()
-            if r:
-                # Garantizamos el marcador estable de ESPERA (_MARCA_ESPERA_CLIENTE) por si la IA no
-                # lo incluyó: el ciclo lo usa para recordarle al cliente una vez por día hábil y para
-                # NO volver a pedir coordinación del mismo comentario tras un reinicio (ver
-                # _es_pedido_al_cliente / _coordinacion_despues_de).
-                return _con_cierre_espera(r)
-        except Exception:  # noqa: BLE001
-            pass
-        return ("Para avanzar con su solicitud necesitamos coordinar/confirmar algunos detalles con "
-                "usted. Por favor respóndanos para continuar. Quedamos a la espera de su respuesta. "
-                "Soporte ITH.")
 
 
 # El CICLO DE VIDA (lo que pasa después del triage) vive en `ciclo.py`. Se re-exporta para que

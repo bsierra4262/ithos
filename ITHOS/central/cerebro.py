@@ -9,7 +9,16 @@ en el producto cada cliente puede tener su propio prompt/reglas.
 """
 
 import json
+import os
 import re
+import sys
+
+_AQUI = os.path.dirname(os.path.abspath(__file__))
+for _p in (os.path.join(_AQUI, ".."), _AQUI):
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
+# A quién le entra cada ticket sale de equipo.py, que es donde vive el equipo: acá sólo se aplica.
+from equipo import ESCALAMIENTO, INSTALACIONES, MESA_PENDIENTE   # noqa: E402
 
 REGLAS_SRT = """Eres ITHOS, agente de triage de una mesa de ayuda. Clasificás
 tickets de control de acceso (fichaje biométrico).
@@ -125,7 +134,7 @@ cliente. Si ninguno se parece de verdad, ignoralos.
 Respondé SOLO este JSON:
 {"alcance":"individual|grupo|equipo|sede|masivo",
  "categoria":"TERMINALES|MOLINETES|HIK-CENTRAL|INTERFACE|OTRA",
- "prioridad":"Baja|Media|Alta|Urgente","responsable":"bsierra|jayala",
+ "prioridad":"Baja|Media|Alta|Urgente","responsable":"mesa|bsierra|jayala",
  "necesita_info":true|false,"requiere_visita":true|false,
  "resumen":"una linea","primera_respuesta":"texto",
  "nota_tecnico":"nota interna breve para el equipo, o \"\" si no hay nada"}"""
@@ -351,11 +360,23 @@ def coherente(a, asunto="", descripcion=""):
         hechas.append(f"prioridad {prio} -> {debe} por el alcance ({alcance})")
     a["prioridad"] = debe
 
-    # Equipamiento caído en una sede es instalaciones; el software y los casos sueltos, soporte.
-    if alcance in ALCANCE_SERVICIO and a.get("categoria") in ("TERMINALES", "MOLINETES") \
-            and a.get("responsable") != "jayala":
-        a["responsable"] = "jayala"
-        hechas.append("lo toma instalaciones: hay equipamiento caído en la sede")
+    # A QUIÉN LE ENTRA. No lo decide el modelo: lo decide esta regla, siempre igual. El modelo
+    # proponía un responsable y bastaba con que redactaran distinto el mismo problema para que
+    # cayera en otra persona. El orden es el que importa (ver equipo.py):
+    #   1. equipamiento caído en una sede -> INSTALACIONES, porque hay que ir al lugar;
+    #   2. Alta o Urgente -> ESCALAMIENTO (un sector, una sede o varias sin poder fichar);
+    #   3. el resto -> la MESA, que se reparte por carga entre Laura y Lisandro.
+    # La persona concreta de la mesa la elige el triage: es el único que puede preguntarle a GLPI
+    # cuántos tickets abiertos tiene cada uno ahora.
+    if alcance in ALCANCE_SERVICIO and a.get("categoria") in ("TERMINALES", "MOLINETES"):
+        destino, porque = INSTALACIONES, "lo toma instalaciones: hay equipamiento caído en la sede"
+    elif a["prioridad"] in ("Alta", "Urgente"):
+        destino, porque = ESCALAMIENTO, f"lo mira {ESCALAMIENTO}: sale {a['prioridad']}"
+    else:
+        destino, porque = MESA_PENDIENTE, "lo trabaja la mesa (se asigna al que tenga menos carga)"
+    if a.get("responsable") != destino:
+        a["responsable"] = destino
+        hechas.append(porque)
 
     # ¿Hay que ir al lugar? Un equipo caído no se arregla por mail.
     visita = bool(a.get("requiere_visita"))

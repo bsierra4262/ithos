@@ -142,8 +142,13 @@ indiv, corr_i = cerebro.coherente({"alcance": "individual", "categoria": "TERMIN
                                    "prioridad": "Baja", "responsable": "bsierra",
                                    "necesita_info": True})
 ok(indiv["necesita_info"] is True, "si falta el legajo de UNA persona, se sigue pidiendo")
-ok(indiv["prioridad"] == "Baja" and indiv["responsable"] == "bsierra" and not corr_i,
-   "y no se toca nada más")
+ok(indiv["prioridad"] == "Baja", "y sigue saliendo Baja")
+# El caso de una persona es el día a día: lo trabaja la MESA (Laura y Lisandro), no Brian. Desde el
+# 17-nov-2026 a él sólo le entra lo Alta/Urgente que no sea equipamiento caído en una sede.
+ok(indiv["responsable"] == "mesa",
+   "y lo trabaja la mesa, que se reparte por carga", indiv["responsable"])
+ok(all("prioridad" not in c and "instalaciones" not in c for c in corr_i),
+   "sin tocarle la prioridad ni mandarlo a instalaciones", str(corr_i))
 # CAMBIO DE REQUERIMIENTO (#674): la prioridad la decide el ALCANCE, y punto. Antes era sólo un
 # PISO y el modelo podía subirla a gusto: el mismo tipo de ticket salía Baja un día y Media al otro
 # —pasó de verdad—, y con prioridades que no significan nada los reportes de SLA no miden nada.

@@ -585,15 +585,20 @@ dólar oficial del BNA; INTELLIHELP es dueño y NO se cobra.
     Groq), 30 RPM, Llama 3.3 70B (muy capaz) y ultrarrápido; key gratis sin tarjeta en
     cloud.cerebras.ai. Verificado con doc oficial 2026 (ningún free tier es 100% sin límite por
     minuto, pero Cerebras es el que más margen da). Elegible en el panel.
-30. CEREBRAS integrado y verificado con la key real por API: modelos gpt-oss-120b / zai-glm-4.7 /
+30. [HISTÓRICO — hoy Cerebras pide pago (402) y no está en la cadena de INTELLIHELP; ver el 31.]
+    CEREBRAS integrado y verificado con la key real por API: modelos gpt-oss-120b / zai-glm-4.7 /
     gemma-4-31b; se usa gpt-oss-120b (120B, muy capaz) — circuito completo OK, consulta simple
     ~0.5s. Límites reales: 1.000.000 tokens/día, 30.000 TPM, 2400 req/día. La clase usa User-Agent
     de navegador (Cloudflare bloquea el UA de Python) y 'max_completion_tokens' (no 'max_tokens').
     La lógica elegir_modelo + detectar_plan (más capaz gratis / capaz cost-effective si es pago,
     detectado por la key) vale para TODOS los proveedores. El JSON del agente capea tokens (2000).
-31. IDENTIDAD DE IA de INTELLIHELP = CADENA DE 3 (respaldo automático en orden): Gemini PRIMARIA
-    (identidad/voz Charon; con plan PAGO de Google queda de primaria todo el día con el modelo
-    capaz) -> Cerebras SECUNDARIA (el free con más margen, 1M/día) -> Groq TERCIARIA. MultiIA ahora
+31. CADENA DE IA (respaldo automático en orden). QUÉ proveedores y en QUÉ orden NO está escrito acá:
+    sale de la config REAL de cada cliente (ia.proveedor -> ia.secundario -> ia.terciario), y si te
+    preguntan, contestá con esa, nunca con una lista de memoria. (Acá estuvo escrito «Gemini ->
+    Cerebras -> Groq» y quedó mintiendo: Cerebras pasó a pedir pago —HTTP 402— y salió de la cadena
+    de INTELLIHELP el 17-nov-2026; Mistral salió el mismo día por el límite del plan gratis; en su
+    lugar entró la IA LOCAL de la VPS, Ollama con qwen3:4b, como último respaldo.) La voz es
+    siempre Charon (Gemini), sea cual sea el motor de texto. MultiIA ahora
     encadena N proveedores (self.cadena): si la primaria se agota (cuota DIARIA), entra en cooldown
     y salta sola a la siguiente; expone self.ultimo_proveedor (qué motor respondió de verdad, no
     heurística). Usa UNA sola IA por consulta (return al primer éxito; las demás NO se llaman, no

@@ -26,6 +26,13 @@ _MARCA_RECORDATORIO = "le recordamos que su ticket figura como resuelto"
 # respuesta, y (b) tiene que CONFIRMAR/COORDINAR algo para que podamos avanzar. En los dos casos el
 # ciclo le recuerda una vez por día hábil hasta que responda (y el SLA queda pausado en 'En espera').
 _MARCA_ESPERA_CLIENTE = "a la espera de su respuesta"
+# El MISMO hecho —el ticket espera al cliente— pero cuando quien le pidió algo fue EL TÉCNICO, con
+# su propio comentario. ITHOS entonces NO le escribe nada al cliente (el pedido del técnico ya está,
+# y repetirlo con otras palabras quedaba poco profesional: ticket #826); sólo deja esta nota INTERNA
+# y pasa el ticket a En espera. La nota existe para que el ciclo sepa que la pelota es del cliente:
+# sin ella se perderían los recordatorios por día hábil y, tras un reinicio, el pedido del mismo
+# comentario se volvería a procesar.
+_MARCA_PEDIDO_TECNICO = "queda a la espera de lo que pidió el técnico"
 _MARCA_PROCEDIMIENTO = "documentá paso a paso"   # nota interna que pide el procedimiento
 _MARCA_RECORDATORIO_ESPERA = "le recordamos que su ticket está a la espera"
 _MARCA_ESCALADA_ESPERA = "sigue sin respuesta del cliente"

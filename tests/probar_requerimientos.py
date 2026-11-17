@@ -447,9 +447,9 @@ try:
         # El ciclo pregunta PRIMERO si queda algo del cliente (acá no) y recién después si resuelve.
         def tecnico_pide_confirmacion(self, t): return False
         def tecnico_resolvio(self, t): return True     # el comentario del técnico resuelve
-        def a_confirmacion_del_cliente(self, tid, sol, autor=None):   # el pasaje completo
+        def a_confirmacion_del_cliente(self, tid, autor=None):   # el pasaje completo
             llam["marcar"] += 1; llam["confirm"] += 1; return True
-        def marcar_resuelto(self, tid, sol="", autor=None):llam["marcar"] += 1; return True
+        def marcar_resuelto(self, tid):llam["marcar"] += 1; return True
         def pedir_confirmacion(self, tid): llam["confirm"] += 1; return True
         def poner_en_curso(self, tid): return True
         def cerrar(self, tid): return True
@@ -487,7 +487,7 @@ try:
 
     class _Tri2:
         def tecnico_resolvio(self, t): return True
-        def marcar_resuelto(self, tid, sol="", autor=None):return True
+        def marcar_resuelto(self, tid):return True
         def pedir_confirmacion(self, tid): llam2["confirm"] += 1; return True
         def poner_en_curso(self, tid): return True
         def cerrar(self, tid): return True
@@ -674,7 +674,7 @@ try:
         def cerrar(self, tid): return True
         def reabrir(self, tid): return True
         def cliente_confirma(self, t): return None
-        def marcar_resuelto(self, tid, sol="", autor=None):return True
+        def marcar_resuelto(self, tid):return True
         def tecnico_resolvio(self, t): return False
         def nota_interna(self, tid, texto): return True
     od7 = _TRI.G.de_entidad
@@ -814,7 +814,10 @@ try:
     from comun import ia as _IA86
     g86 = _IA86.GeminiIA({"gemini_api_key": "x", "modelo_texto": "gemini-2.5-flash-lite"})
     hoy86 = _dt86.date.today().isoformat()
-    escalera = len(g86._escalera) >= 3 and g86._modelo_vigente() == "gemini-2.5-flash-lite"
+    # Al menos DOS escalones: lo que se pide es que haya otro modelo de Gemini al que caer. Acá se
+    # pedían tres porque se contaba `gemini-3-flash-preview`, que Google no tiene: un escalón que no
+    # existe no es respaldo, es un 404 que tapaba la cuota (ver tests/probar_cadena_ia.py).
+    escalera = len(g86._escalera) >= 2 and g86._modelo_vigente() == "gemini-2.5-flash-lite"
     # se agota el primero -> sigue con el segundo, sin cambiar de proveedor
     sigue = g86._marcar_agotado("gemini-2.5-flash-lite") and g86._modelo_vigente() == "gemini-2.5-flash"
     # se agotan TODOS -> recién ahí avisa que Gemini quedó sin cuota (y la cadena pasa al siguiente)
@@ -3069,19 +3072,25 @@ try:
         posts_A = [q for q in rA if q[0] == "/Ticket_User" and q[1] == "POST"]
         respeta_manual = (not puts_cat_A and not posts_A)    # no re-categoriza ni re-asigna
         # caso B: MAL CARGADO (ITHOS no asignado, categoría equivocada 99) -> lo CORRIGE igual (categoriza
-        # a 11) + asigna ITHOS(28) + responsable default(7). El 1er triage siempre categoriza.
+        # a 11) + asigna ITHOS(28) + un RESPONSABLE HUMANO. El 1er triage siempre categoriza.
+        # Quién es ese humano depende del caso: el día a día lo trabaja la MESA (Laura 30 /
+        # Lisandro 31, el que tenga menos carga), lo Alta/Urgente va a Brian (7) y el equipamiento
+        # caído en una sede a instalaciones (8). Lo que acá importa es que NUNCA quede sin humano.
         rB = _correr({"id": 2, "status": 1, "itilcategories_id": 99}, set())
         campos_B = next((q[2]["input"] for q in rB if q[0] == "/Ticket/2" and q[1] == "PUT"
                          and "urgency" in (q[2] or {}).get("input", {})), {})
         posts_B = [q[2]["input"]["users_id"] for q in rB
                    if q[0] == "/Ticket_User" and q[1] == "POST"]
-        corrige_malcargado = (campos_B.get("itilcategories_id") == 11 and 28 in posts_B and 7 in posts_B)
+        humanos_B = set(posts_B) & set(_T77.RESPONSABLES.values())
+        corrige_malcargado = (campos_B.get("itilcategories_id") == 11 and 28 in posts_B
+                              and bool(humanos_B))
         # caso C: ITHOS no asignado PERO un técnico HUMANO (8=jayala) ya asignado a mano -> categoriza +
-        # ITHOS, pero NO re-agrega el responsable default (7) -> respeta la asignación manual.
+        # ITHOS, pero NO re-agrega NINGÚN responsable automático -> respeta la asignación manual.
         rC = _correr({"id": 3, "status": 1}, {8})
         posts_C = [q[2]["input"]["users_id"] for q in rC
                    if q[0] == "/Ticket_User" and q[1] == "POST"]
-        respeta_asig = (28 in posts_C and 7 not in posts_C)
+        respeta_asig = (28 in posts_C
+                        and not (set(posts_C) & set(_T77.RESPONSABLES.values())))
         func_proc = respeta_manual and corrige_malcargado and respeta_asig
     finally:
         _T77.cerebro.clasificar_ticket = _clf0
@@ -3414,19 +3423,69 @@ CAPACIDADES = [
     {"que": "el equipo sale de la configuración y los que se forman trabajan acompañados",
      "codigo": [("ITHOS/comun/tickets.py", "def acompanan_a"),
                 ("ITHOS/central/equipo.py", "def ids_humanos"),
-                ("ITHOS/central/ciclo.py", "tecs, humanos = ids_tecnicos(cfg), ids_humanos(cfg)"),
-                ("ITHOS/central/triage.py", "def _sesion_de")],
+                ("ITHOS/central/ciclo.py", "tecs, humanos = ids_tecnicos(cfg), ids_humanos(cfg)")],
      "docs": {"DOCUMENTO_MAESTRO.md": ["El equipo sale de la configuración",
                                        "Formación acompañada"],
               "README.md": ["formación", "responsable"],
               "CHANGELOG.md": ["El equipo sale de la configuración"]}},
-    {"que": "la solución que lee el cliente es un resumen suyo, a nombre de quien resolvió",
-     "codigo": [("ITHOS/central/triage.py", "def resumen_para_el_cliente"),
-                ("ITHOS/central/triage.py", "def _repite_al_tecnico"),
+    {"que": "la resolución es el comentario del técnico: ITHOS no carga ninguna solución",
+     "codigo": [("ITHOS/central/triage.py", "if not self.marcar_resuelto(tid):"),
                 ("ITHOS/central/ciclo.py", "autor=int(ult.get(\"users_id\") or 0)")],
-     "docs": {"DOCUMENTO_MAESTRO.md": ["resumen corto", "No es el comentario del técnico copiado"],
-              "README.md": ["resumen corto", "No es el comentario del técnico copiado"],
+     "docs": {"DOCUMENTO_MAESTRO.md": ["ITHOS no carga ninguna solución"],
+              "README.md": ["ITHOS no carga ninguna solución"],
               "CHANGELOG.md": ["leía dos veces lo mismo"]}},
+    {"que": "las cuentas internas (admin) no figuran en ningún ticket",
+     "codigo": [("ITHOS/central/equipo.py", "def cuentas_internas"),
+                ("ITHOS/central/triage.py", "internas = cuentas_internas(self.cfg_glpi)")],
+     "docs": {"DOCUMENTO_MAESTRO.md": ["cuentas internas"],
+              "README.md": ["cuentas internas"],
+              "CHANGELOG.md": ["La cuenta `admin` figuraba como solicitante"]}},
+    {"que": "la IA local es el último respaldo, y el modelo se elige midiendo",
+     "codigo": [("ITHOS/comun/ia.py", "\"num_ctx\": 8192"),
+                ("ITHOS/comun/ia.py", "payload[\"think\"] = False"),
+                ("ITHOS/docker-compose.yml", "ollama:"),
+                ("tests/medir_ia_local.py", "def medir")],
+     "docs": {"DOCUMENTO_MAESTRO.md": ["La IA local, el último respaldo", "medir_ia_local.py"],
+              "README.md": ["La IA local, el último respaldo", "medir_ia_local.py"],
+              "CHANGELOG.md": ["La IA local, como último respaldo"]}},
+    {"que": "cada error de la IA dice su causa (permanente vs. límite por minuto)",
+     "codigo": [("ITHOS/comun/ia.py", "def _es_permanente"),
+                ("ITHOS/comun/ia.py", "\"no existe (404)\"")],
+     "docs": {"DOCUMENTO_MAESTRO.md": ["Cada error dice su causa"],
+              "README.md": ["Cada error dice su causa"],
+              "CHANGELOG.md": ["Todo error de la IA se llamaba"]}},
+    {"que": "un sí/no dudoso de la IA nunca cierra ni reabre un ticket",
+     "codigo": [("ITHOS/central/triage.py", "def _si_o_no"),
+                ("ITHOS/central/triage.py", "return _si_o_no(r, \"confirma\")")],
+     "docs": {"DOCUMENTO_MAESTRO.md": ["sí/no dudoso"],
+              "README.md": ["sí/no dudoso"],
+              "CHANGELOG.md": ["sí/no dudoso"]}},
+    {"que": "a quién le entra cada ticket: instalaciones, escalamiento o la mesa por carga",
+     "codigo": [("ITHOS/central/equipo.py", "def menos_cargado"),
+                ("ITHOS/central/equipo.py", "MESA = (\"lzaltron\", \"lcampos\")"),
+                ("ITHOS/central/cerebro.py", "destino, porque = MESA_PENDIENTE")],
+     "docs": {"DOCUMENTO_MAESTRO.md": ["se reparte **por carga**", "escalamiento"],
+              "README.md": ["se reparte **por carga**", "escalamiento"],
+              "CHANGELOG.md": ["se reparte por carga"]}},
+    {"que": "el que resuelve se queda con el ticket (SLA y @mención de quien resolvió)",
+     "codigo": [("ITHOS/central/triage.py", "def dejar_solo_al_que_resolvio"),
+                ("ITHOS/central/triage.py", "self.dejar_solo_al_que_resolvio(tid, autor)")],
+     "docs": {"DOCUMENTO_MAESTRO.md": ["El que resuelve se queda con el ticket"],
+              "README.md": ["El que resuelve se queda con el ticket"],
+              "CHANGELOG.md": ["se queda con el ticket"]}},
+    {"que": "el pedido del técnico al cliente no se repite: sólo En espera + nota interna",
+     "codigo": [("ITHOS/central/textos_ticket.py", "_MARCA_PEDIDO_TECNICO"),
+                ("ITHOS/central/ciclo.py", "return _MARCA_PEDIDO_TECNICO in texto")],
+     "docs": {"DOCUMENTO_MAESTRO.md": ["No le escribe nada al cliente"],
+              "README.md": ["no le escribe nada al cliente"],
+              "CHANGELOG.md": ["no le escribe nada al cliente"]}},
+    {"que": "lo que el cliente da de baja se cierra, sin cerrar de más",
+     "codigo": [("ITHOS/central/triage.py", "def cliente_cancela"),
+                ("ITHOS/central/triage.py", "def cerrar_cancelado"),
+                ("ITHOS/central/ciclo.py", "_RE_CANCELA.search")],
+     "docs": {"DOCUMENTO_MAESTRO.md": ["El cliente da de baja su pedido"],
+              "README.md": ["el cliente da de baja su pedido"],
+              "CHANGELOG.md": ["da de baja"]}},
     {"que": "el tablero del equipo conserva sus colores y suma a quien entra",
      "codigo": [("ITHOS/central/planka_rollover.py", "COLORES"),
                 ("ITHOS/comun/planka.py", "def actualizar_lista")],
@@ -3619,30 +3678,34 @@ except Exception as e:  # noqa: BLE001
 
 # ---------------------------------------------------------------------------------------------
 print("\n  L) AL CLIENTE NO SE LE REPITE LO QUE YA LEYÓ")
-# Requerimiento permanente de Brian: "repetir la respuesta no va". En el ticket #803 la solución se
-# cargaba con el comentario del técnico COPIADO palabra por palabra; como ese comentario es público,
-# el cliente leyó dos veces el mismo procedimiento interno. Y encima quedó registrada a nombre de
-# ITHOS, con la técnica que la escribió teniendo su propio token. Detalle completo y test de
-# regresión en tests/probar_solucion_803.py.
+# Requerimiento permanente de Brian: "repetir la respuesta no va". Cada vez que ITHOS cargó una
+# SOLUCIÓN además del comentario del técnico, el cliente leyó la resolución dos veces: copiada y sin
+# capturas (#803), resumida por ITHOS (#831), y cruda, tal cual (#844). La regla: ITHOS no carga
+# NINGUNA solución. El comentario del técnico ES la resolución; ITHOS pasa a Resuelto y pide la
+# confirmación. Y lo mismo cuando el técnico le pide algo al cliente: ITHOS no lo repite (#826).
+# Tests de regresión en tests/probar_solucion_803.py y tests/probar_ticket_674.py.
 try:
     _tri = open(os.path.join(RAIZ, "ITHOS", "central", "triage.py"), encoding="utf-8").read()
     _cic = open(os.path.join(RAIZ, "ITHOS", "central", "ciclo.py"), encoding="utf-8").read()
     _paso = _tri[_tri.index("def a_confirmacion_del_cliente"):]
     _paso = _paso[:_paso.index("def marcar_resuelto")]
-    if "resumen_para_el_cliente(solucion)" not in _paso:
-        fail("la solución se carga con el texto del técnico tal cual: el cliente lo lee dos veces")
+    _cuerpo = _paso.split('"""', 2)[-1]
+    if "ITILSolution" in _cuerpo or "self.ia.chat" in _cuerpo:
+        fail("ITHOS carga una solución además del comentario del técnico: se dice dos veces")
     else:
-        ok("la solución que ve el cliente es un RESUMEN, no el comentario del técnico copiado")
-    if "_repite_al_tecnico" not in _tri:
-        fail("nada comprueba que el 'resumen' no sea el texto del técnico otra vez")
+        ok("la resolución es el comentario del técnico: ITHOS no carga ninguna solución")
+    if 'a_confirmacion_del_cliente(t["id"], ult.get("content")' in _cic:
+        fail("el ciclo le sigue pasando el texto del técnico para copiarlo a algún lado")
     else:
-        ok("y se COMPRUEBA que no sea un pegado (la IA puede devolver el original casi intacto)")
-    if "autor=autor" not in _paso or "autor=int(ult.get(\"users_id\") or 0)" not in _cic:
-        fail("la solución no se carga a nombre del técnico que resolvió: el historial miente")
+        ok("y el ciclo no le pasa ningún texto para copiar: sólo quién resolvió")
+    _espera = _tri[_tri.index("def poner_en_espera_pedido"):]
+    _espera = _espera[:_espera.index("# El CICLO DE VIDA")]
+    if "self._followup(" in _espera:
+        fail("cuando el técnico le pide algo al cliente, ITHOS se lo vuelve a escribir")
     else:
-        ok("y queda a nombre del técnico que resolvió, no de ITHOS")
+        ok("y cuando el técnico le pide algo al cliente, ITHOS no lo repite (sólo En espera)")
 except Exception as e:  # noqa: BLE001
-    fail("no se pudo verificar cómo se carga la solución que lee el cliente", repr(e))
+    fail("no se pudo verificar qué le escribe ITHOS al cliente cuando resuelve un técnico", repr(e))
 
 
 # ---------------------------------------------------------------------------------------------

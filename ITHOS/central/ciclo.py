@@ -36,7 +36,7 @@ import cerebro                      # noqa: E402
 from equipo import (TECNICOS, TECNICOS_HUMANOS, ids_humanos, ids_tecnicos,   # noqa: E402
                     _asignados_humanos, _nombres_por_id)
 from textos_ticket import (_MARCA_CONFIRMACION, _MARCA_RECORDATORIO,       # noqa: E402
-                           _MARCA_ESPERA_CLIENTE, _MARCA_PROCEDIMIENTO,
+                           _MARCA_ESPERA_CLIENTE, _MARCA_PROCEDIMIENTO, _MARCA_PEDIDO_TECNICO,
                            _MARCA_RECORDATORIO_ESPERA, _MARCA_ESCALADA_ESPERA,
                            _MARCA_SIN_ATENDER, _DIAS_HABILES_ESCALADA, _HORAS_SIN_ATENDER,
                            _NOTA_PEDIR_PROCEDIMIENTO)
@@ -82,14 +82,37 @@ def _ya_pidio_confirmacion(fu):
     return any(_es_aviso_confirmacion(f) for f in fu)
 
 
+# Palabras que pueden estar diciendo "den de baja esto". NO deciden nada: son el filtro barato que
+# evita preguntarle a la IA por cada comentario de cada cliente en cada vuelta. Quien decide es
+# `triage.cliente_cancela`, y ante la duda contesta que no.
+_RE_CANCELA = re.compile(
+    r"\b(cancel\w*|anul\w*|descart\w*|desestim\w*|duplicad\w*|sin\s+efecto|"
+    r"d(?:ar|en|amos|oy)\s+de\s+baja|ya\s+no\s+(?:lo\s+)?(?:necesit|hace\s+falta)\w*|"
+    r"no\s+va\s+m[aá]s|omitir|ignorar\s+este\s+ticket)\b", re.IGNORECASE)
+
+
 def _es_pedido_al_cliente(f, tecs=None):
-    """True si el followup `f` es un pedido PÚBLICO de ITHOS al cliente (un dato que falta o una
-    confirmación para avanzar) y por lo tanto el ticket está esperando SU respuesta. Las notas
-    internas (is_private) NO cuentan: el cliente no las ve.
+    """True si el followup `f` registra que el ticket quedó esperando una respuesta DEL CLIENTE.
+
+    Son dos casos, y la diferencia es QUIÉN le pidió:
+
+    (a) SE LO PIDIÓ ITHOS, en su primera respuesta, porque faltaba un dato. Ese mensaje es PÚBLICO
+        y lleva `_MARCA_ESPERA_CLIENTE`. Una nota INTERNA no cuenta acá: si el cliente no la ve, no
+        se le puede reclamar que conteste.
+
+    (b) SE LO PIDIÓ EL TÉCNICO, con su propio comentario. Entonces ITHOS no le escribe nada al
+        cliente —el pedido ya está y repetirlo quedaba poco profesional (#826)— y deja sólo una
+        NOTA INTERNA con `_MARCA_PEDIDO_TECNICO`. Acá la nota SÍ cuenta: lo que el cliente tiene
+        que contestar está a la vista igual, en el comentario del técnico; la nota es el registro
+        interno de que la pelota es suya.
+
     `tecs`: ids del lado de soporte (por config del cliente); sin él, el equipo por defecto."""
-    if int(f.get("users_id") or 0) not in (tecs or TECNICOS) or int(f.get("is_private") or 0):
+    if int(f.get("users_id") or 0) not in (tecs or TECNICOS):
         return False
-    return _MARCA_ESPERA_CLIENTE in str(f.get("content", "")).lower()
+    texto = str(f.get("content", "")).lower()
+    if int(f.get("is_private") or 0):
+        return _MARCA_PEDIDO_TECNICO in texto
+    return _MARCA_ESPERA_CLIENTE in texto or _MARCA_PEDIDO_TECNICO in texto
 
 
 def _respondio_a(fu, es_pedido, tecs=None):
@@ -491,26 +514,29 @@ def gestionar_ciclo(cliente, triage, entidad, estado):
                     continue                  # la IA no contestó: lo vemos en el próximo ciclo
                 st["ultimo_tec_fu"] = int(ult["id"])
                 if pide:
-                    # Sólo si NO estaba ya en espera y NO se lo pedimos ya por ESTE comentario.
+                    # El técnico le pidió algo al cliente -> EN ESPERA, y el SLA se pausa. ITHOS no
+                    # le escribe nada: el pedido del técnico ya está en el ticket y es público;
+                    # volver a decirlo con otras palabras quedaba poco profesional (#826).
+                    # Sólo si NO estaba ya en espera y NO lo registramos ya por ESTE comentario.
                     if status != 4 and not _coordinacion_despues_de(fu, int(ult["id"]), tecs) \
                             and triage.poner_en_espera_pedido(t["id"], cont):
                         anunciar(
                             t["id"],
-                            f"En el ticket número {t['id']} el técnico dejó algo pendiente de "
-                            "parte del cliente. Lo dejé en espera y le pedí que responda.",
-                            f"⏳ *Ticket #{t['id']}* — queda algo en manos del cliente. En ESPERA "
-                            "de su respuesta.")
+                            f"En el ticket número {t['id']} el técnico le pidió algo al cliente. "
+                            "Lo dejé en espera para que el SLA no corra mientras responde.",
+                            f"⏳ *Ticket #{t['id']}* — el técnico le pidió algo al cliente. En "
+                            "ESPERA de su respuesta.")
                     continue                  # ya lo procesamos en este ciclo
                 if resolvio:
-                    # El técnico resolvió -> el ticket queda ESPERANDO QUE EL CLIENTE CONFIRME: se
-                    # carga la solución RESUMIDA para el cliente (su explicación entera ya está en
-                    # el comentario, que es público: copiarla a la solución se la hacía leer dos
-                    # veces) y A NOMBRE DEL TÉCNICO que la escribió, para que el historial no diga
-                    # que resolvió ITHOS. Después se le pide al cliente que confirme y el ticket
-                    # queda con la solución pendiente de su aprobación: el SLA no corre mientras
-                    # espera, y él puede cerrarlo o decir que sigue igual. Si no contesta, se le
-                    # recuerda una vez por día hábil.
-                    if triage.a_confirmacion_del_cliente(t["id"], cont,
+                    # El técnico resolvió -> el ticket pasa a RESUELTO y se le pide al cliente que
+                    # confirme. Se le pasa sólo QUIÉN resolvió, no el texto: ITHOS no carga ninguna
+                    # solución, porque el comentario del técnico ES la resolución y ya está en el
+                    # ticket, entero, con sus capturas y a su nombre. Cualquier cosa que ITHOS
+                    # escribiera además —copia, resumen o el mismo texto crudo— terminaba diciendo
+                    # lo mismo dos veces (#803, #831, #844).
+                    # El que resolvió se queda con el ticket (SLA y @mención suyos). Si el cliente
+                    # no contesta, se le recuerda una vez por día hábil.
+                    if triage.a_confirmacion_del_cliente(t["id"],
                                                          autor=int(ult.get("users_id") or 0)):
                         st["confirm_pedido"] = True
                         anunciar(
@@ -582,6 +608,41 @@ def gestionar_ciclo(cliente, triage, entidad, estado):
                              + (("\n_" + dijo[:300] + "_") if dijo else ""))
                 estado.pop(tid, None)
                 continue
+
+        # ================= ¿EL CLIENTE DIO DE BAJA SU PEDIDO? =================
+        # Lo que el cliente cancela no hay que resolverlo, ni esperarlo, ni recordárselo: se cierra.
+        # Caso real (#827): escribió «Se cancela el ticket por corrección de Asunto» —lo había
+        # cargado mal y lo iba a abrir de nuevo— y el ticket siguió En curso, con el SLA corriendo
+        # contra un pedido que ya no existía.
+        #
+        # DÓNDE VA Y POR QUÉ. Después de la confirmación y sólo si NO hay una solución esperando su
+        # aprobación: con una solución pendiente, lo que el cliente escribe es la respuesta A ESA
+        # SOLUCIÓN (la aprueba o la rechaza) y eso tiene su propio camino, más arriba.
+        #
+        # EL FILTRO DE TEXTO VA ANTES QUE LA IA, y no es una optimización cosmética. Sin él habría
+        # una llamada de IA por cada comentario de cada cliente en cada vuelta del ciclo —con la
+        # cuota diaria que tenemos, eso se come el triage—. Y el filtro sólo puede equivocarse para
+        # un lado: si no reconoce la palabra, no pasa nada y el ticket sigue como hasta ahora.
+        # Nunca cierra de más. La IA es la que decide de verdad, y ante la duda contesta que no.
+        if status in (1, 2, 4) and nuevos and not espera_conf:
+            ult_cli = nuevos[-1]
+            id_cli = int(ult_cli.get("id") or 0)
+            dicho = _texto_plano(ult_cli.get("content"))
+            if int(st.get("cancelacion_vista", 0)) != id_cli and _RE_CANCELA.search(dicho or ""):
+                cancela = triage.cliente_cancela(dicho)
+                if cancela is None:
+                    continue              # la IA no está: no se decide nada por las dudas
+                st["cancelacion_vista"] = id_cli
+                if cancela:
+                    quien = _nombre_usuario(cliente, ult_cli.get("users_id"), cfg)
+                    if triage.cerrar_cancelado(t["id"]):
+                        anunciar(t["id"],
+                                 f"El cliente {quien} dio de baja el ticket número {t['id']}. "
+                                 "Lo cerré.",
+                                 f"🚫 *Ticket #{t['id']}* — {quien} lo dio de baja:\n"
+                                 f"_{dicho[:300]}_\nCerrado.")
+                    estado.pop(tid, None)
+                    continue
 
         if status == 4:                       # EN ESPERA de un DATO o de coordinar algo
             # (la espera de la CONFIRMACIÓN se resolvió más arriba, sin mirar el estado)

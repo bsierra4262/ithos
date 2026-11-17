@@ -91,7 +91,28 @@ clave es gratuita o paga (`auto`), sin que el cliente tenga que saber de modelos
 **La cuota gratuita se cuenta por modelo y por día**, y entre modelos del mismo proveedor cambia
 mucho: el más eficiente puede tener un límite diario chico que se agota con pocos tickets. Por eso,
 antes de cambiar de proveedor, ITHOS **baja por los modelos del proveedor actual** hasta encontrar
-uno con cuota del día. Lo agotado se libera solo cuando cambia el día.
+uno con cuota del día. Lo agotado se libera solo cuando cambia el día. La misma escalera saltea un
+modelo que el proveedor **retiró** (404); y si no queda ninguno, el error que sale es el de la
+**cuota**, que es la causa —antes salía el 404 del último escalón y nadie se enteraba de que el
+proveedor estaba agotado—. Antes de sumar un modelo a la escalera hay que comprobar que exista.
+
+**Cada error dice su causa.** Un 400, 401, 403 o 404 —clave inválida, sin permiso, modelo
+inexistente— **no se arregla esperando**: queda escrito en el log como error, con el motivo real, y
+la primaria se aparta diez minutos en vez de reintentarse cada cuarenta segundos. Hasta ahora todo
+lo que no era cuota diaria se llamaba «límite por minuto» y la causa se perdía.
+
+**La IA local, el último respaldo.** La VPS corre su propia IA (Ollama, contenedor `ollama`, que
+sólo el Gestor alcanza por la red interna). Es el eslabón que sigue atendiendo cuando las nubes se
+quedan sin cuota —hasta ahora, en ese momento ITHOS dejaba de triagear— y la que usan las pruebas
+para no gastar la cuota buena. **El modelo se elige midiendo**, no por fama: `tests/medir_ia_local.py`
+corre el triage real sobre tickets reales y se queda con el que clasifica todo bien, y entre los que
+empatan, el más rápido. En la VPS de hoy (2 vCPU, 7,8 GB, sin GPU ni swap) ganó `qwen3:4b`, a unos
+100 segundos por triage; los otros que entran en memoria confundían el alcance, saludaban a quien no
+correspondía o devolvían vacío. Es lento a propósito del hardware, y sirve: un triage a los dos
+minutos es mejor que ninguno. Cuando salga un modelo nuevo o cambie la VPS, se vuelve a medir.
+
+**Un sí/no dudoso no decide.** Ver §5.1: las preguntas de sí o no a la IA sólo cuentan con una
+respuesta inequívoca; ante la duda, el ticket no se toca.
 
 ### 2.2 Voz y audio (entrada y salida, en todos los caminos)
 
@@ -337,9 +358,22 @@ intuición, y aplica:
 - **Categoría, urgencia/impacto/prioridad** y el **SLA/OLA** correspondiente (TTO y TTR, externos e
   internos). Corrige un ticket **mal cargado** y deja **nota interna privada** al equipo explicando la
   corrección.
-- **Asignación**: ITHOS + el técnico responsable según el tipo de caso. El equipamiento caído de una
-  sede es **instalaciones**; los casos individuales y el software, **soporte**. Si ya hay un técnico
-  asignado a mano, **respeta esa asignación**.
+- **Asignación**: ITHOS + **un** técnico responsable. Lo decide una regla fija, no el modelo —si lo
+  decidiera el modelo, el mismo problema redactado distinto caería en otra persona—, y el orden importa:
+  1. **equipamiento caído en una sede** → **instalaciones**, porque hay que ir al lugar. Gana siempre;
+  2. **Alta o Urgente** (un sector, una sede o varias sin poder fichar) → **escalamiento**;
+  3. **todo lo demás** (Baja y Media) → la **mesa**, que se reparte **por carga**: cada ticket va al
+     técnico que tenga **menos tickets abiertos en ese momento**. La cuenta se le pide a GLPI en el
+     acto; un contador propio se desincronizaría en cuanto alguien asigna a mano. Si GLPI no contesta,
+     el ticket entra igual, al primero de la mesa: dejarlo sin asignar sería peor que un reparto
+     desparejo.
+
+  Si ya hay un técnico asignado a mano, **respeta esa asignación**.
+- **Quién puede responder**: los observadores **del cliente** —compañeros del área que se suman para
+  estar al tanto— pasan también a solicitantes, porque la mesa de ayuda sólo deja escribir a los
+  solicitantes. Las **cuentas internas** (`admin`, la de súper administrador de GLPI) **se sacan del
+  ticket** en cualquier rol y nunca se vuelven solicitantes: admin ve todo igual, y figurar no le suma
+  nada a nadie. Antes ITHOS la tomaba por una observadora del cliente y la dejaba de solicitante.
 - **Primera respuesta profesional**, saludando **al solicitante** por su nombre (quien abrió el ticket, no
   la persona mencionada en el texto). Si falta un dato indispensable (p. ej. el legajo) lo pide; si el dato
   ya está en el ticket, **no lo pide**: el legajo suele venir en el **asunto** sin decir la palabra
@@ -378,24 +412,36 @@ Es lo que separa un comentario del equipo de una respuesta del cliente, así que
 esté cargado se lee como si fuera el cliente: su resolución no cierra nada y el ticket queda
 esperando una respuesta que ya llegó.
 
-Cuando un técnico **resuelve por comentario**, la explicación técnica es **suya y se queda donde
-está**: su comentario, con sus palabras. El ticket pasa a Resuelto y se le pide al cliente que
-confirme.
+Cuando un técnico **resuelve por comentario**, **su comentario ES la resolución**: ya está en el
+ticket, con su redacción, su formato, sus capturas y su nombre. ITHOS pasa el ticket a **Resuelto**
+—con eso GLPI graba la fecha de solución y el SLA deja de correr— y escribe **sólo** el pedido de
+confirmación al cliente. **ITHOS no carga ninguna solución.**
 
-Lo que se carga como **solución** —el campo que el cliente aprueba o rechaza— es un **resumen corto
-escrito para él**: una o dos oraciones que dicen qué quedó resuelto, sin nombres de scripts,
-consultas a la base, rutas, direcciones ni parámetros de configuración.
-**No es el comentario del técnico copiado.** Copiarlo le hacía leer dos veces exactamente lo mismo,
-porque su comentario ya es público, y le ponía delante detalle interno que no es para él.
-Y como pedirle a la IA que resuma no
-alcanza como garantía —puede devolver el original casi intacto—, se **comprueba**: si el resumen
-arrastra una tirada larga del texto del técnico, o es casi tan largo, se descarta y va una frase
-genérica. Lo mismo si la IA no contesta. Repetirle lo que ya leyó es peor que no resumir.
+Se probaron las tres formas de cargarla y las tres le repetían al cliente lo que ya había leído:
+copiada del comentario y encima **sin las capturas** (#803); **resumida** por ITHOS, la misma cosa
+dicha dos veces sólo que más corta (#831); y **cruda, tal cual**, ahora idéntica (#844). Una
+resolución contada dos veces sigue siendo una resolución contada dos veces.
 
-La solución se carga **con el usuario del técnico que resolvió**, cuando tiene su **token**
-configurado (`glpi_<login>_token`), no con el de ITHOS ni el del administrador: el historial dice
-quién resolvió de verdad. Si ese técnico no tiene token, la carga ITHOS como último recurso —sin
-solución cargada el cliente se quedaría sin los botones de aprobar y rechazar—.
+Lo que se resigna, a sabiendas: sin una solución cargada, la mesa de ayuda no le dibuja al cliente
+los botones de **aprobar / rechazar**. Contesta escribiendo —el pedido de confirmación se lo dice— y el
+ciclo lee esa respuesta igual: cierra si confirma, reabre si sigue. De paso se va un problema real: en
+el #803 el cliente apretó «aprobar» mientras escribía que seguía sin poder fichar, y el ticket se
+cerró solo.
+
+**Un sí/no dudoso de la IA no decide nada.** Las preguntas de sí o no que ITHOS le hace a la IA —¿el
+cliente confirma?, ¿cancela?, ¿el técnico resolvió?— se leían con un `bool(...)` a secas, que tenía dos
+agujeros: si la respuesta venía **sin la clave**, se leía como «no» y un «listo, ya anda» **reabría** el
+ticket; y si venía como **texto** («"false"»), se leía como «sí» y **cerraba** un ticket que seguía roto.
+Ahora sólo cuenta un sí o un no inequívoco; cualquier otra cosa es «no sé», y ante la duda el ticket
+no se toca y se vuelve a mirar en la vuelta siguiente.
+
+**El que resuelve se queda con el ticket.** Un ticket puede terminar asignado a varias personas —entra
+con un responsable, otro lo toma, un tercero lo mira— y el que al final lo resuelve capaz no era ninguno.
+Cuando se carga la solución, ITHOS deja **sólo a quien resolvió** en «Asignado a» (se lo asigna si no lo
+tenía) y saca al resto del equipo. Sin esto pasan dos cosas: GLPI **le suma el SLA a todos** los
+asignados, así que el reporte no dice quién resolvió qué; y la **@mención** de WhatsApp los nombra a
+todos y nadie se da por aludido. ITHOS queda asignado: es el agente que sigue trabajando el ticket
+—recuerda, escala, cierra—, no una persona que compita en el reporte.
 
 **Formación acompañada.** Un técnico nuevo aprende haciendo. Si en su ficha se indica un
 `responsable`, el ticket que le toca a esa persona se le asigna **también a él, al mismo tiempo y
@@ -410,11 +456,11 @@ Que el ticket **no nombre a nadie** no significa que haya un solo afectado: si l
 
 | Alcance | Prioridad mínima | Qué se le pide al cliente | Quién lo toma |
 |---|---|---|---|
-| `individual` | Baja | El **legajo**, si no está en el ticket | Soporte |
-| `grupo` | Media | El legajo de los afectados | Soporte |
-| `equipo` | Alta | **Coordinar la visita** (día y horario) | Instalaciones |
-| `sede` | **Urgente** | **Coordinar la visita** (día y horario) | Instalaciones |
-| `masivo` | **Urgente** | Coordinar la visita, si es hardware | Instalaciones (hardware) / Soporte (software) |
+| `individual` | Baja | El **legajo**, si no está en el ticket | La **mesa**, por carga |
+| `grupo` | Media | El legajo de los afectados | La **mesa**, por carga |
+| `equipo` | Alta | **Coordinar la visita** (día y horario) | Instalaciones (hardware) / Escalamiento (software) |
+| `sede` | **Urgente** | **Coordinar la visita** (día y horario) | Instalaciones (hardware) / Escalamiento (software) |
+| `masivo` | **Urgente** | Coordinar la visita, si es hardware | Instalaciones (hardware) / Escalamiento (software) |
 
 Cuando el alcance no es individual **no hay a quién pedirle un legajo**, así que ese pedido nunca sale.
 
@@ -451,18 +497,29 @@ ticket, con qué prioridad entra, en manos de quién y por qué se ajustó.
   horario de atención y a la misma hora. Cuando responde, vuelve a **En curso** solo y se avisa quién
   respondió. A los **5 días hábiles sin respuesta** avisa al **técnico asignado** (nota interna privada +
   WhatsApp @mencionándolo) para que decida: contactarlo, posponerlo o cerrarlo.
-- **Coordinación pedida por el técnico**: si el técnico plantea coordinar/confirmar algo con el cliente
-  —aun redactado impersonal ("se deberá coordinar la reubicación")— ITHOS le transmite el pedido al cliente
-  y deja el ticket En espera. Sólo dispara con comentarios **del técnico**: si el cliente dice "coordinemos
-  una reunión", no aplica.
+- **Pedido del técnico al cliente**: si el técnico le pide algo al cliente —un dato, coordinar o
+  confirmar algo, aun redactado impersonal ("se deberá coordinar la reubicación")— ITHOS deja el ticket
+  **En espera**, así el SLA no corre mientras el cliente responde. **No le escribe nada al cliente**: el
+  pedido del técnico ya está en el ticket y es público, y repetirlo con otras palabras quedaba poco
+  profesional (#826). Sólo deja una **nota interna** que registra que la pelota es del cliente —de esa
+  nota cuelgan los recordatorios por día hábil, la escalada al técnico y que el mismo comentario no se
+  vuelva a procesar tras un reinicio—. Sólo dispara con comentarios **del técnico**: si el cliente dice
+  "coordinemos una reunión", no aplica.
+- **El cliente da de baja su pedido**: si escribe que lo cancela —lo cargó mal y lo va a abrir de nuevo,
+  está duplicado, ya no lo necesita— el ticket **se cierra**, con una sola línea. Lo que el cliente da de
+  baja no se resuelve, no se le recuerda ni se escala (#827). Con dos cuidados: **decide la IA y ante la
+  duda no cierra** («ya se solucionó» es confirmar, no cancelar; «¿pueden reprogramar?», tampoco); y
+  **antes pasa un filtro de texto barato**, para no gastar una llamada de IA por cada comentario de cada
+  cliente en cada vuelta del ciclo. Ese filtro sólo puede fallar para un lado: si no reconoce la palabra,
+  el ticket sigue como estaba. Nunca cierra de más. Con una solución esperando aprobación no corre: lo
+  que el cliente escriba ahí es la respuesta a esa solución.
 - **Posponer**: "dejalo en espera hasta el lunes 10:00" agenda la reactivación y el ticket vuelve a En curso
   solo en ese momento. Un ticket pospuesto **no recibe recordatorios ni escaladas**.
 - **Resuelto → confirmación**: cuando el técnico resuelve (o lo marca resuelto a mano), ITHOS le pide al
   cliente que confirme y le recuerda una vez por día hábil. **Nunca cierra sin confirmación real**: si el
-  cliente dice que sigue el problema, **reabre**. La **solución** que se carga es un **resumen corto para
-  el cliente** y va **a nombre del técnico que resolvió**, nunca el comentario de él copiado: eso le hacía
-  leer dos veces lo mismo y le mostraba detalle interno. La explicación técnica no se mueve de su
-  comentario.
+  cliente dice que sigue el problema, **reabre**. La resolución es **el comentario del técnico**, que ya
+  está en el ticket: ITHOS no carga ninguna solución encima —copiada, resumida o tal cual, las tres
+  le repetían al cliente lo que ya había leído— y sólo escribe el pedido de confirmación.
 - **Feedback interno para la KB**: si la resolución no explica **cómo** se resolvió, ITHOS le pide al técnico
   por nota privada el **procedimiento paso a paso**. Eso alimenta la base de conocimiento.
 - **SLA en riesgo**: alerta de los tickets por vencer o vencidos, **agrupada por técnico asignado** y

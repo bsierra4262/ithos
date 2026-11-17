@@ -200,17 +200,23 @@ print("\n=== 6 · Un TÉCNICO NUEVO no es el cliente ===")
 # "el cliente respondió fuera de horario": lo dejó EN ESPERA hasta el otro día en vez de marcarlo
 # resuelto y pedirle la confirmación al cliente.
 LAURA = 30
+# OJO con este test: Laura y Lisandro HOY ya están en el equipo por defecto del código (son la mesa
+# desde el 17-nov-2026), así que con ellos no se prueba nada: pasaría igual con el bug puesto. Lo
+# que tiene que seguir funcionando es que alguien que ENTRA al equipo y sólo está en la CONFIG se
+# lea como soporte. Por eso acá se usa una persona nueva, con un id que el código no conoce.
+NUEVA = 77
 CFG_EQUIPO = dict(CFG, tecnicos=[
     {"nombre": "Brian Sierra", "glpi_id": 7, "glpi_login": "bsierra"},
     {"nombre": "Laura Zaltron", "glpi_id": LAURA, "glpi_login": "lzaltron"},
-    {"nombre": "Lisandro Campos", "glpi_id": 31, "glpi_login": "lcampos"}])
-ok(LAURA in TR.ids_humanos(CFG_EQUIPO) and LAURA in TR.ids_tecnicos(CFG_EQUIPO),
+    {"nombre": "Lisandro Campos", "glpi_id": 31, "glpi_login": "lcampos"},
+    {"nombre": "Tecnica Nueva", "glpi_id": NUEVA, "glpi_login": "tnueva"}])
+ok(NUEVA in TR.ids_humanos(CFG_EQUIPO) and NUEVA in TR.ids_tecnicos(CFG_EQUIPO),
    "el equipo sale de la config: la técnica nueva cuenta como soporte",
    str(sorted(TR.ids_humanos(CFG_EQUIPO))))
-ok(LAURA not in TR.TECNICOS_HUMANOS,
-   "y no estaba en el equipo fijo del código (por eso fallaba)")
+ok(NUEVA not in TR.TECNICOS_HUMANOS,
+   "y NO está en el equipo fijo del código: es el caso que hacía fallar esto")
 
-RESOLUCION = {"id": 103, "users_id": LAURA, "is_private": 0,
+RESOLUCION = {"id": 103, "users_id": NUEVA, "is_private": 0,
               "content": "El inconveniente quedó solucionado. Revisamos sus fichadas en la base "
                          "de datos y desde el 24/7 no ficha.",
               "date_creation": "2026-08-05 18:30:00"}
@@ -232,20 +238,15 @@ ok(CI._ultimo_id_cliente([PEDIDO, RESPUESTA, RESOLUCION], tecs) == RESPUESTA["id
    "la última vez que habló el CLIENTE sigue siendo su propio mensaje")
 
 print("\n=== 7 · La resolución es la del técnico, no una que escriba ITHOS ===")
-# Cuando el técnico resuelve por comentario, su explicación YA está en el ticket: copiarla como
-# "solución" la deja repetida. Sólo se pasa a Resuelto y se le pide confirmación al cliente.
-# Y si alguna vez SÍ se documenta una solución, queda a nombre de quien resolvió (no de admin).
-CFG_TOKENS = dict(CFG_EQUIPO, glpi_lzaltron_token="tok-laura", glpi_bsierra_token="tok-brian")
-usados = []
+# Cuando el técnico resuelve por comentario, su explicación YA está en el ticket. ITHOS no carga
+# ninguna "solución" encima —ni copiada, ni resumida, ni la misma tal cual: todas terminaban
+# repitiéndole al cliente lo que ya había leído (#803, #831, #844)—. Sólo pasa a Resuelto.
+pedidos = []
 
 
 class SesionFalsa:
-    def __init__(self, token):
-        self.token = token
-
     def request(self, path, metodo="GET", data=None, **k):
-        if path == "/ITILSolution" and metodo == "POST":
-            usados.append((self.token, (data or {}).get("input", {}).get("content", "")))
+        pedidos.append((path, metodo))
         return {}
 
     def abrir(self):
@@ -255,28 +256,13 @@ class SesionFalsa:
         pass
 
 
-G_orig = TR.G.sesion
-TR.G.sesion = lambda cfg, token=None: SesionFalsa(token)
 tri = TR.Triage.__new__(TR.Triage)
-tri.cfg_glpi = CFG_TOKENS
-tri.cli = SesionFalsa("tok-ithos")
-try:
-    tri.marcar_resuelto(662, "El inconveniente quedó solucionado. Revisamos las fichadas…",
-                        autor=LAURA)
-    ok(usados and usados[0][0] == "tok-laura",
-       "la solución la carga LAURA con su propio usuario", str(usados[:1])[:70])
-    ok(usados and "Revisamos las fichadas" in usados[0][1],
-       "y el texto es el procedimiento que ella escribió, no una frase genérica")
-    usados.clear()
-    tri.marcar_resuelto(663, "listo", autor=8)      # Alejandro no tiene token configurado
-    ok(usados and usados[0][0] == "tok-ithos",
-       "si el técnico no tiene token, la carga ITHOS como siempre", str(usados[:1])[:60])
-    usados.clear()
-    tri.marcar_resuelto(664)                        # el caso del ciclo: sin texto
-    ok(not usados,
-       "sin texto NO se escribe ninguna solución: la del técnico ya está en el ticket")
-finally:
-    TR.G.sesion = G_orig
+tri.cfg_glpi = CFG_EQUIPO
+tri.cli = SesionFalsa()
+ok(tri.marcar_resuelto(664) is True, "el ticket pasa a Resuelto")
+ok(("/Ticket/664", "PUT") in pedidos, "con un cambio de estado")
+ok(not any("/ITILSolution" in p for p, _ in pedidos),
+   "y SIN escribir ninguna solución: la del técnico ya está en el ticket", str(pedidos))
 
 print("\n" + "=" * 78)
 if FALLAS:

@@ -6,7 +6,59 @@ y el versionado, [SemVer](https://semver.org/lang/es/).
 
 ## [Unreleased]
 
+### Added
+- **La IA local, como último respaldo de la cadena.** La VPS corre su propia IA (Ollama, contenedor
+  `ollama`, sólo alcanzable por el Gestor en la red interna). Cuando Gemini y Groq se quedan sin
+  cuota, ITHOS sigue atendiendo en vez de dejar de triagear; y las pruebas la usan para no gastar la
+  cuota buena. Cadena de INTELLIHELP: Gemini → Groq → local.
+
+  **El modelo se eligió midiendo**, con el triage real sobre tickets reales de SRT
+  (`tests/medir_ia_local.py`), no por fama. En 2 vCPU y 7,8 GB sin GPU:
+
+  | Modelo | Categoría | Alcance | Triage |
+  |---|---|---|---|
+  | **qwen3:4b** | **3/3** | **3/3** | ~100 s |
+  | llama3.2:3b | 3/3 | 0/3 | ~60 s |
+  | granite4:7b-a1b-h | 1/3 | 0/3 | ~50 s |
+  | gemma4:e2b | 0/3 (vacío) | 0/3 | ~18 s |
+
+  `gemma4:e4b` ni se probó: pesa 6,6 GB y no entra sin arriesgar al Gestor. Los perdedores se
+  borraron de la VPS. Para mantenerla en el mejor modelo posible, cuando salga uno nuevo o cambie la
+  máquina se vuelve a correr esa medición.
+
+  La primera prueba dio que **ningún** modelo servía, y la culpa era en buena parte nuestra: el
+  cliente de Ollama no apagaba el «razonamiento» (`think`) de los modelos que lo tienen —se comían
+  los 180 s pensando—, no fijaba el contexto —el prompt de triage, de ~2.500 tokens, se truncaba y el
+  modelo devolvía la plantilla del JSON en vez de elegir— y el timeout no alcanzaba para la primera
+  consulta del día. Corregidas las tres cosas.
+
 ### Changed
+- **Cerebras y Mistral salieron de la cadena de INTELLIHELP.** Cerebras pide pago (HTTP 402) y
+  Mistral quedó en 429 permanente en el plan gratis. La clave de Cerebras se quitó de la config; las
+  dos quedan en un respaldo en la VPS, por si vuelven a hacer falta.
+
+- **A quién le entra cada ticket.** Los técnicos de la mesa ya trabajan con autonomía, así que el
+  día a día deja de pasar por Brian. Lo decide una regla fija, no el modelo —si lo decidiera el
+  modelo, el mismo problema redactado distinto caía en otra persona—, en este orden:
+  1. equipamiento caído en una sede → **instalaciones**, porque hay que ir al lugar;
+  2. Alta o Urgente → **escalamiento**;
+  3. todo lo demás → la **mesa** (Laura y Lisandro), que se reparte por carga: cada ticket va al
+     que tenga **menos tickets abiertos** en ese momento. La cuenta se le pide a GLPI en el acto;
+     un contador propio se desincronizaría apenas alguien asigna a mano.
+
+- **El que resuelve se queda con el ticket.** Al cargar la solución, ITHOS deja sólo a quien
+  resolvió en «Asignado a» y saca al resto del equipo. Hasta ahora los tickets terminaban asignados
+  a cuatro personas a la vez: GLPI le sumaba el SLA a las cuatro —el reporte no decía quién resolvió
+  qué— y la @mención de WhatsApp las nombraba a todas. ITHOS queda asignado: es el agente, no
+  compite en el reporte.
+
+- **Cuando el técnico le pide algo al cliente, ITHOS no le escribe nada al cliente** (#826). Antes
+  leía el pedido y redactaba el suyo, más largo y numerado, y el cliente leía dos veces lo mismo.
+  Ahora sólo pasa el ticket a En espera —para que el SLA no corra— y deja una nota interna. Esa nota
+  no es decorativa: ITHOS usaba su propio mensaje como marca de que el ticket espera al cliente, y
+  de esa marca cuelgan los recordatorios por día hábil, la escalada y la anti-repetición tras un
+  reinicio. La marca se mudó a la nota interna para no perder nada de eso.
+
 - **La mesa de ayuda de INTELLIHELP pasó de GLPI 10.0.16 a GLPI 12.0.0.** El salto cruza dos
   versiones mayores, así que antes se ensayó entero —migración incluida— contra una **copia real
   de la base**, en un entorno aparte. El ensayo atajó tres cosas que habrían roto la actualización
@@ -87,6 +139,54 @@ y el versionado, [SemVer](https://semver.org/lang/es/).
 
 ### Fixed
 
+- **La cuenta `admin` figuraba como solicitante en 17 tickets** (#798 al #849). Los clientes la
+  elegían como observador en la pregunta «Observadores» del formulario de la mesa de ayuda, y ITHOS
+  —que pasa a solicitantes a los observadores del cliente para que puedan responder— la tomaba por
+  una de ellos. Ahora las cuentas internas se sacan del ticket en cualquier rol y nunca se vuelven
+  solicitantes; los 17 tickets se limpiaron conservando a sus solicitantes reales. Regresión en
+  `tests/probar_admin_fuera.py`.
+
+- **Un modelo que no existe tapaba que Gemini estaba agotada.** La escalera de Gemini terminaba en
+  `gemini-3-flash-preview`, que Google no tiene («not found for API version v1»). Cuando los dos
+  modelos reales se quedaban sin la cuota del día, el error que salía era el 404 de ese tercero, no
+  el de la cuota: el gestor nunca se enteraba de que Gemini estaba agotada, y hacía días que el log
+  decía «404» con la causa en otro lado. Se sacó el escalón, y la escalera ahora saltea un modelo
+  retirado (404) en vez de cortarse ahí —el comentario decía que ya lo hacía; el código sólo sabía
+  saltar la cuota—. Si no queda ninguno, sale el error de cuota, que es la causa.
+
+- **Todo error de la IA se llamaba «límite por minuto».** Lo que no era cuota diaria se etiquetaba
+  así, incluidos un 400 (clave o petición inválida) y un 404 (modelo inexistente): se reintentaba
+  cada 40 s en silencio y el motivo real no quedaba en ningún lado. En producción hubo un 400 al
+  arrancar y no hay forma de saber qué fue. Ahora esos errores van al log como error, con su causa,
+  y la primaria se aparta diez minutos. Regresión en `tests/probar_cadena_ia.py`.
+
+- **Lo que ITHOS cuenta de sí mismo tenía la cadena de IA escrita a mano**, y mentía: decía
+  «Gemini → Cerebras → Groq». Ahora remite a la config real de cada cliente.
+
+- **GLPI guardaba y mostraba todo tres horas adelantado.** Un ticket cargado a las 08:59 figuraba a
+  las 11:59. El servidor del hosting corre entero en UTC —sistema, PHP (`date.timezone = UTC`) y
+  MySQL (`NOW()` igual a `UTC_TIMESTAMP()`)— y GLPI no lo puede corregir solo:
+  `DBmysql::setTimezone()` sólo ajusta el reloj si está activa la opción de zonas horarias, y esa
+  opción exige las tablas de zonas de MySQL, sobre las que el hosting compartido no da permiso. Un
+  `.user.ini` tampoco sirve: está deshabilitado. Se fija en `config/local_define.php`, que GLPI
+  carga al arrancar, vale también para las tareas por consola, y ninguna actualización pisa.
+
+  No era cosmético. Los calendarios de SLA (Lun-Vie 09:00 a 18:00) se aplicaban sobre horas UTC, así
+  que la ventana real de atención corría de **06:00 a 15:00**. E ITHOS, que lee las fechas como hora
+  local, daba por fuera de horario lo que había llegado dentro: en el #803 el cliente contestó a las
+  15:47 reales, se leyó 18:47, y el ticket quedó dormido En espera hasta el día siguiente.
+
+  Verificado en producción con un ticket rotulado `(test)` en la entidad raíz —donde ITHOS no
+  mira—, ya purgado: GLPI grabó 13:49:28 contra las 13:49:26 reales.
+
+- **El cliente cancelaba su ticket y el ticket seguía En curso** (#827). Escribió «Se cancela el
+  ticket por corrección de Asunto» y quedó abierto, con el SLA corriendo contra un pedido que ya no
+  existía. Ahora lo que el cliente da de baja se cierra, con una sola línea. Decide la IA y ante la
+  duda no cierra —«ya se solucionó» es confirmar, no cancelar—, y antes pasa un filtro de texto
+  barato para no gastar una llamada de IA por cada comentario de cada cliente en cada vuelta. Ese
+  filtro sólo puede fallar para un lado: si no reconoce la palabra, el ticket sigue como estaba.
+  Regresión en `tests/probar_cancelacion_827.py`.
+
 - **Al cliente se le repetía la solución, y el historial decía que había resuelto ITHOS**
   (auditoría del ticket #803, "Legajo 14616", 13-nov-2026). Cuando un técnico resuelve por
   comentario, ITHOS pasa el ticket a Resuelto y carga una **solución** —el campo que el cliente
@@ -95,21 +195,35 @@ y el versionado, [SemVer](https://semver.org/lang/es/).
   era procedimiento interno: nombres de scripts `.sql`, consultas a la base, chequeos en la
   terminal, parámetros de vinculación. Nada de eso es para el solicitante.
 
-  Ahora la solución es un **resumen corto escrito para él**: una o dos oraciones que dicen qué
-  quedó resuelto, sin detalle interno. La explicación técnica **no se mueve ni se borra**, queda
-  donde ya estaba. Y como pedirle a la IA que resuma no alcanza como garantía —puede devolver el
-  original casi intacto—, se **comprueba**: si el texto arrastra una tirada larga del comentario,
-  o es casi tan largo, se descarta y va una frase genérica. Lo mismo si la IA no contesta: una
-  solución corta sigue cumpliendo lo único que GLPI necesita de ella, que el cliente tenga qué
-  aprobar, y repetirle lo que ya leyó sería peor.
+  Y había una segunda pérdida en la copia: se copiaba el **texto plano** —el que se le pasa a la
+  IA para que lo lea—, así que la resolución llegaba **sin las capturas** que el técnico había
+  adjuntado.
 
-  Segunda mitad del mismo bug: la solución quedaba registrada **a nombre de ITHOS**, con la técnica
-  que la escribió teniendo su propio token configurado. El ciclo nunca le pasaba el autor, así que
-  el camino que carga la solución con el usuario del técnico no se usaba nunca. Ahora se le pasa
-  **quién resolvió**, y el historial dice la verdad. Si ese técnico no tiene token la carga ITHOS,
-  como último recurso: sin solución cargada el cliente se quedaría sin los botones.
+  Ahora **ITHOS no carga ninguna solución**. El comentario del técnico ES la resolución: ya está en
+  el ticket, entero, con sus capturas y a su nombre. ITHOS pasa el ticket a Resuelto —con eso el SLA
+  deja de correr— y sólo escribe el pedido de confirmación.
+
+  Se llegó ahí después de probar las otras dos formas, y las dos repetían igual. Primero ITHOS
+  **resumía** el comentario en una o dos oraciones (#831): la misma cosa dicha dos veces, sólo que más
+  corta. Después cargaba el comentario **crudo, tal cual**, con las capturas (#844): dos veces lo
+  mismo, ahora idéntico. El resumidor, su comprobador y la carga de la solución con el usuario del
+  técnico se **quitaron del código** en vez de quedar ahí sin usarse.
+
+  Lo que se resigna, a sabiendas: sin una solución cargada, la mesa de ayuda no le muestra al cliente
+  los botones de aprobar y rechazar. Contesta escribiendo y el ciclo lo lee igual. De paso se va el
+  problema del #803, donde el cliente apretó «aprobar» mientras escribía que seguía sin poder fichar.
 
   Regresión en `tests/probar_solucion_803.py` y chequeo permanente en la batería (sección L).
+
+- **Un sí/no dudoso de la IA cerraba o reabría tickets.** Las preguntas de sí o no que ITHOS le hace
+  a la IA —¿el cliente confirma?, ¿cancela?, ¿el técnico resolvió?, ¿explica el procedimiento?, ¿le
+  pide algo al cliente?— se leían con `bool(json.loads(r).get(clave))`. Dos agujeros: si la respuesta
+  venía **sin la clave**, `bool(None)` daba «no», y para `confirma` eso **reabría** un ticket que el
+  cliente acababa de dar por bueno; si venía como **texto**, `bool("false")` daba «sí» y **cerraba**
+  uno que seguía roto. Apareció midiendo la IA local, que a «listo afirmativamente!» contestó un JSON
+  sin la clave. Ahora sólo cuenta un sí o un no inequívoco: cualquier otra cosa es un sí/no dudoso,
+  que se trata como «la IA no supo» y deja el ticket como estaba. Regresión en
+  `tests/probar_si_o_no.py`.
 
 - **Un plugin fantasma hacía trabajar a GLPI de más en cada pedido.** La carpeta `plugins/` quedó
   vacía tras la actualización, pero `glpi_plugins` seguía marcando **mreporting** como *activado*:

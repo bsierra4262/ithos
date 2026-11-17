@@ -45,6 +45,35 @@ services:
       - central
     restart: unless-stopped
 
+  ollama:                         # IA LOCAL: el último eslabón de la cadena, y el que usan los tests
+    # POR QUÉ ESTÁ. Las cuotas gratis se agotan —y se agotan justo cuando hay trabajo—. Con Ollama
+    # acá, cuando Gemini y Groq se quedan sin cuota ITHOS sigue atendiendo en vez de frenar. Y los
+    # tests dejan de gastar la cuota buena: corren contra este, que no tiene límite.
+    #
+    # QUÉ MODELO. Lo decide la VPS, no el gusto: 2 vCPU, 7,8 GB de RAM y SIN swap. Un 8B en dos
+    # núcleos va a paso de hombre, y sin swap un pico de memoria no hace lento al Gestor: lo mata.
+    # Por eso un 4B cuantizado (~3,3 GB), que entra con aire y responde en tiempo usable.
+    # El modelo se fija en .env (ITHOS_MODELO_LOCAL) para poder subirlo sin tocar esto.
+    # Versión fija y con al menos dos semanas en la calle. OJO: hay que subirla de vez en cuando —
+    # los modelos nuevos del registro exigen un Ollama reciente y uno viejo se niega a bajarlos
+    # ("Please download the latest version"). Pasó con la 0.12.11.
+    image: ollama/ollama:0.40.13
+    expose:
+      - "11434"                   # interno: NUNCA se publica, lo alcanza sólo el Gestor
+    volumes:
+      - ollama_models:/root/.ollama
+    environment:
+      - OLLAMA_KEEP_ALIVE=30m     # el modelo queda cargado: sin esto cada consulta paga el arranque
+      - OLLAMA_MAX_LOADED_MODELS=1
+      - OLLAMA_NUM_PARALLEL=1     # 2 vCPU: atender de a una es más rápido que repartirlas
+    # Tope de memoria por si un modelo más grande intenta entrar: que muera el contenedor de la IA
+    # local —que tiene de dónde caerse, la cadena sigue— y no el Gestor, que no tiene.
+    deploy:
+      resources:
+        limits:
+          memory: 5g
+    restart: unless-stopped
+
   caddy:                          # TLS/WSS automático (Let's Encrypt) + ÚNICO que publica puertos
     image: caddy:2
     ports:
@@ -63,3 +92,4 @@ services:
 volumes:
   caddy_data:
   ithos_data:
+  ollama_models:                  # los pesos del modelo local (varios GB): no se rebajan en cada deploy

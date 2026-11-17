@@ -17,6 +17,24 @@ lo de abajo es la misma: **nada que una actualización de GLPI pueda reescribir*
 | `ith-favicon.ico` | `public/pics/logos/ith-favicon.ico` | no: GLPI no conoce ese nombre |
 | `ith-touch-icon.png` | `public/pics/logos/` y `public/apple-touch-icon.png` | no |
 | los logos `ith-*.png` | `public/pics/logos/` | no: GLPI no conoce esos nombres |
+| `local_define.php` | `config/local_define.php` (la zona horaria) | **no**: `config/` se conserva |
+
+## La zona horaria: por qué está en `local_define.php`
+
+El servidor del hosting corre entero en UTC: el sistema operativo, PHP (`date.timezone = UTC`) y
+MySQL (`time_zone = SYSTEM`, con `NOW()` igual a `UTC_TIMESTAMP()`). Sin corregirlo, GLPI guarda y
+muestra todo **tres horas adelantado** —un ticket de las 08:59 figura a las 11:59—, los calendarios
+de SLA se aplican sobre horas UTC (la ventana de 09:00 a 18:00 en realidad corría de 06:00 a 15:00),
+e ITHOS, que lee las fechas como hora local, da por fuera de horario lo que llegó dentro.
+
+No se puede arreglar desde GLPI. `DBmysql::setTimezone()` sólo ajusta el reloj
+`if ($this->use_timezones)`, y esa opción exige las tablas de zonas horarias de MySQL
+(`mysql.time_zone_name`), sobre las que el hosting compartido no da permiso (ERROR 1142). Tampoco
+sirve un `.user.ini`: está deshabilitado (`user_ini.filename` sin valor).
+
+`config/local_define.php` lo carga `Glpi\Application\SystemConfigurator` al arrancar, vale para la
+web **y** para las tareas por consola, y ninguna actualización lo pisa. Para comprobar que anda, la
+hora que graba GLPI tiene que coincidir con la de Argentina, no con la UTC.
 
 El nombre que sale en la pestaña y al pie de los correos es la clave `app_name` de
 `glpi_configs` (contexto `core`), hoy **Mesa de Ayuda ITH**. Está en la base, así que tampoco se
@@ -81,6 +99,7 @@ Dos cosas para no olvidar:
 1. Verificar que `public/.htaccess` siga ahí (GLPI 12 no trae uno; si falta, la aplicación
    devuelve 404 en todo y `config/` queda descargable por web).
 2. Verificar que los `pics/logos/ith-*.png`, `ith-favicon.ico` y `apple-touch-icon.png` sigan ahí.
+   Y que `config/local_define.php` siga ahí: sin él, todo vuelve a quedar tres horas adelantado.
 3. Correr `python tests/probar_tema_glpi.py`.
 4. Mirar la interfaz con la paleta puesta (hoy `auror_dark`): lo seleccionado tiene que verse
    verde con texto oscuro, en el menú, en los desplegables, en las pestañas y en las listas.

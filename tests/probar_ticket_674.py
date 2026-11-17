@@ -93,11 +93,11 @@ class _TriageFalso:
     def tecnico_pide_confirmacion(self, texto):
         return False if self.ia_viva else None
 
-    def marcar_resuelto(self, tid, solucion="", autor=None):
+    def marcar_resuelto(self, tid):
         self.resueltos.append(tid)
         return True
 
-    def a_confirmacion_del_cliente(self, tid, solucion, autor=None):
+    def a_confirmacion_del_cliente(self, tid, autor=None):
         """El pasaje completo: resuelto -> en espera de que el cliente confirme."""
         self.resueltos.append(tid)
         return True
@@ -289,20 +289,35 @@ ok(pend.en_espera == [674] and not pend.resueltos,
    "queda EN ESPERA del cliente y NO se marca resuelto, aunque diga 'quedó solucionado'",
    f"espera={pend.en_espera} resueltos={pend.resueltos}")
 
-print("\n=== 6 · El mensaje le dice al cliente QUÉ TIENE QUE HACER ===")
-# No alcanza con informarle y quedarse esperando: si la terminal es de él y está desconectada, hay
-# que pedirle que lo escale a SU área de sistemas y que verifiquen energía y conexión de red.
+print("\n=== 6 · Cuando el técnico le pide algo al cliente, ITHOS NO lo repite ===")
+# Antes ITHOS leía el pedido del técnico y redactaba el suyo, más largo y numerado: el cliente
+# terminaba leyendo dos veces lo mismo (#826). Ahora sólo cambia el ESTADO —para que el SLA se
+# pause— y deja una NOTA INTERNA que el cliente no ve. El pedido del técnico ya está escrito.
 TRI_SRC = open(os.path.join(APP, "central", "triage.py"), encoding="utf-8").read()
-prompt = TRI_SRC[TRI_SRC.index("def _mensaje_pedir_confirmacion"):]
-prompt = prompt[:prompt.index("return (")]
-for exige, que in (
-        ("QUÉ NECESITAMOS DE ÉL", "pide algo concreto, no sólo avisa"),
-        ("ESCALE al área de sistemas", "si el equipo es del cliente, que lo escale a SU área"),
-        ("ENERGIZADO", "que verifiquen que esté energizado"),
-        ("CONEXIÓN DE RED", "y que tenga conexión de red"),
-        ("no se puede dar por cerrado", "y por qué el caso todavía no se cierra"),
-        ("no uses tecnicismos internos", "sin nombres de consultas ni jerga interna")):
-    ok(exige.lower() in prompt.lower(), que)
+paso_espera = TRI_SRC[TRI_SRC.index("def poner_en_espera_pedido"):]
+# Hasta el próximo `def` del mismo nivel, o hasta el final de la clase si es el último método.
+_fin = min((p for p in (paso_espera.find("\n    def ", 10),
+                        paso_espera.find("\n# El CICLO DE VIDA"), len(paso_espera)) if p > 0))
+paso_espera = paso_espera[:_fin]
+ok("_mensaje_pedir_confirmacion" not in TRI_SRC,
+   "el redactor del pedido ya no existe: ITHOS no reescribe lo que pidió el técnico")
+ok("self._followup(" not in paso_espera,
+   "no se le manda NINGÚN comentario público al cliente")
+ok("self.nota_interna(" in paso_espera and "_MARCA_PEDIDO_TECNICO" in paso_espera,
+   "queda una nota INTERNA con la marca, que es lo que mira el ciclo")
+ok('"status": 4' in paso_espera,
+   "y el ticket pasa a EN ESPERA, así el SLA no corre mientras el cliente responde")
+
+# La marca interna tiene que SEGUIR contando como 'el ticket espera al cliente': si no, se pierden
+# los recordatorios por día hábil, la escalada al técnico y la anti-repetición tras un reinicio.
+import textos_ticket as TX                # noqa: E402
+nota = {"users_id": 28, "is_private": 1,
+        "content": f"Nota interna (el cliente no la ve): el ticket {TX._MARCA_PEDIDO_TECNICO}."}
+ok(CI._es_pedido_al_cliente(nota, {28, 7}) is True,
+   "la nota interna cuenta como pedido al cliente (recordatorios y escalada siguen andando)")
+ok(CI._es_pedido_al_cliente({"users_id": 28, "is_private": 1,
+                             "content": "una nota interna cualquiera"}, {28, 7}) is False,
+   "pero una nota interna cualquiera NO deja el ticket esperando al cliente")
 
 ESTADO_SOL_ = {"aceptada": 1, "pendiente": 2, "rechazada": 3}
 
@@ -350,51 +365,40 @@ class _SinSolucion(_ClienteSol_):
 
 
 print("\n=== 7 · Resuelto por el técnico -> EN ESPERA de que el cliente confirme ===")
-# Pedido de Brian: si le estamos pidiendo la confirmación, el estado tiene que decir eso. El pasaje
-# lo hace ITHOS entero: carga la solución RESUMIDA para el cliente y a nombre del técnico que
-# resolvió (ver probar_solucion_803.py: copiar su comentario entero se lo hacía leer dos veces, y
-# cargarla como ITHOS dejaba el historial mintiendo), pide la confirmación y deja el ticket con la
-# solución PENDIENTE. Ese último paso importa: al pasar a En espera la mesa de ayuda saca la
-# solución de pendiente y el cliente se queda sin los botones, así que hay que volver a dejarla
-# pendiente.
+# El pasaje lo hace ITHOS entero: pasa el ticket a RESUELTO —con eso GLPI graba la fecha de
+# solución y el SLA deja de correr— y le pide al cliente que confirme. NO carga ninguna solución:
+# el comentario del técnico ES la resolución (ver probar_solucion_803.py, #803/#831/#844). Y se
+# COMPRUEBA que el ticket haya quedado en Resuelto, no se da por hecho.
 TRI_SRC2 = open(os.path.join(APP, "central", "triage.py"), encoding="utf-8").read()
 paso = TRI_SRC2[TRI_SRC2.index("def a_confirmacion_del_cliente"):]
 paso = paso[:paso.index("def marcar_resuelto")]
-# Queda en RESUELTO, no en espera: es el único estado en el que la mesa de ayuda le dibuja al
-# cliente los botones de APROBAR / RECHAZAR (comprobado con el perfil real del cliente). En espera
-# describiría mejor la situación pero lo deja sin botones, y esos botones son el modo natural de
-# cerrar. No se pierde el SLA: al resolver queda la fecha de solución y el reloj para.
-ok('"status": 5' in paso, "el ticket queda RESUELTO (es donde el cliente ve los botones)")
-ok('"status": 2' in paso, "y la solución queda PENDIENTE de su aprobación")
-ok("!= 5" in paso and "!= 2" in paso,
-   "y se COMPRUEBA que haya quedado así, no se da por hecho")
+ok("self.marcar_resuelto(tid)" in paso, "el ticket pasa a RESUELTO")
+ok("!= 5" in paso, "y se COMPRUEBA que haya quedado así, no se da por hecho")
 ok("self.pedir_confirmacion(tid)" in paso, "y se le pide al cliente que confirme")
-ok("triage.a_confirmacion_del_cliente(t[\"id\"], cont," in CICLO_SRC,
+ok("ITILSolution" not in paso.split('"""', 2)[-1], "sin cargar ninguna solución")
+ok("triage.a_confirmacion_del_cliente(t[\"id\"]," in CICLO_SRC,
    "el ciclo hace todo el pasaje de una")
 ok("autor=int(ult.get(\"users_id\") or 0)" in CICLO_SRC,
-   "y le dice QUIÉN resolvió, para que la solución no quede a nombre de ITHOS")
+   "y le dice QUIÉN resolvió, para que se quede con el ticket")
 
-print("\n=== 7.b · El cliente tiene QUÉ aprobar o rechazar ===")
-# En GLPI el solicitante aprueba o rechaza LA SOLUCIÓN. Un ticket que pasa a Resuelto SIN cargar
-# ninguna lo deja sin nada que tocar: ve el ticket resuelto y no tiene cómo confirmar el cierre ni
-# decir que sigue igual. Pasó en producción con los tres tickets resueltos (#674, #677, #678).
+print("\n=== 7.b · El pasaje recibe QUIÉN resolvió, y nada más ===")
+# Antes se le pasaba el comentario para cargarlo como solución, y cada forma de cargarlo terminaba
+# repitiéndole al cliente lo que ya había leído. Ahora sólo viaja el autor.
 resuelto = _TriageFalso(ia_viva=True)
 resuelto.pasajes = []
 
 
-def _pasaje(tid, solucion, autor=None):
-    resuelto.pasajes.append((tid, solucion, autor))
+def _pasaje(tid, autor=None):
+    resuelto.pasajes.append((tid, autor))
     return True
 
 
 resuelto.a_confirmacion_del_cliente = _pasaje
 list(CI.gestionar_ciclo(_ClienteFalso(), resuelto, 12, {}))
 ok(len(resuelto.pasajes) == 1, "se hace el pasaje una sola vez")
-tid_m, sol_m, autor_m = resuelto.pasajes[0]
-ok(bool(sol_m), "se carga la SOLUCIÓN (sin ella el cliente no puede aprobar ni rechazar)")
-ok("quedó solucionado" in sol_m.lower(),
-   "y lo que se pasa es LO QUE ESCRIBIÓ EL TÉCNICO, no algo que invente ITHOS", sol_m[:60])
-ok(autor_m == 7, "junto con QUIÉN lo resolvió, para que la solución lleve su nombre", str(autor_m))
+tid_m, autor_m = resuelto.pasajes[0]
+ok(tid_m == 674, "sobre el ticket que el técnico resolvió", str(tid_m))
+ok(autor_m == 7, "y con QUIÉN lo resolvió, que se queda con el ticket", str(autor_m))
 
 print("\n=== 7.b.2 · Lo que hace el EQUIPO no deja el ticket esperando al cliente ===")
 # Caso real (#651): el técnico escribió "vamos a proceder a encargar el selenoide" —lo encarga el

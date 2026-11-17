@@ -1,25 +1,23 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Test del ticket #803 ("Legajo 14616 Facundo Martín Gutiérrez Mónaco", 13-nov-2026), sin red.
+Test de lo que ITHOS escribe cuando un técnico resuelve: tickets #803, #831 y #844, sin red.
 
-QUÉ PASÓ. La técnica dejó su resolución como comentario PÚBLICO y, siete segundos después, ITHOS
-pasó el ticket a Resuelto cargando como SOLUCIÓN **ese mismo comentario, copiado palabra por
-palabra**. Salieron dos cosas mal:
+EL PROBLEMA, TRES VECES. Cuando un técnico resuelve con un comentario, ITHOS pasa el ticket a
+Resuelto. Y cada vez que además cargó una SOLUCIÓN propia, el cliente terminó leyendo la misma
+resolución dos veces:
 
-  1. EL CLIENTE LEYÓ DOS VECES LO MISMO. El comentario de la técnica ya lo veía; la solución era el
-     mismo texto otra vez (sin las capturas, porque la copia se lleva el texto y no las imágenes).
-     Y era texto INTERNO: nombres de scripts .sql, consultas a la base, chequeos en la terminal,
-     parámetros de vinculación. Nada de eso es para el solicitante.
+  · #803 (13-nov) — la solución era el comentario de la técnica COPIADO, y encima sin las capturas,
+    porque se copiaba el texto plano que se le pasa a la IA.
+  · #831 (17-nov) — se cambió por un RESUMEN redactado por ITHOS. La misma cosa dicha dos veces,
+    sólo que más corta.
+  · #844 (17-nov) — se cambió por el comentario CRUDO, tal cual, con sus capturas. Dos veces lo
+    mismo, ahora idéntico.
 
-  2. EL HISTORIAL MINTIÓ. La solución quedó registrada a nombre de ITHOS (usuario 28) y no de la
-     técnica que la escribió (usuario 30) — teniendo su token configurado. Para cualquiera que
-     mire el ticket después, el que resolvió fue el robot.
-
-LA REGLA. La solución que lee el cliente es un RESUMEN corto, escrito para él, y va a nombre del
-técnico que resolvió. La explicación técnica no se mueve ni se borra: queda donde ya estaba, en el
-comentario. Y si el resumen no sale —la IA no contesta, o devuelve el texto del técnico de nuevo—
-se carga una frase genérica: repetirle lo que ya leyó es peor que no resumirlo.
+LA REGLA (Brian: «que deje mi respuesta como autorización y ITHOS no escriba nada»). ITHOS NO CARGA
+NINGUNA SOLUCIÓN. El comentario del técnico ES la resolución: ya está en el ticket, entero, con sus
+capturas y a su nombre. ITHOS sólo pasa el ticket a Resuelto —con eso el SLA deja de correr— y
+escribe su pedido de confirmación, que es otra cosa. Y el que resolvió se queda con el ticket.
 
 Uso:  python tests/probar_solucion_803.py
 """
@@ -38,7 +36,7 @@ sys.path.insert(0, APP)
 sys.path.insert(0, os.path.join(APP, "central"))
 
 import triage as TR                     # noqa: E402
-import ciclo as CI                      # noqa: E402
+import ciclo as CI                      # noqa: E402,F401
 
 FALLAS = []
 
@@ -52,103 +50,17 @@ def ok(cond, nombre, detalle=""):
 LAURA = 30                               # la técnica que resolvió el #803
 ITHOS = 28
 
-# El comentario REAL de la técnica, recortado: procedimiento interno de punta a punta.
-RESOLUCION = (
-    "Buenos días. Se verificó el legajo 14616 en la base de datos. Se corrió el script "
-    "HikInOut.sql para revisar las marcaciones y luego Incidencias.sql para descartar registros "
-    "duplicados. Se controló la terminal del ingreso: estaba sin vincular, por lo que se "
-    "reconfiguraron los parámetros de PIN y Bluetooth y se reinició el equipo. Se probó una "
-    "fichada de prueba y quedó registrada correctamente.")
-
-RESUMEN_BUENO = ("Ya se normalizó el registro de sus fichadas y la terminal del ingreso quedó "
-                 "operativa. Puede fichar con normalidad.")
+TRI_SRC = open(os.path.join(APP, "central", "triage.py"), encoding="utf-8").read()
+CICLO_SRC = open(os.path.join(APP, "central", "ciclo.py"), encoding="utf-8").read()
 
 
-class IAFalsa:
-    """Una IA de mentira: devuelve lo que se le diga, o explota si se le pide."""
+class _Registro:
+    """Mesa de ayuda de mentira: anota TODO lo que se le pide."""
 
-    def __init__(self, respuesta=None, explota=False):
-        self.respuesta, self.explota = respuesta, explota
-        self.prompts = []
+    session = "s"
 
-    def chat(self, sistema, usuario, json_out=False):
-        self.prompts.append((sistema, usuario))
-        if self.explota:
-            raise RuntimeError("503 cadena de IA caída")
-        return self.respuesta
-
-
-def triage_con(ia):
-    t = TR.Triage.__new__(TR.Triage)
-    t.ia = ia
-    t.cfg_glpi = {}
-    return t
-
-
-print("\n=== 1 · Reconocer una SOLUCIÓN que es el texto del técnico otra vez ===")
-ok(TR._repite_al_tecnico(RESOLUCION, RESOLUCION) is True,
-   "el texto copiado tal cual se detecta (es EXACTAMENTE lo que pasó en el #803)")
-ok(TR._repite_al_tecnico(RESOLUCION.replace("\n", " ") + " Saludos.", RESOLUCION) is True,
-   "y también si le cambian el formato o le pegan una línea al final")
-ok(TR._repite_al_tecnico(
-    "Se corrió el script HikInOut.sql para revisar las marcaciones y luego Incidencias.sql "
-    "para descartar registros duplicados.", RESOLUCION) is True,
-   "un RECORTE largo del comentario tampoco es un resumen")
-ok(TR._repite_al_tecnico(RESUMEN_BUENO, RESOLUCION) is False,
-   "un resumen de verdad SÍ pasa (si no, nunca se podría resumir nada)")
-ok(TR._repite_al_tecnico("Se normalizó el registro de sus fichadas.", RESOLUCION) is False,
-   "y una frase corta que comparte un par de palabras no cuenta como copia")
-
-print("\n=== 2 · La solución que ve el cliente se RESUME, no se copia ===")
-ia = IAFalsa(RESUMEN_BUENO)
-tri = triage_con(ia)
-sal = tri.resumen_para_el_cliente(RESOLUCION)
-ok(sal == RESUMEN_BUENO, "se carga el resumen que escribió la IA", sal[:60])
-ok("HikInOut.sql" not in sal and "Incidencias.sql" not in sal,
-   "sin los nombres de los scripts internos")
-ok(len(sal) < len(RESOLUCION) / 2, "y es bastante más corto que el comentario del técnico",
-   f"{len(sal)} vs {len(RESOLUCION)} caracteres")
-
-pedido = ia.prompts[0][0]
-ok("CLIENTE" in pedido, "a la IA se le dice para quién escribe")
-ok("PROHIBIDO copiar" in pedido, "y que NO copie frases del comentario")
-for prohibido in ("scripts", ".sql", "bases de datos", "direcciones IP", "parámetros"):
-    ok(prohibido in pedido, f"se le prohíbe explícitamente nombrar: {prohibido}")
-ok("emojis" in pedido, "y sin emojis (la voz después lee esto)")
-
-print("\n=== 3 · Si la IA devuelve el texto del técnico, NO se le repite al cliente ===")
-# Pedirle que resuma no es garantía: puede devolver el original casi intacto. Por eso se comprueba.
-tri_loro = triage_con(IAFalsa(RESOLUCION))
-sal_loro = tri_loro.resumen_para_el_cliente(RESOLUCION)
-ok(sal_loro != RESOLUCION, "el pegado se descarta", sal_loro[:50])
-ok("HikInOut.sql" not in sal_loro, "y el detalle interno no llega al cliente")
-ok("resolvió el inconveniente" in sal_loro, "va la solución genérica en su lugar")
-
-print("\n=== 4 · Si la IA está caída, tampoco se copia: va la genérica ===")
-tri_sin_ia = triage_con(IAFalsa(explota=True))
-sal_caida = tri_sin_ia.resumen_para_el_cliente(RESOLUCION)
-ok(sal_caida and "HikInOut.sql" not in sal_caida,
-   "sin IA se carga igual una solución (sin ella el cliente no tendría qué aprobar)", sal_caida[:50])
-ok(not TR._repite_al_tecnico(sal_caida, RESOLUCION), "y nunca es el texto del técnico")
-ok(triage_con(IAFalsa("")).resumen_para_el_cliente("") != "",
-   "un comentario vacío tampoco deja la solución vacía")
-
-print("\n=== 5 · El pasaje a Resuelto carga el RESUMEN y a nombre del TÉCNICO ===")
-cargado = {}
-
-
-class TriageEspia(TR.Triage):
     def __init__(self):
-        self.ia = IAFalsa(RESUMEN_BUENO)
-        self.cfg_glpi = {}
-        self.cli = self
-
-    def marcar_resuelto(self, tid, solucion="", autor=None):
-        cargado["tid"], cargado["sol"], cargado["autor"] = tid, solucion, autor
-        return True
-
-    def pedir_confirmacion(self, tid):
-        return True
+        self.pedidos = []
 
     def abrir(self):
         pass
@@ -157,44 +69,146 @@ class TriageEspia(TR.Triage):
         pass
 
     def request(self, path, metodo="GET", data=None, **k):
-        if path.endswith("/ITILSolution"):
-            return [{"id": 158, "status": 2}]
+        self.pedidos.append((path, metodo, data))
+        if path.endswith("/Ticket_User"):
+            return []
         return {"status": 5}
 
 
-TriageEspia().a_confirmacion_del_cliente(803, RESOLUCION, autor=LAURA)
-ok(cargado.get("sol") == RESUMEN_BUENO,
-   "la solución que se carga es el RESUMEN, no el comentario del técnico",
-   str(cargado.get("sol"))[:55])
-ok("HikInOut.sql" not in str(cargado.get("sol")),
-   "el procedimiento interno NO viaja a la solución (el bug del #803)")
-ok(cargado.get("autor") == LAURA,
-   "y se carga a nombre de la técnica que resolvió, no de ITHOS", str(cargado.get("autor")))
-ok(cargado.get("autor") not in (None, 0, ITHOS),
-   "el historial deja de decir que resolvió el robot (y tampoco se carga sin autor)")
+def pasaje(autor=LAURA):
+    """Corre el pasaje a Resuelto de verdad y devuelve todo lo que le pidió a la mesa de ayuda."""
+    tri = TR.Triage.__new__(TR.Triage)
+    tri.cfg_glpi = {}
+    tri.cli = _Registro()
+    tri.pedir_confirmacion = lambda tid: tri.cli.pedidos.append(("CONFIRMACION", "POST", None))
+    resultado = tri.a_confirmacion_del_cliente(844, autor=autor)
+    return resultado, tri.cli.pedidos
 
-print("\n=== 6 · El ciclo le pasa QUIÉN resolvió (antes no se lo pasaba a nadie) ===")
-CICLO_SRC = open(os.path.join(APP, "central", "ciclo.py"), encoding="utf-8").read()
-ok("a_confirmacion_del_cliente(t[\"id\"], cont,\n" in CICLO_SRC
-   and "autor=int(ult.get(\"users_id\") or 0)" in CICLO_SRC,
-   "el ciclo pasa el autor del comentario que resolvió")
-ok("a_confirmacion_del_cliente(t[\"id\"], cont)" not in CICLO_SRC,
-   "y ya no hace el pasaje sin autor (así quedaba todo a nombre de ITHOS)")
 
-print("\n=== 7 · La explicación del técnico NO se toca ===")
-# Lo que se arregla es la SOLUCIÓN duplicada, no la explicación: su comentario queda donde está.
-TRI_SRC = open(os.path.join(APP, "central", "triage.py"), encoding="utf-8").read()
+print("\n=== 1 · ITHOS NO carga ninguna solución ===")
+salio, pedidos = pasaje()
+ok(salio is True, "el pasaje a Resuelto sale bien")
+soluciones = [p for p in pedidos if "/ITILSolution" in p[0] and p[1] == "POST"]
+ok(soluciones == [],
+   "no se crea NINGUNA solución: la resolución es el comentario del técnico", str(soluciones))
+ok(any(p[0] == "/Ticket/844" and p[1] == "PUT"
+       and ((p[2] or {}).get("input") or {}).get("status") == 5 for p in pedidos),
+   "el ticket pasa a RESUELTO (así el SLA de resolución deja de correr)")
+ok(("CONFIRMACION", "POST", None) in pedidos,
+   "y lo único que ITHOS le escribe al cliente es el pedido de confirmación")
+ok(not any("/ITILFollowup" in p[0] and p[1] in ("PUT", "DELETE") for p in pedidos),
+   "el comentario del técnico no se toca: ni se edita ni se borra")
+
+print("\n=== 2 · Las tres formas que se probaron ya no existen ===")
+ok("resumen_para_el_cliente" not in TRI_SRC, "#831: no hay resumidor")
+ok("_sesion_de" not in TRI_SRC,
+   "#844: no hay carga de solución con el usuario del técnico (no hay solución que cargar)")
 paso = TRI_SRC[TRI_SRC.index("def a_confirmacion_del_cliente"):]
 paso = paso[:paso.index("def marcar_resuelto")]
-ok("resumen_para_el_cliente(solucion)" in paso,
-   "el pasaje resume antes de cargar")
-ok("autor=autor" in paso, "y propaga el autor hasta la carga de la solución")
-ok("ITILFollowup" not in paso and "delete" not in paso.lower(),
-   "el pasaje no borra ni reescribe ningún comentario del ticket")
+ok("ITILSolution" not in paso.split('"""', 2)[-1], "el pasaje no toca soluciones en ningún lado")
+marc = TRI_SRC[TRI_SRC.index("def marcar_resuelto"):]
+marc = marc[:marc.index("\n    def ", 10)]
+ok("ITILSolution" not in marc.split('"""', 2)[-1], "y marcar_resuelto sólo cambia el estado")
+
+print("\n=== 3 · El ciclo le pasa QUIÉN resolvió, no el texto ===")
+ok('autor=int(ult.get("users_id") or 0))' in CICLO_SRC,
+   "se pasa el autor, para que se quede con el ticket")
+ok('a_confirmacion_del_cliente(t["id"], ult.get("content")' not in CICLO_SRC
+   and 'a_confirmacion_del_cliente(t["id"], cont' not in CICLO_SRC,
+   "y NO el texto: no hay nada que copiar a ningún lado")
+ok("cont = _texto_plano(" in CICLO_SRC and "tecnico_resolvio(cont)" in CICLO_SRC,
+   "el texto plano se sigue usando para lo que sirve: que la IA lo lea")
+
+print("\n=== 4 · El cliente contesta escribiendo, y eso alcanza ===")
+# Sin solución cargada la mesa de ayuda no le dibuja los botones de aprobar/rechazar. Se resigna a
+# propósito: el pedido de confirmación le dice que responda, y el ciclo lee esa respuesta igual. De
+# paso se va el problema del #803, donde el cliente apretó «aprobar» mientras escribía que seguía
+# sin poder fichar y el ticket se cerró solo.
+ok("status == 5 and _ya_pidio_confirmacion(fu)" in CICLO_SRC,
+   "un ticket Resuelto con el pedido de confirmación hecho cuenta como 'esperando confirmación'")
+ok("triage.cliente_confirma(dijo)" in CICLO_SRC,
+   "y lo que el cliente escribe se interpreta: confirma -> cierra, sigue -> reabre")
+
+print("\n=== 5 · Sin autor, igual se resuelve ===")
+salio2, pedidos2 = pasaje(autor=None)
+ok(salio2 is True, "si no se sabe quién resolvió, el ticket pasa a Resuelto igual")
+ok(not any("/Ticket_User" in p[0] and p[1] in ("POST", "DELETE") for p in pedidos2),
+   "pero no se toca la asignación: no se le saca el ticket a nadie a ciegas")
+
+print("\n=== 6 · El que resolvió se QUEDA con el ticket ===")
+# Pedido de Brian: un ticket puede terminar asignado a varias personas, y el que lo resuelve capaz
+# no era ninguna de ellas. Si quedan todos asignados, GLPI le suma el SLA a los cuatro —el reporte
+# no dice quién resolvió qué— y la @mención de WhatsApp los nombra a todos.
+BORRADOS, AGREGADOS = [], []
+
+
+class _CliActores:
+    """Mesa de ayuda de mentira: el ticket viene asignado a ITHOS, Brian, Laura y Lisandro."""
+
+    session = "s"
+
+    def __init__(self, asignados=(28, 7, 30, 31)):
+        self.asignados = asignados
+
+    def abrir(self):
+        pass
+
+    def cerrar(self):
+        pass
+
+    def request(self, path, metodo="GET", data=None, **k):
+        if path.endswith("/Ticket_User") and metodo == "GET":
+            return [{"id": 500 + u, "users_id": u, "type": 2} for u in self.asignados]
+        if path == "/Ticket_User" and metodo == "POST":
+            AGREGADOS.append(data["input"]["users_id"])
+        if path.startswith("/Ticket_User/") and metodo == "DELETE":
+            BORRADOS.append(int(path.rsplit("/", 1)[1]) - 500)
+        return {}
+
+
+tri = TR.Triage.__new__(TR.Triage)
+tri.cfg_glpi = {}
+tri.cli = _CliActores()
+ok(tri.dejar_solo_al_que_resolvio(831, LAURA) is True, "se aplica cuando resolvió una persona")
+ok(sorted(BORRADOS) == [7, 31],
+   "se saca a los demás técnicos del campo 'Asignado a'", str(sorted(BORRADOS)))
+ok(28 not in BORRADOS,
+   "pero ITHOS se queda: es el agente que sigue trabajando el ticket, no compite en el reporte")
+ok(AGREGADOS == [], "y a quien ya estaba asignado no se lo vuelve a agregar")
+
+BORRADOS.clear()
+AGREGADOS.clear()
+tri.cli = _CliActores(asignados=(28, 7))          # el que resolvió NO estaba asignado
+tri.dejar_solo_al_que_resolvio(831, LAURA)
+ok(AGREGADOS == [LAURA],
+   "si resolvió alguien que no tenía el ticket, se le asigna a él", str(AGREGADOS))
+ok(sorted(BORRADOS) == [7], "y se saca al que lo tenía y no lo resolvió", str(BORRADOS))
+
+BORRADOS.clear()
+AGREGADOS.clear()
+ok(tri.dejar_solo_al_que_resolvio(831, None) is False, "sin autor no se toca la asignación")
+ok(tri.dejar_solo_al_que_resolvio(831, ITHOS) is False,
+   "y si 'resolvió' ITHOS tampoco: el robot no se queda con el ticket de nadie")
+ok(BORRADOS == [] and AGREGADOS == [], "en esos dos casos no se borra ni se agrega nada")
+
+
+class _CliRoto(_CliActores):
+    def request(self, path, metodo="GET", data=None, **k):
+        raise RuntimeError("GLPI no responde")
+
+
+tri.cli = _CliRoto()
+ok(tri.dejar_solo_al_que_resolvio(831, LAURA) is False,
+   "si GLPI falla devuelve False, pero NO rompe: el ticket ya quedó resuelto")
+
+paso6 = TRI_SRC[TRI_SRC.index("def a_confirmacion_del_cliente"):]
+paso6 = paso6[:paso6.index("def marcar_resuelto")]
+ok("dejar_solo_al_que_resolvio(tid, autor)" in paso6,
+   "y el pasaje a Resuelto lo hace solo, sin que nadie tenga que acordarse")
 
 print("\n" + "=" * 78)
 if FALLAS:
     print(f"FALLARON {len(FALLAS)}: " + "; ".join(FALLAS))
     sys.exit(1)
-print("  SOLUCIÓN DEL #803: OK — resumen para el cliente y a nombre de quien resolvió")
+print("  RESOLUCIÓN: OK — es el comentario del técnico; ITHOS sólo pide la confirmación")
 print("=" * 78)

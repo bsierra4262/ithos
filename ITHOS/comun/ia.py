@@ -100,7 +100,8 @@ _MODELOS = {
     "mistral":    {"free": "mistral-small-latest",                     "pago": "mistral-medium-latest"},
     "openrouter": {"free": "meta-llama/llama-3.3-70b-instruct:free",   "pago": "openai/gpt-4o-mini"},
     "deepseek":   {"free": "deepseek-chat",                            "pago": "deepseek-chat"},
-    "local":      {"free": "qwen2.5:14b",                              "pago": "qwen2.5:14b"},
+    # El de la VPS de hoy, elegido midiendo (tools/elegir_ia_local.py). Un 14B no entra en 7,8 GB.
+    "local":      {"free": "qwen3:4b",                                 "pago": "qwen3:4b"},
     "deepseek_local": {"free": "deepseek-r1",                          "pago": "deepseek-r1"},
     # Proveedores SIN tier gratis por API -> siempre el cost-effective (no el flagship).
     "openai":     {"free": "gpt-4o-mini",     "pago": "gpt-4o-mini"},
@@ -116,7 +117,11 @@ _SIEMPRE_PAGO = {"openai", "chatgpt", "claude", "grok"}
 #   · se agotó la cuota del DÍA de ese modelo (la cuota gratis se cuenta por modelo), y
 #   · el proveedor RETIRÓ el modelo (Groq dio de baja los Llama y quedó respondiendo 404).
 # Van del más económico al más capaz.
-_ESCALERA_GEMINI = ["gemini-2.5-flash-lite", "gemini-2.5-flash", "gemini-3-flash-preview"]
+# `gemini-3-flash-preview` estuvo acá y se sacó: Google contesta «not found for API version v1».
+# Un escalón que no existe no es inofensivo: era el ÚLTIMO, así que cuando los otros dos se quedaban
+# sin cuota el error que salía para afuera era su 404 y no el de la cuota, y nadie se enteraba de
+# que Gemini estaba agotada (ver GeminiIA.chat). Antes de sumar un modelo, comprobar que exista.
+_ESCALERA_GEMINI = ["gemini-2.5-flash-lite", "gemini-2.5-flash"]
 _ESCALERAS = {
     "gemini": _ESCALERA_GEMINI,
     "groq": ["openai/gpt-oss-120b", "openai/gpt-oss-20b", "qwen/qwen3.6-27b"],
@@ -311,14 +316,17 @@ class GeminiIA(ProveedorIA):
                 return m
         return self._escalera[0]
 
-    def _marcar_agotado(self, modelo):
-        """Anota que ese modelo se quedó sin cuota hoy. True si queda otro para seguir."""
+    def _marcar_agotado(self, modelo, motivo="sin cuota diaria"):
+        """Anota que ese modelo no sirve por hoy. True si queda otro para seguir.
+
+        Sirve para los dos motivos de la escalera: se le acabó la cuota del día, o el modelo no
+        existe (404: lo retiraron o nunca estuvo en esta versión de la API)."""
         import datetime
         self._agotados[modelo] = datetime.date.today().isoformat()
         siguiente = self._modelo_vigente()
         if self._agotados.get(siguiente) == self._agotados[modelo]:
             return False                              # no queda ninguno con cuota hoy
-        log.info("Gemini: '%s' sin cuota diaria -> sigo con '%s'.", modelo, siguiente)
+        log.info("Gemini: '%s' %s -> sigo con '%s'.", modelo, motivo, siguiente)
         return True
 
     def chat(self, system, prompt, json_out=True, max_tokens=None):
@@ -333,6 +341,10 @@ class GeminiIA(ProveedorIA):
             conf.response_mime_type = "application/json"
         else:
             conf.max_output_tokens = max_tokens or 1600
+        # El error de CUOTA más reciente. Si después un escalón falla por otra cosa (un 404), lo
+        # que sale para afuera tiene que seguir siendo la cuota: es la causa, y es lo que hace
+        # que el gestor avise «Gemini agotada» y la cadena pase al respaldo como corresponde.
+        ultimo_cuota = None
         for intento in range(5):
             try:
                 r = self._cliente().models.generate_content(
@@ -351,10 +363,24 @@ class GeminiIA(ProveedorIA):
                 # Límite DIARIO agotado: reintentar el MISMO modelo no sirve. Pero la cuota es
                 # por modelo: si queda otro con cuota hoy, se sigue con ese en el acto.
                 if es_429 and ("PerDay" in msg or "RequestsPerDay" in msg):
+                    ultimo_cuota = e
                     if self._marcar_agotado(self._modelo_vigente()):
                         continue                     # queda otro modelo de Gemini con cuota
                     if self.gestor:
                         self.gestor.agotada_gemini()
+                    raise
+                # El MODELO NO EXISTE (404): lo retiraron, o nunca estuvo para esta versión de la
+                # API. Igual que con la cuota: se lo saltea por hoy y se sigue con el próximo. Si
+                # no queda ninguno y antes hubo cuota agotada, sale la CUOTA, que es la causa.
+                if "404" in msg or "NOT_FOUND" in msg:
+                    log.warning("Gemini: el modelo '%s' no existe para esta clave (404). "
+                                "Revisar la escalera de modelos.", self._modelo_vigente())
+                    if self._marcar_agotado(self._modelo_vigente(), "no existe (404)"):
+                        continue
+                    if ultimo_cuota is not None:
+                        if self.gestor:
+                            self.gestor.agotada_gemini()
+                        raise ultimo_cuota from None
                     raise
                 # Con respaldo: no esperar, fallar ya para que el respaldo responda.
                 if es_429 and self.sin_reintento_429:
@@ -437,30 +463,67 @@ class GeminiIA(ProveedorIA):
 
 
 class LocalIA(ProveedorIA):
-    """IA 100% local (privacidad total). Texto: Ollama. Voz: TTS local (a implementar).
-    Hardware: 7-8B => CPU+16GB o GPU 8GB; 14-32B => GPU 16-24GB; voz XTTS => GPU 8-12GB.
+    """IA que corre en NUESTRA máquina con Ollama: el último eslabón de la cadena, el que sigue
+    atendiendo cuando las nubes se quedan sin cuota, y el que usan las pruebas para no gastarla.
+    Voz: TTS local (a implementar).
+
+    QUÉ MODELO. Lo decide la máquina, y se elige MIDIENDO con el prompt real de triage
+    (`tools/elegir_ia_local.py`), no por fama. En la VPS de hoy (2 vCPU, 7,8 GB, sin GPU ni swap) el
+    único que clasifica bien es `qwen3:4b`, a ~100 s por triage; los demás que entran en memoria
+    confunden el alcance, saludan a quien no corresponde o devuelven vacío.
+
+    TRES AJUSTES SIN LOS QUE NO FUNCIONA, cada uno salido de una medición fallida:
+      · `think: false` -> los modelos que "razonan" antes de contestar se comían los 180 s sólo
+        pensando. Si el modelo no acepta la opción, se reintenta sin ella.
+      · `num_ctx: 8192` -> el prompt de triage tiene ~2.500 tokens más el ticket y los antecedentes;
+        con el contexto por defecto de Ollama se TRUNCABA y el modelo, sin ver las reglas,
+        devolvía la plantilla del JSON en vez de elegir («TERMINALES|MOLINETES|INTERFACE»).
+      · un tope de salida también en modo JSON -> un triage no necesita más, y sin tope un modelo
+        chico puede quedarse generando hasta el timeout.
     """
 
+    # La primera consulta paga la carga del modelo en memoria (~60 s en 2 vCPU) y el triage otros
+    # ~100 s: con el timeout viejo de 180 s, la primera consulta del día moría siempre.
+    _TIMEOUT = 300
+
     def __init__(self, cfg):
-        self.url = cfg.get("ollama_url", "http://127.0.0.1:11434")
-        self.modelo_texto = elegir_modelo(cfg, "local", "qwen2.5:14b")
+        self.url = (cfg.get("ollama_url") or os.environ.get("OLLAMA_URL")
+                    or "http://127.0.0.1:11434").rstrip("/")
+        self.modelo_texto = elegir_modelo(cfg, "local", "qwen3:4b")
+        self._piensa = True        # se apaga solo si el modelo no acepta la opción 'think'
 
     def chat(self, system, prompt, json_out=True, max_tokens=None):
         import json
+        import urllib.error
         import urllib.request
         payload = {"model": self.modelo_texto, "stream": False,
-                   "options": {"temperature": 0.2 if json_out else 0.1},
+                   "options": {"temperature": 0.2 if json_out else 0.1, "num_ctx": 8192,
+                               "num_predict": 700 if json_out else (max_tokens or 1600)},
                    "messages": [{"role": "system", "content": system},
                                 {"role": "user", "content": prompt}]}
         if json_out:
             payload["format"] = "json"
-        else:
-            payload["options"]["num_predict"] = max_tokens or 1600   # detalle sin volcar de más
-        req = urllib.request.Request(
-            self.url + "/api/chat", data=json.dumps(payload).encode(),
-            headers={"Content-Type": "application/json"})
-        with urllib.request.urlopen(req, timeout=180) as r:
-            return json.load(r)["message"]["content"]
+        if self._piensa:
+            payload["think"] = False
+
+        def _post(cuerpo):
+            req = urllib.request.Request(
+                self.url + "/api/chat", data=json.dumps(cuerpo).encode(),
+                headers={"Content-Type": "application/json"})
+            with urllib.request.urlopen(req, timeout=self._TIMEOUT) as r:
+                return json.load(r)["message"]["content"]
+
+        try:
+            return _post(payload)
+        except urllib.error.HTTPError as e:
+            # Un modelo que no "piensa" rechaza la opción con un 400 que lo dice. Se la saca para
+            # siempre y se reintenta: no tiene sentido pagar el error en cada consulta.
+            detalle = e.read().decode("utf-8", "replace").lower()
+            if self._piensa and "think" in detalle:
+                self._piensa = False
+                payload.pop("think", None)
+                return _post(payload)
+            raise
 
     def voz_pcm(self, texto):
         raise NotImplementedError("TTS local (Piper/XTTS) — a implementar por cliente")
@@ -932,6 +995,23 @@ def es_por_minuto(e):
             or "too many requests" in m or "rate_limit" in m)
 
 
+def _es_permanente(e):
+    """True si el error NO se arregla esperando: la petición, la clave o el modelo están mal.
+
+    400 (petición inválida o clave inválida), 401/403 (sin permiso) y 404 (el modelo no existe).
+    Hasta que esto existió, todo lo que no era cuota diaria se etiquetaba «límite por minuto»: un
+    error que necesita que alguien cambie una clave o un modelo se reintentaba cada 40 s en silencio,
+    y el log decía una causa que no era. Se busca el código como palabra suelta, así un «1400
+    tokens» no se confunde con un 400."""
+    import re
+    m = str(e)
+    if es_por_dia(e):
+        return False
+    return bool(re.search(r"\b(400|401|403|404)\b", m)) or any(
+        s in m for s in ("INVALID_ARGUMENT", "API_KEY_INVALID", "PERMISSION_DENIED",
+                         "UNAUTHENTICATED", "NOT_FOUND"))
+
+
 def _transitorio(e):
     """Error TEMPORAL del proveedor (no es falta de cuota): sobrecarga/indisponible/timeout.
     Conviene caer al respaldo por un ratito (no es que se agotó la cuota)."""
@@ -1025,17 +1105,28 @@ class MultiIA(ProveedorIA):
         import logging
         # Cooldown REAL según el motivo:
         #  · límite por DÍA agotado  -> largo (10 min y re-chequea; el gestor sabe el reinicio real).
+        #  · error PERMANENTE (400/401/403/404) -> largo también: esperar no lo arregla, hace falta
+        #    que alguien cambie una clave o un modelo. Y se escribe el MOTIVO REAL en el log, como
+        #    ERROR: hasta ahora se etiquetaba «límite por minuto» y la causa se perdía.
         #  · límite por MINUTO / 503 -> corto (lo que diga retryDelay, o pocos segundos).
+        permanente = _es_permanente(e)
         if es_por_dia(e):
             espera, motivo = 600, "sin cuota diaria"
+        elif permanente:
+            espera, motivo = 600, "con un error que esperar no arregla"
         else:
             espera = _retry_delay(e) or (20 if _transitorio(e) else 40)
             motivo = "con alta demanda" if _transitorio(e) else "con límite por minuto"
         primera = time.time() >= self._primaria_hasta
         self._primaria_hasta = time.time() + espera
         if primera:                          # avisar UNA sola vez (no en cada mensaje)
-            logging.getLogger("ia").warning(
-                "IA primaria %s -> uso la secundaria por ~%ss.", motivo, int(espera))
+            if permanente:
+                logging.getLogger("ia").error(
+                    "IA primaria %s -> uso la secundaria por ~%ss. Motivo real: %s",
+                    motivo, int(espera), str(e)[:300])
+            else:
+                logging.getLogger("ia").warning(
+                    "IA primaria %s -> uso la secundaria por ~%ss.", motivo, int(espera))
 
     def _fallback(self, e):
         return self.secundaria and (_es_sin_cuota(e) or _transitorio(e))
@@ -1236,7 +1327,8 @@ def crear_ia(cfg, gestor=None):
     """Proveedor de IA de TEXTO, elegible por cliente. La VOZ siempre es Charon.
     Respaldo automático EN CADENA: primaria -> cfg['secundario'] -> cfg['terciario'] (cuando
     la primaria se queda sin cuota, salta sola a la siguiente). Compat: cfg['proveedor_secundario'].
-    Config de esta empresa: Gemini primaria -> Cerebras secundaria -> Groq terciaria.
+    Qué proveedores son y en qué orden lo dice la config DE CADA CLIENTE, no este código: acá no se
+    escribe ninguna cadena fija (una que estuvo escrita acá quedó desactualizada y mentía).
     ROBUSTO a config editada a mano: si falta el secundario pero hay terciario, igual se usa;
     ignora bloques vacíos o que repiten un proveedor ya en la cadena."""
     cfg = cfg or {}
