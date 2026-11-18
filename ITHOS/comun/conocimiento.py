@@ -16,10 +16,9 @@ restringe: eso lo responde a cualquiera.
 import os
 import re
 
-# TELÉFONOS del DUEÑO (los ÚNICOS autorizados por WhatsApp, oficial y no-oficial).
+# TELÉFONOS del DUEÑO (los ÚNICOS autorizados por WhatsApp).
 # Se comparan por los ÚLTIMOS 10 dígitos: robusto a +54 / 549 / 54 / espacios / guiones /
-# JID de WhatsApp. NADIE MÁS. Si un cliente inicia su propia sesión con su número, su
-# número NO está acá -> nunca es tratado como dueño.
+# JID de WhatsApp. NADIE MÁS: cualquier otro número nunca es tratado como dueño.
 #   +54 9 11 5162-9038  y  +54 9 11 5666-0181
 TELEFONOS_DUENO = ["+5491151629038", "+5491156660181"]
 AUTORIZADOS_10 = {re.sub(r"\D", "", n)[-10:] for n in TELEFONOS_DUENO}
@@ -28,10 +27,11 @@ AUTORIZADOS_10 = {re.sub(r"\D", "", n)[-10:] for n in TELEFONOS_DUENO}
 AUTORIZADOS_ID = {"bsierra4262@gmail.com"}
 
 
-# Canales cuya identidad NO es un teléfono: ahí un valor numérico es un ID (p. ej. el user-id
-# de Telegram), NO un teléfono, y se compara VERBATIM contra las identidades autorizadas —
-# NUNCA por 'últimos 10 dígitos'. Así un id numérico no puede coincidir por azar con el
-# teléfono del dueño (namespacing: teléfonos ↔ AUTORIZADOS_10, identidades ↔ AUTORIZADOS_ID).
+# Hoy el único canal es WhatsApp (identidad = teléfono). Esta lista es una DEFENSA: si llegara un
+# remitente marcado con un canal cuya identidad no es un teléfono, un valor numérico se trata como
+# ID y se compara VERBATIM contra las identidades autorizadas — NUNCA por 'últimos 10 dígitos'.
+# Así un id numérico no puede coincidir por azar con el teléfono del dueño (namespacing:
+# teléfonos ↔ AUTORIZADOS_10, identidades ↔ AUTORIZADOS_ID).
 _CANALES_NO_TELEFONO = {"telegram", "email", "correo", "teams", "slack", "discord", "webchat"}
 
 
@@ -42,7 +42,7 @@ def _clave(remitente, canal=""):
     s = str(remitente or "").strip().lower()
     if not s:
         return "", False
-    if "@" in s and not s.replace("@", "").isdigit():   # email o @usuario_telegram
+    if "@" in s and not s.replace("@", "").isdigit():   # email o @usuario
         return s.lstrip("@"), False
     d = re.sub(r"\D", "", s)
     es_canal_tel = (canal or "").lower() not in _CANALES_NO_TELEFONO
@@ -55,10 +55,9 @@ def esta_autorizado(remitente=None, canal=""):
     """True SOLO si el remitente es una identidad del DUEÑO. La autorización es por
     IDENTIDAD (teléfono / email / usuario), NUNCA por el canal ni por 'IsFromMe': que un
     mensaje sea de la sesión no alcanza; el número tiene que ser uno de los del dueño. Así,
-    si un cliente usa su propia sesión de WhatsApp (su número), NO es dueño. Vale igual para
-    WhatsApp oficial y no-oficial, Telegram y Email.
+    un técnico o cualquier otro integrante de un grupo NO es dueño.
     SEGURIDAD (namespacing): un teléfono SOLO se compara contra el set de teléfonos y un id
-    no telefónico (Telegram/email) SOLO contra el set de identidades. Así un id numérico NO
+    no telefónico (email/usuario) SOLO contra el set de identidades. Así un id numérico NO
     puede autorizarse por coincidir con los últimos 10 dígitos del teléfono del dueño."""
     k, es_tel = _clave(remitente, canal)
     if not k:
@@ -77,11 +76,10 @@ def esta_autorizado(remitente=None, canal=""):
 def clave_admin() -> str:
     """La frase-clave de administrador. Sale de `ITHOS_CLAVE_ADMIN` (el .env del servidor).
 
-    Estaba escrita acá adentro, en el código: la MISMA para todos los clientes, versionada junto
-    al repositorio y —peor— metida en el vocabulario que se le manda al transcriptor en CADA audio,
-    o sea viajando a un tercero todo el tiempo. Una contraseña no se versiona ni se comparte entre
-    empresas. Se deja el valor histórico como respaldo para no dejar a nadie afuera al actualizar;
-    fijando la variable de entorno queda fuera del código."""
+    Estaba escrita acá adentro, en el código: versionada junto al repositorio y —peor— metida en
+    el vocabulario que se le manda al transcriptor en CADA audio, o sea viajando a un tercero todo
+    el tiempo. Una contraseña no se versiona. Se deja el valor histórico como respaldo para no
+    quedar afuera al actualizar; fijando la variable de entorno queda fuera del código."""
     import os
     return (os.environ.get("ITHOS_CLAVE_ADMIN") or _CLAVE_HISTORICA).strip().lower()
 
@@ -93,7 +91,7 @@ _CLAVE_HISTORICA = "kanerito4262"      # respaldo: compatibilidad con lo ya desp
 _RATIO_KANERITO = 0.86
 
 _RE_FRASE_ADMIN = re.compile(
-    r"(ithos|ithos|c[oó]digo de seguridad|de acceso|autorizaci[oó]n de administrador|"
+    r"(ithos|c[oó]digo de seguridad|de acceso|autorizaci[oó]n de administrador|"
     r"autoridad( de)?|modo administrador|administrador|seguridad|acceso|kanerito\s*4262)",
     re.I)
 
@@ -207,7 +205,7 @@ ALCANCE_PUBLICO = """QUÉ PUEDE HACER ITHOS (esto se puede contar a cualquiera; 
   demanda, en PDF y CSV, en la zona horaria y los días hábiles del cliente.
 - Base de conocimiento propia que se regenera sola con los casos resueltos.
 - Tareas del equipo: mantiene el tablero al día desde WhatsApp (resumen diario y seguimiento).
-- Todo por cliente y aislado: cada empresa tiene su configuración, sus datos y su facturación."""
+- Es una herramienta interna de INTELLIHELP: la usa el equipo de soporte, no se vende."""
 
 
 def documento_maestro():
@@ -243,10 +241,11 @@ suma cuando piden detalle). Si algo no figura acá ni ahí, decí que ese dato n
 - GESTOR (ITHOS/central): FastAPI + WebSocket en Docker, en la VPS de INTELLIHELP (Hostinger KVM 2,
   ithos.intellihelp.tech), con Caddy (HTTPS) y Ollama (IA local). Es el cerebro: tickets, IA,
   WhatsApp, reportes, tablero del equipo y panel.
-- AGENTE (ITHOS/agente): app liviana en la PC del cliente (instalador firmado). Lee las fichadas,
-  habla por los parlantes y escucha el micrófono; la configuración se la manda el Gestor.
-- Multi-cliente: cada empresa aislada (configuración, memoria, base de conocimiento y secretos
-  cifrados con AES-256-GCM). No hay ambiente de demo: se prueba en producción con pruebas aisladas.
+- AGENTE (ITHOS/agente): app liviana para Windows en la PC de la oficina (instalador firmado). Lee
+  las fichadas, habla por los parlantes y escucha el micrófono; la configuración se la manda el Gestor.
+- Herramienta INTERNA de INTELLIHELP: un solo Gestor y un solo agente. Los secretos de la
+  configuración van cifrados con AES-256-GCM y todo el panel exige el login del administrador.
+  No hay ambiente de demo: se prueba en producción con pruebas aisladas.
 
 # INTEGRACIONES (son estas y no otras)
 - Mesa de ayuda: GLPI 12, por su API REST (comun/glpi.py y el adaptador comun/tickets.py). Un
@@ -258,8 +257,9 @@ suma cuando piden detalle). Si algo no figura acá ni ahí, decí que ese dato n
 - GLPI lleva además un plugin propio, ithosconfirma: un cartel antes de aprobar una solución.
 
 # IA
-- La cadena la define la configuración de CADA cliente (ia.proveedor -> secundario -> terciario),
-  armada en comun/ia.py (MultiIA): una sola IA por consulta y, recién cuando se agota, la siguiente.
+- La cadena la define la configuración (ia.proveedor -> secundario -> terciario; hoy Gemini, Groq
+  e IA local, todas en planes gratuitos), armada en comun/ia.py (MultiIA): una sola IA por consulta
+  y, recién cuando se agota, la siguiente.
   Si preguntan qué IA o qué modelo se usa, contestá con la cadena REAL que figure en el estado de IA
   de esta conversación; nunca con una lista de memoria.
 - Hay una IA local en la VPS (Ollama con qwen3:4b) como último respaldo.

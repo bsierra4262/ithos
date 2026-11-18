@@ -308,9 +308,10 @@ def _armar_cliente(b, api_key):
         canales.append({**n, "enabled": bool(n.get("enabled", True))})
     return {
         "api_key": api_key,
-        # Contraseña de AGENTE por empresa (la asigna el Gestor): el agente se autentica con
-        # api_key + este token. Se genera una vez (fuerte) y se preserva en las ediciones.
-        "agente_token": b.get("agente_token") or secrets.token_urlsafe(24),
+        # Contraseña del AGENTE (la asigna el Gestor): el agente se autentica con api_key + este
+        # token. La genera `_nuevo_cliente` una sola vez; al editar, si llega vacía se conserva la
+        # guardada (antes se generaba OTRA y el agente quedaba afuera hasta reconfigurarlo).
+        "agente_token": (b.get("agente_token") or "").strip(),
         "nombre": (b.get("nombre") or "").strip(),
         "activo": bool(b.get("activo", True)),
         "voz": "Charon",
@@ -336,6 +337,7 @@ def _nuevo_cliente(b, api_key):
     """Registro de una empresa NUEVA: el formulario más los valores por omisión de lo que el
     formulario no maneja."""
     cli = _armar_cliente(b, api_key)
+    cli["agente_token"] = cli["agente_token"] or secrets.token_urlsafe(24)
     cli["velocidad"] = 1.2
     cli["integrador_glpi"]["poll_interval"] = 60   # 5 s era pegarle a GLPI 17.280 veces por día
     return cli

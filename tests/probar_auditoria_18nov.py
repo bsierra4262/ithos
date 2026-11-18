@@ -140,6 +140,15 @@ ok(not any(hasattr(IA, n) for n in ("ClaudeIA", "OpenAIIA", "GrokIA", "DeepSeekI
 ok(type(IA._single({"proveedor": "claude", "gemini_api_key": "x"})).__name__ == "GeminiIA",
    "un proveedor que no existe cae a Gemini (y lo dice en el log)")
 
+print("\n=== Guardar en el panel no le cambia la contraseña al agente ===")
+import panel as PANEL                     # noqa: E402
+previo = {"api_key": "K", "nombre": "X", "agente_token": "TOKEN-VIEJO"}
+editado = PANEL._fusionar_cliente(previo, PANEL._armar_cliente({"nombre": "X"}, "K"))
+ok(editado["agente_token"] == "TOKEN-VIEJO",
+   "editar sin mandar la contraseña del agente conserva la guardada (el agente no queda afuera)")
+ok(len(PANEL._nuevo_cliente({"nombre": "Y"}, "K2")["agente_token"]) >= 24,
+   "una empresa nueva sí recibe una contraseña de agente fuerte")
+
 print()
 if FALLAS:
     print(f"  AUDITORÍA 18-NOV: {len(FALLAS)} FALLA(S)")

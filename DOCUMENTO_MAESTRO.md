@@ -850,7 +850,8 @@ la versión del instalador. Del repositorio se puede reconstruir el agente compl
   - `probar_helpdesk_mejoras.py` — wake-word, esperas con recordatorio y escalada, @mención al asignado.
   - `probar_portero_saludo.py` — saludo coherente con la hora y una vez por día por persona.
   - `probar_ciclo.py` · `probar_produccion.py` · `probar_sistema.py` — ciclo de vida real del ticket, flujo
-    del vigilante y circuito completo por HTTP.
+    del vigilante y circuito completo del panel por HTTP sobre una copia de la config (login, guardar sin
+    perder secretos ni equipo, los 4 grupos, reparto, SLA y reporte ITIL de GLPI real en sólo lectura).
   - `probar_grupos_ambito.py` — cada grupo de WhatsApp recibe lo suyo y contesta lo suyo (sin red).
   - `probar_respuesta_cliente.py` — el SLA no corre fuera de horario y ninguna respuesta del
     cliente pasa desapercibida (sin red).

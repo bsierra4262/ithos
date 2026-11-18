@@ -67,6 +67,13 @@ interno salió del código. Gestor **1.2.0**. Regresión de los bugs en `tests/p
   sube en el repositorio antes de armar el paquete.
 - **«SLA 1ª respuesta» medía la resolución**: ahora usa la demora de primera respuesta que registra GLPI contra el
   TTO.
+- **Guardar desde el panel sin la contraseña del agente generaba otra** y el agente quedaba afuera hasta
+  reconfigurarlo. Ahora se genera sólo para una empresa nueva y al editar se conserva la guardada.
+- **`tests/probar_sistema.py` probaba el alta y el portal**, que ya no existen: reescrita para lo que se usa hoy.
+- **Lo que ITHOS cuenta de sí mismo** (`comun/conocimiento.py`) todavía hablaba de multi-cliente, facturación,
+  Telegram y Email: ahora dice que es una herramienta interna con WhatsApp como canal.
+- **Las capturas de la documentación eran de la demo** («EMPRESA DEMO S.A.», HikCentral, reaperturas): las cuatro
+  son ahora del panel, el agente, el grupo ITHOS_SOPORTE y el PDF con los datos reales de noviembre.
 
 ### Added
 - **La wiki publica el paso a paso real, con las capturas.** El artículo sale de TODO lo que escribió

@@ -1609,7 +1609,8 @@ try:
     menu40 = all(s in ag40 for s in ("def menu(", "def _configurar(",
                                      "def _desinstalar(", "def _quitar_autoarranque("))
     utf8_40 = 'reconfigure(encoding="utf-8"' in ag40   # consola cp1252 no crashea con el banner (█╗)/acentos
-    panel_gen = 'b.get("agente_token") or secrets.token_urlsafe' in pnl40
+    # El Gestor genera la contraseña UNA vez, para la empresa nueva; al editar se conserva.
+    panel_gen = 'cli["agente_token"] or secrets.token_urlsafe' in pnl40
     panel_ui40 = "f_atok" in pui40
     if (rechazo and acepta and compat and manda_token and thin and menu40 and utf8_40
             and panel_gen and panel_ui40):

@@ -81,8 +81,8 @@ caché de voz.
 
 ### Asistente en el grupo de la mesa de ayuda
 
-ITHOS avisa cuando entra en línea y cuando llega un ticket nuevo, y responde cuando lo llaman
-con «Hey ITHOS». Los mensajes son los que genera la aplicación con los datos de prueba.
+En ITHOS_SOPORTE, ITHOS avisa cada ticket nuevo y responde cuando lo llaman con «Hey ITHOS». Los
+mensajes son los que genera la aplicación con los datos reales de GLPI de noviembre de 2026.
 
 <p align="center"><img src="docs/capturas/06-asistente.png" alt="Asistente en el grupo de la mesa de ayuda" width="80%"></p>
 
@@ -771,7 +771,7 @@ Baterías en [`tests/`](tests/):
 | `probar_auditoria_18nov.py` | Regresión de los bugs de la auditoría del 18-nov-2026: PDF al grupo correcto, voz-id ante la duda, seguimientos completos, equipo desde la config, agenda, avisos del Gestor. | No |
 | `probar_helpdesk_mejoras.py` | Wake-word obligatorio, esperas con recordatorio y escalada, @mención al técnico asignado (mesa de ayuda simulada). | No |
 | `probar_portero_saludo.py` | Saludo coherente con la hora y una sola vez por día por persona. | No |
-| `probar_sistema.py` | Circuito completo del panel por HTTP: login, validaciones, edición, canales y ámbitos, estado, métricas. | Sí |
+| `probar_sistema.py` | Circuito completo del panel por HTTP sobre una copia de la config: login obligatorio, rutas de venta eliminadas, guardar sin perder secretos ni equipo, los 4 grupos, el reparto, SLA y reporte ITIL de GLPI real (sólo lectura), voz edge, IA y memoria. | Sí |
 | `probar_ciclo.py` · `probar_produccion.py` | Ciclo de vida real de un ticket y flujo del vigilante contra GLPI. | Sí |
 | `probar_grupos_ambito.py` | Ruteo por grupo: cada aviso va al que corresponde, el de consultas no recibe alertas y cada grupo contesta sólo lo suyo. | No |
 | `probar_respuesta_cliente.py` | El cliente responde: fuera de horario el ticket espera al día hábil (el SLA no corre), se avisa cada respuesta y se reclama al técnico que no contestó. | No |
