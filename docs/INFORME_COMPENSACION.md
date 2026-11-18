@@ -1,5 +1,5 @@
 # ITHOS — Parte 2: valor del desarrollo y propuesta de compensación
-**Preparado para:** Nicolás Baldelli · INTELLIHELP S.A. · Actualizado 07/2026
+**Preparado para:** Nicolás Baldelli · INTELLIHELP S.A. · Actualizado 11/2026
 
 > **De qué trata este informe.** Es la segunda de dos partes, complementaria al informe de alcance y costos
 > operativos. Aquel muestra qué hace ITHOS y cuánto cuesta operarlo; este presenta el **valor del desarrollo**, la
@@ -11,7 +11,7 @@
 ## 1. Esfuerzo y valor del desarrollo, base para la comisión
 
 ITHOS es un desarrollo que realicé para INTELLIHELP: la arquitectura y toda la implementación. No es un script,
-sino una plataforma multiempresa —central más agentes— con integraciones reales, IA, voz, cobros y panel, probada
+sino una plataforma multiempresa —central más agentes— con integraciones reales, IA, voz y panel, probada
 a nivel de producción. A continuación, el esfuerzo de ingeniería que representa el producto, por componente. Sirve
 para dimensionar el valor creado y, sobre esa base, la comisión.
 
@@ -21,24 +21,28 @@ para dimensionar el valor creado y, sobre esa base, la comisión.
 | Capa de IA enchufable: 10 proveedores, cadena con respaldo, cuota y transcripción | 52 |
 | Motor de voz: Charon en streaming con WSOLA, caché, edge‑tts y diccionario de pronunciación | 48 |
 | Captura y filtrado de voz: micrófono dinámico, VAD Silero y webrtc, identificación por voz | 34 |
-| Sistemas de tickets: GLPI completo, más Zendesk, Jira, Freshservice y osTicket contra API oficiales | 68 |
+| Mesa de ayuda GLPI completa: tickets, seguimientos, tareas, soluciones, documentos y SLA | 44 |
 | Triage con IA, ciclo de vida y acciones: cerrar, asignar, posponer y responder | 46 |
-| Control de acceso: cinco integradores, IVMS, HikCentral, BioStar 2, ZKTeco y Honeywell | 54 |
-| Canales conversacionales: WhatsApp oficial y no oficial, Telegram, Email, Teams, Slack y Matrix | 50 |
+| Control de acceso IVMS: integrador, terminales configurables y portero | 30 |
+| WhatsApp: vinculación por QR, grupos por ámbito, texto y notas de voz | 26 |
 | Asistente: memoria por cliente, base de conocimiento automática con Outline, y autorización | 44 |
 | Reportes ITIL 4: KPIs, SLA, MTTR, PDF y CSV, programados y con rango personalizado | 30 |
 | Proactivo: aviso de SLA por vencer, agrupado por técnico asignado | 14 |
-| Facturación MercadoPago: suscripciones, gross‑up de comisión, dólar BNA y webhook con firma | 34 |
 | Panel web: diseño HUD, superadmin, portal, auto‑alta, UX, responsive y multiplataforma | 58 |
 | Instaladores multi‑SO para Windows, Linux y Mac, más Docker y Caddy con HTTPS/WSS | 28 |
 | QA y testing: cinco baterías de producción, exhaustiva, código, nivel 4 y requerimientos, con seguridad, concurrencia y escala | 48 |
 | Integración, ajustes finos, documentación y puesta a punto | 40 |
-| **TOTAL** | **≈ 690 h** |
+| **TOTAL** | **≈ 584 h** |
 
-- **Cronograma.** Desarrollado por fases —arquitectura, integraciones, voz y canales, IA y asistente, facturación,
-  panel y UX, y finalmente QA y hardening— a lo largo de varios meses de trabajo dedicado.
+- **Cronograma.** Desarrollado por fases —arquitectura, integraciones, voz y WhatsApp, IA y asistente, panel y
+  UX, y finalmente QA y hardening— a lo largo de varios meses de trabajo dedicado.
+- **Solo lo que está en el producto.** El total cuenta únicamente lo que hoy funciona en ITHOS. No incluye las
+  integraciones que se desarrollaron y después se sacaron para dejar el producto enfocado: otros sistemas de
+  tickets (Zendesk, Jira, Freshservice, osTicket), otros controles de acceso (HikCentral, BioStar 2, ZKTeco,
+  Honeywell), otros canales (WhatsApp oficial, Telegram, Email, Teams, Slack, Matrix) y el cobro de suscripciones
+  con MercadoPago.
 - **Valor de mercado del desarrollo, costo de reemplazo.** Contratar este desarrollo a un tercero a tarifa de
-  mercado, entre US$40 y US$60 por hora, le habría costado a INTELLIHELP entre US$27.600 y US$41.400. Es el costo
+  mercado, entre US$40 y US$60 por hora, le habría costado a INTELLIHELP entre US$23.360 y US$35.040. Es el costo
   de mercado de construir este producto, es decir el valor que aporté.
 - **Base de la comisión.** Por el desarrollo completo de este producto corresponde una comisión proporcional al
   valor creado y a los ingresos recurrentes que genere para INTELLIHELP. El producto es replicable por cliente,
@@ -56,14 +60,23 @@ para dimensionar el valor creado y, sobre esa base, la comisión.
 ## 2. Sistemas a certificar en el cliente: contingencia de adaptación
 
 Cada integración está programada contra la API y la documentación oficial de cada fabricante. Están probados y
-certificados en vivo GLPI para tickets, IVMS para acceso, WhatsApp no oficial, Gemini, Cerebras y Groq para IA, y
-MercadoPago para cobros. El resto está implementado según la documentación, pero al conectarlo a un cliente real
-puede diferir por la versión del sistema, la autenticación o campos a medida. A continuación, las horas estimadas
-de adaptación y certificación por cliente en caso de que algo no funcione como indica la documentación; si funciona
-directo, es solo conectar y probar.
+certificados en vivo GLPI para tickets, IVMS para acceso, WhatsApp no oficial, Gemini, Cerebras y Groq para IA,
+Outline para la wiki y Planka para las tareas del equipo. Los demás proveedores de IA están implementados según la
+documentación, pero al conectarlos a un cliente real pueden diferir por la versión, la autenticación o la cuenta. A
+continuación, las horas estimadas de adaptación por cliente en caso de que algo no funcione como indica la
+documentación; si funciona directo, es solo conectar y probar.
 
 | Categoría | Sistema | Horas si difiere de la documentación |
 |---|---|---:|
+| **IA** | Claude, OpenAI, Grok, DeepSeek, Mistral y OpenRouter, cada uno | 2 |
+| | DeepSeek local u Ollama, levantar el servidor | 3 |
+
+> **Cómo leerlo.** Son topes por sistema y por cliente, y solo aplican si el proveedor real difiere de la
+> documentación. Un cliente que use otro sistema de tickets, otro control de acceso u otro canal que los
+> certificados no es una adaptación sino una integración nueva, que se cotiza aparte según la sección 3. Este
+> trabajo de puesta en marcha por cliente forma parte de la comisión.
+
+---|---|---:|
 | **Tickets** | Zendesk | 6 |
 | | Jira Service Management | 8 |
 | | Freshservice | 6 |
@@ -95,8 +108,8 @@ El sistema se vende y va a producción, así que, además del desarrollo inicial
 continuos, que son parte del valor y justifican una comisión recurrente, no solo un pago único:
 
 - **Monitoreo y soporte,** para que siga corriendo 24/7 y para atender incidencias.
-- **Actualizaciones** por cambios en las APIs de terceros —por ejemplo, Jira cambió su endpoint de búsqueda en
-  2025—, en MercadoPago, en WhatsApp y en los proveedores de IA, además de parches de seguridad.
+- **Actualizaciones** por cambios en las APIs de terceros —GLPI, WhatsApp, Outline, Planka y los proveedores de
+  IA, que cambian modelos y cuotas con frecuencia—, además de parches de seguridad.
 - **Nuevas integraciones y funciones** a pedido: otro sistema de tickets, otro canal, otra IA.
 - **Alta y certificación de cada cliente nuevo,** según la contingencia de la sección 2.
 
@@ -113,7 +126,7 @@ de la comisión, no un único cobro.
 recargable de una cuenta de la empresa de aproximadamente $160.000 por mes, lo que da cerca de $1.000.000 mensuales
 en total, de forma aproximada, ya que el monto exacto de la tarjeta puede variar. Vengo sin ajuste desde hace
 tiempo, mientras desarrollé y sostengo una plataforma que INTELLIHELP puede vender y monetizar, con un valor de
-desarrollo de entre US$27.600 y US$41.400 según la sección 1, y un costo de operación de centavos por cliente
+desarrollo de entre US$23.360 y US$35.040 según la sección 1, y un costo de operación de centavos por cliente
 según el informe de costos operativos. Sé que INTELLIHELP es una PyME, así que la propuesta es realista, sin
 desembolso grande de entrada y escalonada. El objetivo es que mis ingresos crezcan junto con los de la empresa: si
 ITHOS le genera más a INTELLIHELP, a mí también.
@@ -171,10 +184,10 @@ completa y el derecho a usar, modificar y vender libremente, desligándome a mí
 compra único. Este precio no se descuenta por ser PyME: es el valor real del activo, el mismo si lo compra una
 PyME, Google o Meta. Se valúa como producto terminado, no solo como código:
 
-- **Piso, costo de reconstruirlo desde cero:** entre US$27.600 y US$41.400, según la sección 1, solo la mano de obra.
+- **Piso, costo de reconstruirlo desde cero:** entre US$23.360 y US$35.040, según la sección 1, solo la mano de obra.
 - **Como producto listo para vender:** en las adquisiciones de software, un producto en producción se paga entre
-  3 y 6 veces su costo de construcción, por el time‑to‑market, el riesgo evitado, el know‑how y las más de quince
-  integraciones reales, lo que da un rango aproximado de US$120.000 a US$250.000.
+  3 y 6 veces su costo de construcción, por el time‑to‑market, el riesgo evitado, el know‑how y las quince
+  integraciones reales, lo que da un rango aproximado de US$70.000 a US$210.000.
 - **Con ingresos ya en marcha:** además se valúa por múltiplo de facturación anual, típicamente entre 3 y 5 veces
   el ARR en SaaS, lo que lo lleva más arriba a medida que crece la base de clientes.
 - **Precio a proponer, a negociar:** desde alrededor de US$150.000 por la propiedad completa, es decir la propiedad
