@@ -224,13 +224,12 @@ if n_hint >= 5:
 else:
     fail("faltan hints explicativos en el alta", f"({n_hint})")
 
-# C2) El formulario distingue AUDIENCIA: el superadmin lo abre con admin=true y el alta/portal del
-# cliente con admin=false, así lo que es interno nunca se le muestra al cliente. (El bloque de
-# Facturación, que era el único gateado, salió del alcance junto con el cobro de suscripciones.)
-if "formHTML({},false)" in ui and "formHTML(C,false)" in ui and "formHTML(c,true)" in ui:
-    ok("formHTML: superadmin=true, alta/portal=false (coherencia por audiencia)")
+# C2) ITHOS es una herramienta INTERNA: el formulario lo abre sólo el administrador, y ya no hay
+# alta por enlace ni portal de cliente (salieron con la etapa de venta, 18-nov-2026).
+if "formHTML(c,true)" in ui and "portal_html" not in ui and "HTML_ALTA" not in ui:
+    ok("formHTML: sólo el administrador (sin alta ni portal de cliente)")
 else:
-    fail("formHTML no distingue superadmin de cliente")
+    fail("el panel todavía tiene alta o portal de cliente")
 
 # C3) El alta ofrece SÓLO lo que ITHOS tiene: GLPI para tickets e IVMS para acceso (sin 'Ninguno').
 panel = leer(os.path.join(APP, "central", "panel.py"))
@@ -982,10 +981,12 @@ try:
         return open(os.path.join(APP if partes and partes[0] in ("comun","central","agente") else RAIZ, *partes), encoding="utf-8").read()
     src_ivms = _leer("agente", "integrador_ivms.py")
     baseline_ivms = ("baseline" in src_ivms and "vistos" in src_ivms)
-    despierto_wired = all("mantener_despierto" in _leer(*p) for p in (
-        ("agente", "agente.py"), ("central", "main.py")))
+    # El anti-suspensión va en el AGENTE (la PC de la oficina). El Gestor corre en Docker en la VPS,
+    # donde no hay nada que suspender.
+    despierto_wired = ("mantener_despierto" in _leer("agente", "agente.py")
+                       and "mantener_despierto" not in _leer("central", "main.py"))
     if baseline_ivms and despierto_wired:
-        ok("portero: baseline ignora fichadas viejas; anti-suspensión en agente y Gestor")
+        ok("portero: baseline ignora fichadas viejas; anti-suspensión en el agente")
     else:
         fail("falta baseline / anti-suspensión", f"baseline={baseline_ivms} despierto={despierto_wired}")
 except Exception as e:  # noqa: BLE001
@@ -1095,10 +1096,11 @@ try:
     src_pn = _l25("central", "panel.py")
     src_kb = _l25("central", "kb_auto.py")
     src_mn = _l25("central", "main.py")
-    alta_kb = ("formHTML({},false)+kbBloque()" in src_ui and "kb_outline:" in src_ui)
+    alta_kb = ("${kbBloque()}" in src_ui and "kb_outline:" in src_ui)   # en el panel (Métricas)
     guarda = '"kb_outline"' in src_pn
+    # Semanal y en la HORA DE LA EMPRESA (el servidor está en UTC).
     auto_semanal = ("async def vigilar" in src_kb and "weekday() == dia" in src_kb and
-                    'strftime("%Y-%W")' in src_kb)
+                    'strftime("%Y-%W")' in src_kb and "ahora_zona(conf)" in src_kb)
     lanzado = "KB.vigilar(conf)" in src_mn
     if alta_kb and guarda and auto_semanal and lanzado:
         ok("KB: el alta la ofrece (subir + Outline) y se regenera SOLA por semana (kb_auto.vigilar en main)")
@@ -1130,9 +1132,8 @@ except Exception as e:  # noqa: BLE001
     fail("no se pudo verificar la Fase 1 (versionado/handshake)", repr(e))
 
 
-# H28) MODELO DE ACCESO (seguridad): al Gestor superadmin `/` + APIs de gestión accede SOLO INTELLIHELP
-#      (auth por token/cookie); el ALTA es un enlace de UN SOLO USO que caduca; el dashboard del cliente
-#      (/panel/<key>) y los catálogos quedan accesibles. Regresión del gap crítico "todo abierto".
+# H28) MODELO DE ACCESO (herramienta interna): TODO el panel exige el login del administrador; lo
+#      único abierto es /login. Sin alta, sin portal de cliente y sin catálogos públicos.
 try:
     os.environ["ITHOS_ADMIN_USER"] = "intellihelp"
     os.environ["ITHOS_ADMIN_TOKEN"] = "AUDIT-TOKEN-28"
@@ -1144,33 +1145,25 @@ try:
         "home": _c.get("/").text,
         "clientes": _c.get("/api/clientes").status_code,
         "estado": _c.get("/api/estado").status_code,
-        "alta_link": _c.post("/api/alta_link", json={"nombre": "X"}).status_code,
-        "delete": _c.delete("/api/clientes/FAKE").status_code,
-        "alta_sin_tok": _c.get("/alta").status_code,
         "crear_sin_admin": _c.post("/api/clientes", json={"nombre": "N"}).status_code,
         "catalogo": _c.get("/api/integradores").status_code,
+        "sla": _c.get("/api/sla/CUALQUIERA").status_code,
+        "wa": _c.get("/api/whatsapp/estado?api_key=X").status_code,
     }
     _c2 = _TC28(_P28.app, base_url="https://testserver", follow_redirects=False)
     rl = _c2.post("/login", data={"usuario": "intellihelp", "k": "AUDIT-TOKEN-28"})   # login -> cookie
     con_cookie = _c2.get("/api/clientes").status_code
-    tok28 = _c2.post("/api/alta_link", json={"nombre": "ACME"}).json()["token"]
-    alta_ok = _c2.get("/alta?t=" + tok28).status_code            # con token válido -> form
-    v1 = _P28.AUTH.alta_valido(tok28)
-    _P28.AUTH.alta_consumir(tok28)
-    v2 = _P28.AUTH.alta_valido(tok28)                            # de un solo uso -> ya no vale
-    cond28 = ("Acceso exclusivo" in sin["home"] and sin["clientes"] == 401 and
-              sin["estado"] == 401 and sin["alta_link"] == 401 and sin["delete"] == 401 and
-              sin["alta_sin_tok"] == 403 and sin["crear_sin_admin"] == 401 and
-              sin["catalogo"] == 200 and rl.status_code == 303 and con_cookie == 200 and
-              alta_ok == 200 and v1 is True and v2 is False)
+    cond28 = ("Acceso exclusivo" in sin["home"] and
+              all(sin[k] == 401 for k in ("clientes", "estado", "crear_sin_admin", "catalogo", "sla", "wa"))
+              and rl.status_code == 303 and con_cookie == 200)
     if cond28:
-        ok("modelo de acceso: Gestor superadmin+APIs solo INTELLIHELP (auth), alta de un solo uso que caduca, dashboard/catálogos abiertos")
+        ok("modelo de acceso: todo el panel exige el login del administrador (sólo /login abierto)")
     else:
         fail("el modelo de acceso no cierra bien",
              repr({k: (v if k != 'home' else ('LOGIN' if 'Acceso exclusivo' in v else 'PANEL')) for k, v in sin.items()}) +
-             f" login={rl.status_code} cookie={con_cookie} alta={alta_ok} v1={v1} v2={v2}")
+             f" login={rl.status_code} cookie={con_cookie}")
 except Exception as e:  # noqa: BLE001
-    fail("no se pudo verificar el modelo de acceso (auth Gestor + alta un solo uso)", repr(e))
+    fail("no se pudo verificar el modelo de acceso", repr(e))
 
 
 # H27) COMUNICACIÓN ENTRE REDES DISTINTAS (Gestor en Hostinger VPS <-> Agente en el cliente con otra
@@ -1253,21 +1246,27 @@ except Exception as e:  # noqa: BLE001
     fail("no se pudo verificar la consistencia de los .md", repr(e))
 
 
-# H30) El archivo de enlaces de alta se puede llevar a otro lado por env (`ITHOS_ALTA_FILE`): en
-#   producción vive en el volumen persistente y en los tests en un temporal, sin tocar el real.
+# H30) Lo de la etapa de venta NO existe más: con el login del administrador, las rutas de alta,
+#   portal, enlaces, generar key, borrar empresa y config_agente (que filtraba claves) dan 404/405.
 try:
-    _alta30 = os.path.join(__import__("tempfile").gettempdir(), "_audit30_alta.json")
-    os.environ["ITHOS_ALTA_FILE"] = _alta30
     sys.path.insert(0, os.path.join(APP, "central"))
-    import autenticacion as _A30
-    aislable = _A30._alta_path() == _alta30
-    os.environ.pop("ITHOS_ALTA_FILE", None)
-    if aislable:
-        ok("enlaces de alta: el archivo se ubica por env (volumen en producción, temporal en tests)")
+    from fastapi.testclient import TestClient as _TC30
+    import panel as _P30
+    _c30 = _TC30(_P30.app, base_url="https://testserver", follow_redirects=False)
+    _c30.post("/login", data={"usuario": os.environ.get("ITHOS_ADMIN_USER", "intellihelp"),
+                              "k": os.environ.get("ITHOS_ADMIN_TOKEN", "AUDIT-TOKEN-28")})
+    codigos30 = {r: _c30.get(r).status_code for r in
+                 ("/alta", "/panel/X", "/api/config_agente/X", "/api/reporte_ahora/X", "/api/metricas/X")}
+    codigos30["alta_link"] = _c30.post("/api/alta_link", json={}).status_code
+    codigos30["alta"] = _c30.post("/api/alta", json={}).status_code
+    codigos30["generar_key"] = _c30.post("/api/generar_key", json={}).status_code
+    codigos30["borrar"] = _c30.delete("/api/clientes/X").status_code
+    if all(v in (404, 405) for v in codigos30.values()):
+        ok("sin restos de la etapa de venta: alta, portal, enlaces, generar key, borrar y config_agente no existen")
     else:
-        fail("el archivo de enlaces de alta no respeta ITHOS_ALTA_FILE")
+        fail("quedan rutas de la etapa de venta", repr(codigos30))
 except Exception as e:  # noqa: BLE001
-    fail("no se pudo verificar el archivo de enlaces de alta", repr(e))
+    fail("no se pudo verificar que no queden rutas de venta", repr(e))
 
 
 # H31) CUOTA / CADENA DE IA POR CLIENTE, REAL, SIN CABLEAR NI INVENTAR (bug real reportado por Brian:
@@ -1303,35 +1302,30 @@ except Exception as e:  # noqa: BLE001
 
 # H32) DOS RUTAS DE VOZ (así funcionamos, verificado): los PARLANTES en el lugar (portero + respuestas
 #   habladas) usan Charon si está disponible y edge como respaldo (agente/voz.py); las NOTAS DE VOZ que
-#   se ENVÍAN por los canales (WhatsApp/Telegram/…) usan edge (voz_tts.audio SIN ia_cfg) -> mandar audios
-#   por los canales NO agrega costo. Regresión para que no se cambie sin querer (p. ej. WhatsApp a Charon).
+#   se ENVÍAN por WhatsApp usan SIEMPRE edge: Charon gasta cuota de Gemini y la nota no se reutiliza
+#   (decisión de Brian, 18-nov-2026). voz_tts ya no tiene rama Charon.
 try:
     sys.path.insert(0, APP)
     import comun.voz_tts as _VT32
-    _o1, _o2 = _VT32._charon_wav, _VT32._edge_mp3
-    _marca = {"charon": False, "edge": False}
-    _VT32._charon_wav = lambda *a, **k: (_marca.__setitem__("charon", True) or b"W")
+    _o2 = _VT32._edge_mp3
+    _marca = {"edge": False}
     _VT32._edge_mp3 = lambda *a, **k: (_marca.__setitem__("edge", True) or b"M")
     try:
-        _VT32.audio("hola señor", formato="mp3")          # canal, SIN ia_cfg -> debe ir por edge
+        _VT32.audio("hola señor", formato="mp3")
     finally:
-        _VT32._charon_wav, _VT32._edge_mp3 = _o1, _o2
-    canal_edge = _marca["edge"] and not _marca["charon"]
+        _VT32._edge_mp3 = _o2
+    canal_edge = _marca["edge"] and not hasattr(_VT32, "_charon_wav")
     voz_ag = leer(os.path.join(APP, "agente", "voz.py"))
     parlante = "crear_voz" in voz_ag and "_edge(" in voz_ag      # Charon + respaldo edge
-    # Sin Gemini (cliente que no usa Gemini) -> edge SIEMPRE (no hay identidad Charon): el parlante
-    # detecta la voz de marca por la key y NO intenta Charon si no la hay.
     sin_gemini_edge = "_voz_marca" in voz_ag and 'getattr(self.ia, "api_key"' in voz_ag
     from comun import ia as _IA32
     v_con = _IA32.crear_voz({"gemini_api_key": "AQ.x"})
     v_sin = _IA32.crear_voz({"proveedor": "groq"})           # sin key de Gemini
-    marca_con = bool(getattr(v_con, "api_key", ""))
-    marca_sin = bool(getattr(v_sin, "api_key", ""))
-    deteccion = marca_con and not marca_sin                   # con key=marca, sin key=edge siempre
+    deteccion = bool(getattr(v_con, "api_key", "")) and not bool(getattr(v_sin, "api_key", ""))
     wa32 = leer(os.path.join(APP, "comun", "whatsapp.py"))
-    canal_sin_charon = "self.ia_cfg = None" in wa32
+    canal_sin_charon = "ia_cfg" not in wa32 and "voz_tts.audio(" in wa32
     if canal_edge and parlante and canal_sin_charon and sin_gemini_edge and deteccion:
-        ok("dos rutas de voz: parlantes=Charon/else-edge (edge SIEMPRE si el cliente no usa Gemini); canales=edge (voz_tts.audio sin ia_cfg) -> audios de canal sin costo")
+        ok("dos rutas de voz: parlantes=Charon/else-edge; notas de WhatsApp=edge siempre (sin gastar cuota de Gemini)")
     else:
         fail("las rutas de voz no están como se definió",
              f"canal_edge={canal_edge} parlante={parlante} canal_sin_charon={canal_sin_charon} sin_gemini={sin_gemini_edge} deteccion={deteccion}")
@@ -1446,8 +1440,8 @@ except Exception as e:  # noqa: BLE001
 
 # H35) DESPLIEGUE SEGURO DEL GESTOR (Linux/Docker, VPS Hostinger). El Panel superadmin NO se expone en
 #   HTTP plano (sin 'ports', detrás de Caddy/TLS); el auth va por `.env` (mismo admin en central+panel);
-#   el Caddyfile rutea /ws+/webhook al central y el resto al panel; los secretos están en `.gitignore`;
-#   y los instaladores dejan el portero en sesión CON audio (Win AtLogOn / Linux systemd --user).
+#   el Caddyfile rutea /ws al central y el resto al panel; los secretos están en `.gitignore`; el
+#   instalador del agente (Windows) arranca al iniciar sesión CON audio; y el deploy es actualizar.sh.
 try:
     import yaml as _yaml35
     comp35 = _yaml35.safe_load(leer(os.path.join(APP, "docker-compose.yml")))
@@ -1459,16 +1453,16 @@ try:
     env_ambos = bool(svc35.get("central", {}).get("env_file")) and bool(svc35.get("panel", {}).get("env_file"))
     panel_central = any("ITHOS_CENTRAL_URL" in e for e in svc35.get("panel", {}).get("environment", []))
     caddy35 = leer(os.path.join(APP, "Caddyfile"))
-    ruteo35 = "@central path /ws /webhook/*" in caddy35 and "reverse_proxy panel:8090" in caddy35
+    ruteo35 = "@central path /ws\n" in caddy35 and "reverse_proxy panel:8090" in caddy35
     gi35 = leer(os.path.join(RAIZ, ".gitignore"))
     secretos35 = ".env" in gi35 and "clientes.json" in gi35
     envex35 = os.path.exists(os.path.join(RAIZ, ".env.example"))
-    unix35 = "ITHOS_ADMIN_TOKEN=" in leer(os.path.join(RAIZ, "compilador", "instaladores", "central_unix.sh"))
-    win35 = os.path.exists(os.path.join(RAIZ, "compilador", "build", "ithos-agente.iss"))
-    lin35 = "systemctl --user" in leer(os.path.join(RAIZ, "compilador", "instaladores", "agente_linux.sh"))
+    unix35 = os.path.exists(os.path.join(RAIZ, "compilador", "instaladores", "actualizar.sh"))
+    win35 = "ONLOGON" in leer(os.path.join(RAIZ, "compilador", "build", "ithos-agente.iss"))
+    lin35 = True     # (los instaladores Linux/Mac salieron: el agente corre en una PC Windows)
     if (panel_priv and central_priv and caddy_pub and env_ambos and panel_central and ruteo35 and
             secretos35 and envex35 and unix35 and win35 and lin35):
-        ok("despliegue seguro: panel detrás de TLS (no público) + auth por .env + Caddy rutea ws/webhook->central, resto->panel + secretos en .gitignore + portero con audio en los 3 SO")
+        ok("despliegue seguro: panel detrás de TLS (no público) + auth por .env + Caddy rutea ws->central, resto->panel + secretos en .gitignore + agente con audio al iniciar sesión")
     else:
         fail("el despliegue no está seguro/completo",
              f"panel_priv={panel_priv} central_priv={central_priv} caddy={caddy_pub} env={env_ambos} "
@@ -1546,31 +1540,22 @@ except Exception as e:  # noqa: BLE001
 #      con la facturación. Congelado en la rama `saas`.
 
 
-# H39) SEGURIDAD DEL GESTOR (producción): enlace de alta de UN SOLO USO consumido ATÓMICAMENTE al
-#   enviar el form (anti-reuso/carrera); cookie de sesión secure en prod + httponly; rate-limit
-#   anti fuerza-bruta en el login; panel con logout; headers de endurecimiento (HSTS) en Caddy.
+# H39) SEGURIDAD DEL GESTOR (producción): cookie de sesión secure + httponly; rate-limit anti fuerza
+#   bruta en el login; logout; headers de endurecimiento (HSTS) en Caddy; y guardar NO pisa la config
+#   si no se pudo leer (antes una lectura fallida dejaba el padrón vacío al guardar).
 try:
     sys.path.insert(0, os.path.join(APP, "central"))
-    import autenticacion as _A39
-    import tempfile as _tmp39
-    os.environ["ITHOS_ALTA_FILE"] = os.path.join(_tmp39.gettempdir(), "_audit39_alta.json")
-    try:
-        os.remove(os.environ["ITHOS_ALTA_FILE"])
-    except OSError:
-        pass
-    _tk = _A39.nuevo_alta_token("T", 24)
-    one_time = _A39.consumir_si_valido(_tk) is True and _A39.consumir_si_valido(_tk) is False
-    os.environ.pop("ITHOS_ALTA_FILE", None)
+    one_time = True
     aut = leer(os.path.join(APP, "central", "autenticacion.py"))
     pnl = leer(os.path.join(APP, "central", "panel.py"))
     cad = leer(os.path.join(APP, "Caddyfile"))
     cookie_seg = "httponly=True" in aut and "secure=True" in aut            # secure siempre (sólo HTTPS)
-    alta_atom = "consumir_si_valido(b.get(\"_alta_token\"" in pnl           # consumo al enviar
+    alta_atom = "_cargar(estricto=True)" in pnl and "ConfigIlegible" in pnl   # no pisa lo ilegible
     ratelimit = "_login_bloqueado(ip)" in pnl and "status_code=429" in pnl  # anti fuerza-bruta
     logout = "/logout" in pnl and "borrar_cookie" in aut
     hsts = "Strict-Transport-Security" in cad and "X-Frame-Options" in cad
     if one_time and cookie_seg and alta_atom and ratelimit and logout and hsts:
-        ok("seguridad: alta de un solo uso (consumo atómico al enviar) + cookie secure/httponly + rate-limit login + logout + HSTS/headers en Caddy")
+        ok("seguridad: cookie secure/httponly + rate-limit login + logout + HSTS/headers en Caddy + guardar no pisa una config ilegible")
     else:
         fail("falta endurecer la seguridad del Gestor",
              f"onetime={one_time} cookie={cookie_seg} alta_atom={alta_atom} ratelimit={ratelimit} logout={logout} hsts={hsts}")
@@ -1762,7 +1747,7 @@ try:
         os.remove(_A43._hash_file())
     except OSError:
         pass
-    boot_ok = _A43.credenciales_ok("intellihelp", "BOOTSTRAP-43") and not _A43.password_cambiada()
+    boot_ok = _A43.credenciales_ok("intellihelp", "BOOTSTRAP-43") and not os.path.exists(_A43._hash_file())
     cookie_antes = _A43._cookie_val()
     debil = _A43.cambiar_password("BOOTSTRAP-43", "corta")[0] is False          # <10 -> rechaza
     cambio_ok = _A43.cambiar_password("BOOTSTRAP-43", "MiClaveNueva2026")[0] is True
@@ -1797,47 +1782,29 @@ except Exception as e:  # noqa: BLE001
 #   generaste un enlace de alta sin querer, un botón lo REVOCA (deja de valer YA). En "Empresas" cada
 #   tarjeta muestra la contraseña de agente (como la api_key). Endpoints admin protegidos.
 try:
-    import tempfile as _tmp44
     sys.path.insert(0, os.path.join(APP, "central"))
-    os.environ["ITHOS_ALTA_FILE"] = os.path.join(_tmp44.gettempdir(), "_audit44_alta.json")
-    try:
-        os.remove(os.environ["ITHOS_ALTA_FILE"])
-    except OSError:
-        pass
-    import autenticacion as _A44
-    _tk44 = _A44.nuevo_alta_token("X", 24)
-    antes = _A44.alta_valido(_tk44)
-    revoc = _A44.revocar_alta(_tk44)
-    despues = _A44.alta_valido(_tk44)
-    revoc_ok = antes is True and revoc is True and despues is False and _A44.revocar_alta("no-existe") is False
-    os.environ.pop("ITHOS_ALTA_FILE", None)
     pui44 = leer(os.path.join(APP, "central", "panel_ui.py"))
     pnl44 = leer(os.path.join(APP, "central", "panel.py"))
-    ui_ok = ("Contraseña agente" in pui44 and "revocarAlta(" in pui44 and "cambiarPass(" in pui44
+    ui_ok = ("Contraseña agente" in pui44 and "cambiarPass(" in pui44
              and "atok" in pui44 and "key atok" in pui44)   # contraseña con cuadro dorado copiable (.key)
-    ep_ok = "/api/alta_revocar" in pnl44 and "/api/cambiar_password" in pnl44
-    # protegidos: sin admin -> 401
+    ep_ok = "/api/cambiar_password" in pnl44
     from fastapi.testclient import TestClient as _TC44
     import panel as _P44
     _c44 = _TC44(_P44.app, base_url="https://testserver", follow_redirects=False)
-    prot = (_c44.post("/api/alta_revocar", json={"token": "x"}).status_code == 401 and
-            _c44.post("/api/cambiar_password", json={"actual": "x", "nueva": "y"}).status_code == 401)
+    prot = _c44.post("/api/cambiar_password", json={"actual": "x", "nueva": "y"}).status_code == 401
     # Y, sobre todo, que el modelo sea DENEGAR POR DEFECTO: una ruta que nadie declaró como
     # pública tiene que exigir admin SOLA, sin que haya que acordarse de agregarla a una lista.
-    # Antes era al revés —se enumeraba lo privado— y cada endpoint nuevo nacía abierto a internet.
     prot = prot and _P44._requiere_admin("GET", "/api/una-ruta-que-todavia-no-existe") is True
     prot = prot and _P44._requiere_admin("POST", "/api/clientes/borrar-todo") is True
     prot = prot and _P44._requiere_admin("GET", "/login") is False          # el login se valida solo
-    prot = prot and _P44._requiere_admin("GET", "/panel/UNA-API-KEY") is False   # portal del cliente
-    if revoc_ok and ui_ok and ep_ok and prot:
-        ok("revocar enlace de alta (deja de valer YA) + contraseña de agente visible/copiable en la tarjeta; "
-           "endpoints admin protegidos (401 sin sesión)")
+    prot = prot and _P44._requiere_admin("GET", "/panel/UNA-API-KEY") is True    # ya no hay portal
+    if ui_ok and ep_ok and prot:
+        ok("contraseña de agente visible/copiable en la tarjeta; endpoints admin protegidos (401 sin sesión)")
     else:
-        fail("falla revocar alta / contraseña en tarjeta / protección",
-             f"revoc={revoc_ok} ui={ui_ok} ep={ep_ok} prot={prot}")
+        fail("falla contraseña en tarjeta / protección", f"ui={ui_ok} ep={ep_ok} prot={prot}")
 except Exception as e:  # noqa: BLE001
     import traceback as _tb44
-    fail("no se pudo verificar revocar alta / tarjeta", repr(e) + " | " + _tb44.format_exc()[-300:])
+    fail("no se pudo verificar la tarjeta / protección", repr(e) + " | " + _tb44.format_exc()[-300:])
 
 
 # H45) TICKET NUEVO → PARLANTES + CANAL del cliente, con texto/audio según su preferencia (pedido de
@@ -1966,9 +1933,10 @@ try:
     pui_est = leer(os.path.join(APP, "central", "panel_ui.py"))
     compartido = (".reactor{" in est and "Orbitron" in est
                   and "from comun.estilo_ithos import ESTILO" in pui_est)
-    # "todo a todo": build para los 3 SO (spec OS-aware + script Linux/Mac)
-    multi_os = (os.path.exists(os.path.join(RAIZ, "compilador", "build", "construir_agente.sh"))
-                and "darwin" in spec47 and "ithos.icns" in spec47)
+    # Build del agente para Windows (la PC de la oficina): los de Linux/Mac salieron con la etapa de venta.
+    multi_os = (os.path.exists(os.path.join(RAIZ, "compilador", "build", "construir_agente.bat"))
+                and "ithos.ico" in spec47 and "darwin" not in spec47
+                and "integrador_hikcentral" not in spec47 and "pydub" not in spec47)
     # datos PERSISTENTES por cliente (no en la carpeta temporal del onefile ni en Program Files)
     datos_ok = ("def _dir_datos(" in ag47 and 'getattr(sys, "frozen"' in ag47
                 and "LOCALAPPDATA" in ag47 and "cache_dir=_dir_cache_voz()" in ag47)
@@ -1992,17 +1960,15 @@ try:
                 and "shutil.rmtree" in _bd and "_dir_datos()" in _bd)
     # Firma de código GRATIS (self-signed INTELLIHELP) para la flota + confianza en la PC del cliente.
     firmar = leer(os.path.join(RAIZ, "compilador", "build", "firmar.ps1"))
-    confiar = leer(os.path.join(RAIZ, "compilador", "build", "confiar_en_cliente.ps1"))
     firma_ok = ("New-SelfSignedCertificate" in firmar and "Set-AuthenticodeSignature" in firmar
                 and "TimestampServer" in firmar and "INTELLIHELP" in firmar
-                and "LocalMachine\\Root" in confiar and "TrustedPublisher" in confiar
                 # el INSTALADOR confía el cert SOLO (certutil) -> el cliente no corre ningún comando
                 and "certutil" in iss47 and "-addstore -f Root" in iss47 and "TrustedPublisher" in iss47
                 and "-delstore Root" in iss47)                     # y lo quita al desinstalar (sin rastro)
     if (gui_ok and arranque_ok and datos_ok and spec_ok and sin_rastro and inst_ok and seguro47
             and firma_ok and lifecycle and compartido and multi_os):
         ok("app del agente = MISMO diseño que la web (CSS compartido); sigue viva al cerrar (proceso headless "
-           "singleton); datos+caché por cliente; desinstala SIN rastro (solo lo del agente); instalador firmado; build para los 3 SO")
+           "singleton); datos+caché por cliente; desinstala SIN rastro (solo lo del agente); instalador firmado; build Windows")
     else:
         fail("falla la app del agente / diseño / ciclo de vida / no-rastro / firma / multi-SO",
              f"gui={gui_ok} arranque={arranque_ok} datos={datos_ok} spec={spec_ok} sin_rastro={sin_rastro} "
@@ -2084,7 +2050,7 @@ try:
     no_blanquea = "catch(e){VIVOS=[]}" not in pui50               # ya NO se blanquea ante un hipo
     mantiene = ").conectados||VIVOS}catch(e)" in pui50            # mantiene el ultimo valor
     stat_key = 'data-stat="${esc(t)}"' in pui50                   # cada stat es direccionable
-    en_lugar = ('[data-stat="Conectadas"] b' in pui50            # Conectadas se actualiza in-place
+    en_lugar = ('[data-stat="Agente"] b' in pui50                # el estado del agente, in-place
                 and "if(document.querySelector('#view .grid.stats'))" in pui50)  # re-pinta entero solo 1ª vez
     if no_blanquea and mantiene and stat_key and en_lugar:
         ok("panel sin 'microcorte': poll() MANTIENE el ultimo valor (no blanquea ante hipo de red) y el "
@@ -2121,12 +2087,12 @@ try:
     central = ('@app.post("/api/whatsapp/vincular")' in m51 and '@app.get("/api/whatsapp/estado")' in m51
                and '@app.post("/api/whatsapp/desvincular")' in m51
                and "sesion_de_cliente(conf)" in m51 and "on_sesion_cerrada" in m51)
-    # (d) el panel hace de intermediario con AUTH (admin/cliente/alta) + guarda wa_session
+    # (d) el panel (con el login del administrador) resuelve la sesión de la empresa
     panel = ('@app.post("/api/whatsapp/vincular")' in p51 and "_resolver_sesion_wa" in p51
-             and "alta_valido" in p51 and '"wa_session"' in p51)
-    # (e) la UI (compartida) muestra el QR + estado + re-vincular, y el PORTAL del cliente lo trae al dash
-    ui = ("waVincular" in pui and "waModal" in pui and "waRender" in pui and "walink_p" in pui
-          and "Volver a vincular" in pui and "wa_session:window._waSesion" in pui)
+             and "WL.sesion_de_cliente(c)" in p51 and "alta_valido" not in p51)
+    # (e) la UI muestra el QR + estado + re-vincular
+    ui = ("waVincular" in pui and "waModal" in pui and "waRender" in pui
+          and "Volver a vincular" in pui)
     # (f) funcional: aislamiento por cliente + saneo de path traversal + estado inicial
     sys.path.insert(0, APP)
     import importlib
@@ -2137,7 +2103,7 @@ try:
     seguro = ".." not in _WL.archivo_sesion("../../etc/passwd") and "/" not in _WL.archivo_sesion("a/b")
     inicial = _WL.estado("no-existe-xyz").get("estado") == "sin_vincular" and not _WL.vinculado("no-existe-xyz")
     if all((modulo, runtime, central, panel, ui, aisla, seguro, inicial)):
-        ok("vincular WhatsApp por QR (panel/portal/alta): el gestor captura el QR (neonize) + estado con "
+        ok("vincular WhatsApp por QR (panel): el gestor captura el QR (neonize) + estado con "
            "TIMEOUT, aislado por cliente (1 sqlite c/u, path saneado); sesión cerrada -> 'caducada' + aviso "
            "+ 'Volver a vincular'; runtime y vinculación comparten la MISMA sesión")
     else:
@@ -2213,7 +2179,10 @@ try:
             and "def _avisar_mantenimiento(" in m53
             and "MSG_MANTENIMIENTO" in m53 and "MSG_DISPONIBLE" in m53
             and "_flags_mantenimiento" in m53 and "_set_flag_mantenimiento" in m53
-            and "notificadores_activos.pop(cliente" in m53      # limpia al desconectar (normal)
+            # El WhatsApp es del SERVICIO, no de la conexión del agente: si se borrara al desconectar,
+            # después de la 1ª reconexión la salud mostraría "sin canales" y el aviso de mantenimiento
+            # no saldría (bug encontrado en la auditoría del 18-nov-2026).
+            and "notificadores_activos.pop(cliente" not in m53
             and "/api/mantenimiento" in act)                    # el deploy avisa antes de reconstruir
     grace = "stop_grace_period" in comp
     vivo = ('datos.get("device") if evento == P.EV_ACCESO' in m53
@@ -2256,8 +2225,8 @@ try:
     central54 = ("estado_agente = {}" in m54 and "P.EV_ESTADO" in m54
                  and '@app.get("/api/salud")' in m54 and "wa.hay_activo()" in m54)  # disponible espera
     panel54 = '@app.get("/api/salud/{api_key}")' in p54
-    ui54 = ("renderSalud" in pu54 and "saludPill" in pu54 and "saludHost" in pu54
-            and "salud_'+c.api_key" in pu54)                                   # portal + tarjeta admin
+    ui54 = ("renderSalud" in pu54 and "saludPill" in pu54
+            and "salud_'+c.api_key" in pu54)                                   # tarjeta del panel
     ag_rep = ("estado_agente" in ag54 and "_escribir_estado_local" in ag54
               and "_microfono_ok" in ag54 and "_integrador_ok" in ag54)
     gui_ok = "def _salud(" in gui54 and "setSalud" in gui54
@@ -2280,7 +2249,7 @@ try:
               and not _N.Notificadores([muerto54]).hay_activo())
     if all((canal_estado, proto54, central54, panel54, ui54, ag_rep, gui_ok, func54)):
         ok("sistema de estado: el gestor reporta activo/inactivo de CADA canal (WhatsApp real, no solo "
-           "configurado) + micrófono/integrador/voz del agente; se ve en panel (portal + tarjeta) y en la "
+           "configurado) + micrófono/integrador/voz del agente; se ve en la tarjeta del panel y en la "
            "GUI del agente; el 'disponible' espera a que el canal esté REALMENTE activo")
     else:
         fail("falla el sistema de estado activo/inactivo",
@@ -2356,7 +2325,8 @@ try:
     cerrado_impl = ("def rango(" in rip and "cerrado=False" in rip and "cerrado:" in rip
                     and "AYER completo" in rip and "cerrado=cerrado" in rip)
     sched_tz = ("_ahora_cliente" in rprog and "ZoneInfo" in rprog and "cerrado=True" in rprog)
-    zona_ui = ("optgroup" in pu57 and "Asia/Tokyo" in pu57 and "Africa/" in pu57
+    # La zona se elige en el panel (Argentina o UTC: ITHOS es interno) y rige la hora de los reportes.
+    zona_ui = ("optgroup" in pu57 and "America/Argentina/Buenos_Aires" in pu57
                and "rige la hora de tus reportes" in pu57)
     tz_dep = "tzdata" in req57
     # funcional: cerrado -> ayer / semana pasada / mes pasado
@@ -2410,7 +2380,10 @@ try:
     iss = leer(os.path.join(RAIZ, "compilador", "build", "ithos-agente.iss"))
     ver = leer(os.path.join(APP, "comun", "version.py"))
     versionado = ("def _subir(" in bump and "MyAppVersion" in bump
-                  and "bump_version.py agente" in bat and "bump_version.py gestor" in act)
+                  and "bump_version.py agente" in bat
+                  # El Gestor se versiona en el REPO antes del paquete: subirlo en el servidor lo
+                  # pisaba el paquete siguiente y volvía siempre al mismo número.
+                  and "bump_version.py gestor" not in act)
     sin_rastro = ("Users\\*" in iss and "AppData\\Local\\ITHOS" in iss and "taskkill" in iss
                   and '{localappdata}\\ITHOS' not in iss.split("[UninstallDelete]")[-1])  # ya no en UninstallDelete
     subio = ('AGENTE_VERSION = "1.1' in ver or 'AGENTE_VERSION = "1.2' in ver) and \
@@ -2456,9 +2429,8 @@ try:
     spec = leer(os.path.join(RAIZ, "compilador", "build", "agente.spec"))
     ia = leer(os.path.join(APP, "comun", "ia.py"))
     vosk_motor = ("def _vigilar_vosk(" in esc and "KaldiRecognizer" in esc
-                  and 'cfg.get("motor") or "vosk"' in esc          # Vosk por defecto
                   and "_menciona(txt, palabra)" in esc              # detección difusa de 'ithos'
-                  and "def _vigilar_picovoice(" in esc)             # Picovoice legacy sigue
+                  and "picovoice" not in esc.lower())               # Vosk es el ÚNICO motor
     empaque = ("vosk" in reqs and '"vosk"' in spec
                and 'collect_dynamic_libs("vosk")' in spec)          # lib nativa embebida
     ia_local = '"local"' in ia and "ollama" in ia.lower()          # IA open-source ya disponible
@@ -2519,7 +2491,7 @@ except Exception as e:  # noqa: BLE001
 try:
     m63 = leer(os.path.join(APP, "central", "main.py"))
     cu63 = leer(os.path.join(APP, "comun", "cuota.py"))
-    pasa_cadena = "cadena=Cuota.cadena_cfg(ia)" in m63          # main le pasa la cadena REAL
+    pasa_cadena = "Cuota.crear_gestor(conf" in m63               # main arma el gestor con la cadena REAL
     roles_reales = ("def _rol(" in cu63 and "def _siguiente_a(" in cu63
                     and "(la {self._rol('groq')})" in cu63       # el rol de Groq sale de la cadena
                     and "*{nombre_ia(_sig)}* (la {self._rol(_sig)})" in cu63)  # el siguiente, dinámico
@@ -3226,7 +3198,7 @@ try:
     faltan = [d.strip().splitlines()[0][:40] for d in _dm if d not in _rd]
     # los temas del maestro que el README también tiene que cubrir
     temas = ("Cadena multi-IA", "Voz y audio", "Portero por voz", "ciclo de vida del ticket",
-             "Alta de cliente", "hace cada archivo", "Límites y pendientes")
+             "Configuración y seguridad", "hace cada archivo", "Límites y pendientes")
     sin_tema = [t for t in temas if t.lower() not in _rd.lower()]
     balance = all(d.count("[") == d.count("]") and d.count("(") == d.count(")")
                   and d.count("{") == d.count("}") for d in _dr)
@@ -3354,7 +3326,7 @@ CAPACIDADES = [
               "CHANGELOG.md": ["sí/no dudoso"]}},
     {"que": "a quién le entra cada ticket: instalaciones, escalamiento o la mesa por carga",
      "codigo": [("ITHOS/central/equipo.py", "def menos_cargado"),
-                ("ITHOS/central/equipo.py", "MESA = (\"lzaltron\", \"lcampos\")"),
+                ("ITHOS/central/equipo.py", "reparto = cfg.get(\"reparto\")"),
                 ("ITHOS/central/cerebro.py", "destino, porque = MESA_PENDIENTE")],
      "docs": {"DOCUMENTO_MAESTRO.md": ["se reparte **por carga**", "escalamiento"],
               "README.md": ["se reparte **por carga**", "escalamiento"],

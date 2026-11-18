@@ -78,9 +78,11 @@ def enviar_reporte(conf, notif, periodo=None, desde=None, hasta=None):
         if "pdf" in formatos:
             pdf = RI.pdf_bytes(k, empresa)
             if pdf:
-                fn(base + ".pdf", pdf, "application/pdf", f"Reporte ITIL {k['etiqueta']}")
+                AMB.llamar(fn, base + ".pdf", pdf, "application/pdf",
+                           f"Reporte ITIL {k['etiqueta']}", tipo=AMB.SLA)
         if "csv" in formatos:
-            fn(base + ".csv", RI.csv_bytes(k, empresa), "text/csv", f"Reporte ITIL {k['etiqueta']}")
+            AMB.llamar(fn, base + ".csv", RI.csv_bytes(k, empresa), "text/csv",
+                       f"Reporte ITIL {k['etiqueta']}", tipo=AMB.SLA)
     return True
 
 

@@ -1,15 +1,13 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-ITHOS Central — cerebro multi-cliente en la nube.
+ITHOS Gestor — el cerebro, en el servidor (VPS) de INTELLIHELP.
 
-Toda la configuración por cliente vive en clientes.json (copy-paste, sin código).
-Cada cliente: su API key de IA, GLPI, WhatsApp, límite de cuota, voz, etc.
+La configuración vive en clientes.json: IA, GLPI, WhatsApp, Planka, wiki, voz, etc.
 
-WebSocket (/ws): los agentes se autentican con su API key, reciben COMANDOS (voz).
-Por cliente con GLPI "central": vigila + triagea sus tickets y empuja la voz al
-agente. Si la cuota gratuita de IA se agota, avisa por voz + WhatsApp con el tiempo
-estimado de reseteo.
+WebSocket (/ws): el agente de la oficina se autentica con su API key + contraseña y recibe
+COMANDOS (voz). El Gestor vigila y triagea los tickets de GLPI, conversa por WhatsApp, manda
+reportes y avisos de SLA, y publica en la wiki, esté o no conectado el agente.
 """
 
 import sys
@@ -35,12 +33,6 @@ log = logging.getLogger("ithos-central")
 from comun import version as _VER          # noqa: E402
 from comun import ambitos as AV            # noqa: E402  tipos de aviso -> a qué grupo va cada uno
 app = FastAPI(title="ITHOS Gestor", version=_VER.GESTOR_VERSION)
-# Evita que el equipo se suspenda mientras el central corre (la pantalla puede bloquearse igual).
-try:
-    from comun.despierto import mantener_despierto
-    mantener_despierto()
-except Exception:  # noqa: BLE001
-    pass
 # Calienta edge-tts para que la 1ª nota de voz salga rápida (no paga el arranque en frío).
 try:
     from comun import voz_tts as _VTTS
@@ -93,7 +85,9 @@ def _guardar_terminales_descubiertas(cliente, terminales):
 # Cuando el Gestor se detiene (deploy/reinicio/mantenimiento), avisamos al cliente por SUS canales que
 # ITHOS entra en mantenimiento y que vuelve enseguida; al reconectar el agente, le avisamos que ya está
 # disponible. Así el cliente nunca cree que se rompió. (Producción: pedido de Brian.)
-notificadores_activos = {}   # cliente -> objeto de canales (para avisar en el shutdown, best-effort)
+# cliente -> su WhatsApp. Es de los SERVICIOS del cliente, no de la conexión del agente: el
+# WhatsApp sigue andando con el agente apagado, y la salud y el aviso de mantenimiento lo necesitan.
+notificadores_activos = {}
 
 MSG_MANTENIMIENTO = ("ITHOS entra en mantenimiento por unos minutos. A la brevedad estará reconectado "
                      "y funcionando con normalidad. Disculpá las molestias.")
@@ -134,7 +128,7 @@ def _avisar_mantenimiento():
     for cliente, wa in list(notificadores_activos.items()):
         try:
             if wa:
-                wa.enviar(MSG_MANTENIMIENTO, tipo=AV.SISTEMA)   # a TODOS sus canales
+                wa.enviar(MSG_MANTENIMIENTO, tipo=AV.SISTEMA)   # al grupo de avisos del sistema
                 avisados += 1
         except Exception:  # noqa: BLE001
             pass
@@ -146,7 +140,7 @@ def _avisar_mantenimiento():
 @app.post("/api/mantenimiento")
 def api_mantenimiento():
     """(Interno, red de Docker) Se llama JUSTO ANTES de detener/reiniciar el Gestor para avisarle al
-    cliente. No se expone al público (Caddy solo rutea /ws y /webhook al central)."""
+    cliente. No se expone al público (Caddy sólo rutea /ws al central)."""
     return {"ok": True, "avisados": _avisar_mantenimiento()}
 
 
@@ -186,7 +180,6 @@ def salud():
     return {"servicio": "ITHOS Central", "version": _VER.GESTOR_VERSION,
             "protocolo": _VER.PROTOCOL_VERSION,
             "revision": _VER.revision_desplegada(),
-            "clientes_registrados": registro.total(),
             "clientes_conectados": sorted(conexiones.keys())}
 
 
@@ -196,11 +189,10 @@ def conectados():
     return {"conectados": sorted(conexiones.keys())}
 
 
-# ---- Vinculación de WhatsApp NO-OFICIAL por QR (la usa el PANEL/ALTA con su propia auth) --------
-# Corren ACÁ (el central) porque es donde vive neonize. El panel hace de intermediario (auth admin/
-# cliente/token de alta) y resuelve api_key -> id de sesión. Estos endpoints NO se publican solos:
-# Caddy solo rutea /ws y /webhook al central; el resto va al panel, que llama a esto por la red
-# interna. Aun así validan que la sesión sea un id acotado.
+# ---- Vinculación de WhatsApp NO-OFICIAL por QR (la usa el PANEL, con el login del administrador) --
+# Corren ACÁ (el central) porque es donde vive neonize. El panel resuelve api_key -> id de sesión.
+# Estos endpoints NO se publican: Caddy sólo rutea /ws al central; el resto va al panel, que llama
+# a esto por la red interna. Aun así validan que la sesión sea un id acotado.
 def _sesion_valida(s: str) -> str:
     s = "".join(ch for ch in str(s or "") if ch.isalnum() or ch in "-_")[:48]
     return s
@@ -279,14 +271,11 @@ async def arrancar_servicios(conf):
 
     # Canal de avisos del cliente: su WhatsApp, con un grupo por tema.
     from comun import notificadores as NOTIF
-    # Sesión de WhatsApp ESTABLE y AISLADA por cliente (multi-tenant): el runtime usa EXACTAMENTE
-    # el mismo archivo que la vinculación por QR del panel/alta. Sin esto, dos clientes chocarían
-    # sobre 'wa_session.sqlite3' y lo vinculado no serviría para enviar.
+    # La sesión de WhatsApp es EXACTAMENTE el archivo que vinculó el QR del panel: si no, lo
+    # vinculado no serviría para enviar.
     try:
         from comun import whatsapp_link as _WL
         _archivo_wa = _WL.archivo_sesion(_WL.sesion_de_cliente(conf))
-        if isinstance(conf.get("whatsapp"), dict):
-            conf["whatsapp"]["session"] = _archivo_wa
         for _n in conf.get("notificaciones", []) or []:
             if (_n.get("tipo") or "").lower() in ("whatsapp", "whatsapp_no_oficial"):
                 _n["session"] = _archivo_wa
@@ -336,18 +325,12 @@ async def arrancar_servicios(conf):
     ia = conf.get("ia")
     gl = conf.get("integrador_glpi")
     if ia:
-        gestor = Cuota.GestorCuota(
-            cliente, limite_diario=ia.get("limite_diario", 250),
-            avisar_en=ia.get("avisar_en", 15),
-            ilimitada=ia.get("ilimitada", False), notificar=notificar_cuota,
-            zona=conf.get("zona_horaria", "America/Argentina/Buenos_Aires"),
-            cadena=Cuota.cadena_cfg(ia))    # cadena REAL del cliente (gemini→cerebras→groq…), NO hardcodeada
+        gestor = Cuota.crear_gestor(conf, notificar=notificar_cuota)   # la cadena REAL de la config
         from comun import ia as IA
         ia_texto = IA.crear_texto({**ia, "idioma": conf.get("idioma", "es-AR")},
                                   gestor=gestor)
-        # Asistente conversacional (voz/ITHOS + audio de WhatsApp). Multi-sistema:
-        # herramientas/acciones sobre el sistema de tickets del cliente (el que sea)
-        # + KB automática por cliente (aislada). Se arma si el cliente tiene tickets.
+        # Asistente conversacional (voz + WhatsApp): herramientas y acciones sobre GLPI más la
+        # base de conocimiento. Se arma si hay sistema de tickets.
         tiene_tickets = bool((conf.get("tickets") or {}).get("tipo") or
                              (gl and gl.get("glpi_ithos_token")))
         if tiene_tickets:
@@ -358,10 +341,10 @@ async def arrancar_servicios(conf):
             # reabrir/posponer), se notifica al grupo de WhatsApp/canales (igual que el ciclo automático).
             acc = conversacion.acciones_tickets(
                 conf, avisar=((lambda m: wa.enviar(m, tipo=AV.TICKETS)) if wa else None))
-            kb_dir = conf.get("kb_dir")
+            kb_dir = None
             try:
                 import kb_auto
-                kb_dir = kb_dir or kb_auto.kb_dir(cliente)
+                kb_dir = kb_auto.kb_dir(cliente)
                 kb_auto.refrescar_async(conf, cliente)   # regenera en background
             except Exception:  # noqa: BLE001
                 pass
@@ -460,7 +443,6 @@ async def arrancar_servicios(conf):
                         _c.on_consulta = _consulta             # Planka primero, luego el asistente
                         _c.on_audio = _wa_entrenar_voz         # entrena la voz del dueño
                         _c.transcribir = asistente.ia.transcribir  # gatea audios por "ithos"
-                        _c.ia_cfg = conf.get("ia")             # nota de voz Charon->edge
                         log.info("WhatsApp no-oficial CONVERSACIONAL activo para %s.", cliente)
             except Exception as e:  # noqa: BLE001
                 log.warning("No se pudo activar WhatsApp conversacional %s: %s", cliente, e)
@@ -470,8 +452,8 @@ async def arrancar_servicios(conf):
                         t, tels, tipo=AV.PLANKA))))
                 log.info("Planka integrador ARRANCADO para %s.", cliente)
 
-    # Integrador GLPI + triage (lado central).
-    if gl and gl.get("ubicacion", "central") == "central":
+    # Integrador GLPI + triage.
+    if gl:
         tri = None
         if gl.get("glpi_ithos_token") and ia:
             import triage as T
@@ -517,18 +499,45 @@ async def arrancar_servicios(conf):
             avisar=(lambda m: wa.enviar(m, tipo=AV.SISTEMA)) if wa else None)))
 
 
-    # Reactivador de tickets POSPUESTOS: pasa a EN CURSO los que llegaron a su día/hora.
+    # Reactivador de tickets POSPUESTOS: pasa a EN CURSO los que llegaron a su día/hora. El aviso
+    # es de tickets: va al grupo de soporte (antes salía como si fuera un aviso de cuota de IA).
+    def _avisar_reactivado(m):
+        log.info("[AGENDA %s] %s", cliente, m)
+        if wa:
+            try:
+                wa.enviar(m, tipo=AV.TICKETS)
+            except Exception:  # noqa: BLE001
+                pass
     try:
         from comun import agenda as AGENDA
-        AGENDA.iniciar_reactivador(conf, avisar=lambda m: notificar_cuota("info", m))
+        AGENDA.iniciar_reactivador(conf, avisar=_avisar_reactivado)
     except Exception:  # noqa: BLE001
         pass
 
     servicios[cliente] = {"tareas": [t for t in ([tarea] + tareas_extra) if t],
-                          "wa": wa, "asistente": asistente, "gestor": gestor}
+                          "wa": wa, "asistente": asistente, "gestor": gestor,
+                          "inicio_avisado": False}
     log.info("Servicios de %s arrancados (%d tareas de fondo).",
              cliente, len(servicios[cliente]["tareas"]))
     return servicios[cliente]
+
+
+REVISAR_CONFIG_SEG = 15
+
+
+async def _vigilar_config():
+    """Aplica lo que se guarda desde el panel. Los servicios (WhatsApp, triage, Planka, reportes,
+    wiki) se arman con la configuración al arrancar, y rearmarlos en caliente uno por uno es
+    frágil (la sesión de WhatsApp, los hilos de neonize). Lo confiable es reiniciar el proceso:
+    Docker lo levanta solo (restart: unless-stopped) con la configuración nueva, y el agente se
+    reconecta. Antes, lo guardado en el panel no se aplicaba hasta que alguien reiniciara a mano."""
+    while True:
+        await asyncio.sleep(REVISAR_CONFIG_SEG)
+        if registro.cambio():
+            log.warning("La configuración cambió (se guardó desde el panel): reinicio el Gestor "
+                        "para aplicarla.")
+            await asyncio.sleep(1)                 # que salga el log
+            os._exit(0)
 
 
 @app.on_event("startup")
@@ -540,6 +549,8 @@ async def _arrancar_servicios_de_todos():
             await arrancar_servicios(conf)
         except Exception as e:  # noqa: BLE001
             log.warning("No pude arrancar los servicios de %s: %s", conf.get("nombre"), e)
+    if os.environ.get("ITHOS_DATA"):               # sólo en el servidor (no en tests locales)
+        asyncio.create_task(_vigilar_config())
 
 
 @app.websocket("/ws")
@@ -557,7 +568,7 @@ async def ws(websocket: WebSocket):
             await websocket.send_json({"tipo": P.AUTH_ERROR, "motivo": "api_key inválida"})
             return
         # Autenticación del AGENTE por EMPRESA: además de la api_key, si el cliente tiene un
-        # 'agente_token' (contraseña de agente que le pasamos en el alta), el agente DEBE mandarlo
+        # 'agente_token' (contraseña de agente, se ve en el panel), el agente DEBE mandarlo
         # y coincidir (comparación en tiempo constante). Así un agente trucho con solo la api_key
         # NO entra. Compat: clientes sin agente_token siguen entrando con la api_key sola.
         _atok = conf.get("agente_token")
@@ -610,7 +621,9 @@ async def ws(websocket: WebSocket):
         async def enviar(cmd):
             await enviar_a_agente(cliente, cmd)
 
-        # AVISO PROACTIVO de INICIO: apenas conecta el agente, ITHOS saluda por los canales.
+        # AVISO de INICIO: la primera vez que conecta el agente desde que arrancó el Gestor, ITHOS
+        # avisa que está en línea. UNA vez: si el agente se reconecta (red, reinicio de la PC) el
+        # grupo no tiene por qué recibir el mismo mensaje otra vez.
         async def _aviso_inicio():
             await asyncio.sleep(12)          # dar tiempo a que WhatsApp se vincule
             try:
@@ -622,7 +635,8 @@ async def ws(websocket: WebSocket):
                 await asyncio.to_thread(lambda: wa.enviar(texto_inicio, tipo=AV.SISTEMA))
             except Exception:  # noqa: BLE001
                 pass
-        if wa:
+        if wa and not srv.get("inicio_avisado"):
+            srv["inicio_avisado"] = True
             tareas_extra.append(asyncio.create_task(_aviso_inicio()))
         # Si veníamos de un MANTENIMIENTO, avisarle que ya está disponible.
         if wa and cliente in _flags_mantenimiento():
@@ -712,6 +726,5 @@ async def ws(websocket: WebSocket):
             t.cancel()
         if cliente and conexiones.get(cliente) is websocket:
             del conexiones[cliente]
-            notificadores_activos.pop(cliente, None)   # ya no está para avisarle en el shutdown
             estado_agente.pop(cliente, None)           # su salud ya no aplica (desconectado)
             log.info("Agente desconectado: %s", cliente)

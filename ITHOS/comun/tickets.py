@@ -23,7 +23,6 @@ Interfaz común (todos exponen lo que puedan; lo no soportado avisa):
 import html
 import re
 
-_TECNICOS = {"bsierra": 7, "brian": 7, "brian sierra": 7, "jayala": 8, "ayala": 8}
 _PRIO = {"baja": 2, "media": 3, "alta": 4, "urgente": 5}
 _PRIO_TXT = {1: "Muy baja", 2: "Baja", 3: "Media", 4: "Alta", 5: "Muy alta", 6: "Mayor"}
 _ESTADO = {"cerrado": 6, "reabrir": 2, "en_curso": 2, "en_espera": 4, "resuelto": 5}
@@ -184,8 +183,7 @@ def _uid_tecnico(cli_cfg, quien):
                 return int(t.get("glpi_id") or t.get("id"))
             except (TypeError, ValueError):
                 return None
-    uid = _TECNICOS.get(str(quien).lower().strip())   # respaldo histórico (SRT/ITH)
-    return uid
+    return None
 
 
 def _nombres_tecnicos(cli_cfg):
@@ -204,9 +202,11 @@ class _GLPI:
         # SUPER ADMIN = acceso total (leer catálogo de categorías/usuarios, borrar); HELPDESK =
         # el técnico (bsierra). Cada uno mantiene su PROPIA sesión viva en el pool y se reutiliza.
         self.tok = self.gl.get("glpi_ithos_token")                      # agente (escribe)
-        self.tok_admin = (self.gl.get("glpi_superadmin_token")
-                          or self.gl.get("glpi_user_token") or self.tok)  # super admin (total)
-        self.ithos_id = int(self.gl.get("ithos_user_id", 28))
+        self.tok_admin = self.gl.get("glpi_user_token") or self.tok      # administrador (total)
+        self.ithos_id = int(self.gl.get("ithos_user_id") or 0)
+        # El equipo sale de la config: en la raíz del cliente (`tecnicos`) o, si quien llama ya lo
+        # copió, dentro de integrador_glpi. Una sola fuente, sin tablas fijas en el código.
+        self.equipo = {"tecnicos": cli_cfg.get("tecnicos") or self.gl.get("tecnicos") or []}
         self.niveles_sla = self.gl.get("niveles_sla") or _NIVEL_SLA_DEFAULT
 
     def _c(self, token=None):
@@ -436,14 +436,16 @@ class _GLPI:
         estuviera cargada en la configuración del cliente y el triage automático sí la usara. El
         equipo se declara en la config (`tecnicos`), que es la única fuente de verdad."""
         tid = _norm_id(tid)
-        uid = _uid_tecnico({"integrador_glpi": self.gl, "tecnicos": self.gl.get("tecnicos")}, tecnico)
+        uid = _uid_tecnico(self.equipo, tecnico)
         if not uid:
-            conocidos = ", ".join(_nombres_tecnicos(self.gl)) or "ninguno cargado"
+            conocidos = ", ".join(_nombres_tecnicos(self.equipo)) or "ninguno cargado"
             return (f"No reconozco al técnico '{tecnico}'. Los que tengo configurados son: "
                     f"{conocidos}.")
         c = self._c()
         # Como el triage: además del técnico, ITHOS queda asignado al ticket.
         for u in (self.ithos_id, uid):
+            if not u:
+                continue
             try:
                 c.request("/Ticket_User", "POST",
                           {"input": {"tickets_id": tid, "users_id": u, "type": 2}})
@@ -665,7 +667,10 @@ class _GLPI:
         try:
             t = c.request(f"/Ticket/{tid}") or {}
             try:
-                fups = c.request(f"/Ticket/{tid}/ITILFollowup") or []
+                # TODOS los seguimientos: sin rango, la API de GLPI devuelve sólo los 50 primeros
+                # (los más viejos) y el análisis se quedaba sin lo último que pasó.
+                from comun import glpi as G
+                fups = list(G.pagina_todo(c, f"/Ticket/{tid}/ITILFollowup"))
             except Exception:  # noqa: BLE001
                 fups = []
             cat = ""
@@ -833,7 +838,7 @@ class _GLPI:
                 hechos.append(f"SLA/OLA nivel {nivel}")
             c.request(f"/Ticket/{tid}", "PUT", {"input": campos})
             hechos.append(f"prioridad {prioridad}")
-            uid = _TECNICOS.get(str(responsable).lower().strip())
+            uid = _uid_tecnico(self.equipo, responsable)
             for u in (self.ithos_id, uid):
                 if u:
                     try:

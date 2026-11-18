@@ -433,8 +433,8 @@ class Agente:
 
 # ─────────────────────────────────────────────────────────────────────────────
 #  MENÚ del agente (instalar / configurar / estado / desinstalar-mover a otra PC)
-#  Mismo .exe para todas las empresas: identifica por api_key + contraseña de agente
-#  (las asigna el GESTOR en el alta). El resto de la config la manda el gestor.
+#  Se identifica con api_key + contraseña de agente (se ven en el panel del Gestor). El resto
+#  de la config la manda el gestor.
 # ─────────────────────────────────────────────────────────────────────────────
 CENTRAL_URL_DEFECTO = "wss://ithos.intellihelp.tech/ws"
 
@@ -511,10 +511,10 @@ def _pedir(label, actual=""):
 def _configurar():
     _banner()
     print(_c("  CONFIGURAR / CONECTAR ESTE EQUIPO A UNA EMPRESA", _NE))
-    print(_c("  Pegá la api_key y la contraseña de agente que te dio INTELLIHELP en el alta.", _GR))
+    print(_c("  Pegá la api_key y la contraseña de agente (se ven en el panel del Gestor).", _GR))
     print()
     cfg = _leer_cfg()
-    api_key = _pedir("API key de la empresa", cfg.get("api_key", ""))
+    api_key = _pedir("API key del agente", cfg.get("api_key", ""))
     token = _pedir("Contraseña de agente", cfg.get("agente_token", ""))
     url = _pedir("Gestor (Enter = por defecto)", cfg.get("central_url", CENTRAL_URL_DEFECTO))
     if not api_key or not token:
@@ -606,7 +606,7 @@ def _desinstalar():
     print(_c("  DESINSTALAR / MOVER A OTRA PC", _NE))
     print(_c("  Borra la configuración (api_key + contraseña) de ESTE equipo y quita el arranque", _GR))
     print(_c("  automático. Después podés instalar el agente en otra PC con el MISMO ejecutable.", _GR))
-    print(_c("  (No borra nada en el Gestor: la empresa sigue dada de alta.)", _GR))
+    print(_c("  (No borra nada en el Gestor: la configuración sigue ahí.)", _GR))
     print()
     r = input(_c("  Escribí ELIMINAR para confirmar: ", _AM)).strip()
     if r != "ELIMINAR":

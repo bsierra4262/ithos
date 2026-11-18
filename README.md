@@ -3,17 +3,17 @@
 </p>
 
 <p align="center">
-  <b>Asistente de IA multi-cliente para operaciones: control de acceso por voz, mesa de ayuda inteligente y gestión del equipo.</b><br>
-  Anuncia los accesos por los parlantes con voz natural, clasifica y resuelve tickets de soporte con IA, conversa por WhatsApp y mantiene el tablero del equipo al día — cada cliente aislado en su propio inquilino.
+  <b>Herramienta interna de INTELLIHELP para operaciones: portero por voz, mesa de ayuda con IA y gestión del equipo.</b><br>
+  Anuncia los accesos por los parlantes con voz natural, clasifica y acompaña los tickets de GLPI con IA, conversa por WhatsApp y mantiene el tablero del equipo al día.
 </p>
 
 <p align="center">
   <img src="https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white" alt="Python 3.11+">
   <img src="https://img.shields.io/badge/FastAPI-WebSocket-009688?logo=fastapi&logoColor=white" alt="FastAPI">
-  <img src="https://img.shields.io/badge/IA-Gemini%20·%20Cerebras%20·%20Groq%20·%20local-0A7CFF" alt="Cadena multi-IA">
+  <img src="https://img.shields.io/badge/IA-Gemini%20·%20Groq%20·%20local-0A7CFF" alt="Cadena de IA">
   <img src="https://img.shields.io/badge/Docker-ready-2496ED?logo=docker&logoColor=white" alt="Docker ready">
-  <img src="https://img.shields.io/badge/multi--tenant-SaaS-663399" alt="Multi-tenant SaaS">
-  <img src="https://img.shields.io/badge/plataformas-Windows%20·%20Linux%20·%20macOS-444" alt="Multiplataforma">
+  <img src="https://img.shields.io/badge/uso-interno-663399" alt="Uso interno">
+  <img src="https://img.shields.io/badge/plataformas-Gestor%20Linux%20·%20Agente%20Windows-444" alt="Plataformas">
   <img src="https://img.shields.io/badge/licencia-propietaria-663399" alt="Licencia propietaria">
 </p>
 
@@ -31,13 +31,13 @@
 - [Mesa de ayuda: ciclo de vida del ticket](#mesa-de-ayuda-ciclo-de-vida-del-ticket)
 - [Asistente y canales](#asistente-y-canales)
 - [Base de conocimiento, reportes y tareas del equipo](#base-de-conocimiento-reportes-y-tareas-del-equipo)
-- [Alta de cliente y seguridad](#alta-de-cliente-y-seguridad)
+- [Configuración y seguridad](#configuración-y-seguridad)
 - [Stack técnico](#stack-técnico)
 - [Estructura del proyecto](#estructura-del-proyecto)
 - [Qué hace cada archivo](#qué-hace-cada-archivo)
 - [Puesta en marcha](#puesta-en-marcha)
 - [Operación: actualizar, respaldos y versiones](#operación-actualizar-respaldos-y-versiones)
-- [Configurar un cliente](#configurar-un-cliente)
+- [Configuración](#configuración)
 - [Tests](#tests)
 - [Límites y pendientes](#límites-y-pendientes)
 - [Seguridad](#seguridad)
@@ -46,61 +46,36 @@
 
 ## Descripción
 
-**ITHOS** es un asistente de IA que opera sobre los sistemas que una empresa ya usa. Anuncia
-por los parlantes cada fichaje/acceso leído del control biométrico con voz natural; clasifica,
-prioriza, asigna, responde y cierra los tickets de la mesa de ayuda; escucha y responde por
-WhatsApp con una palabra de activación; emite reportes ITIL; y mantiene el tablero de tareas
-del equipo actualizado.
+**ITHOS** es la herramienta interna de **INTELLIHELP S.A.** para sus operaciones de soporte e
+infraestructura. Anuncia por los parlantes de la oficina cada fichaje/acceso leído del control
+biométrico con voz natural; clasifica, prioriza, asigna, responde y acompaña hasta el cierre los
+tickets de la mesa de ayuda (GLPI); escucha y responde por WhatsApp cuando lo llaman; emite reportes
+ITIL; y mantiene el tablero de tareas del equipo actualizado.
 
-El producto es **SaaS multi-inquilino** y se divide en dos planos. El **Gestor** (plano de
-control) es el cerebro: se hospeda en la nube, razona y orquesta, expone el panel de
-administración y los webhooks, y nunca se comparte entre clientes. El **Agente** (plano de
-datos) es liviano, corre en el equipo del cliente y sólo ejecuta lo que el Gestor le indica
-—hablar por los parlantes, escuchar el micrófono, leer el control de acceso local—. Ambos se
-comunican por WebSocket autenticado. Cada empresa es un inquilino aislado: su propia memoria,
-su configuración y sus secretos cifrados; un cliente nunca ve el contexto de otro.
+Se divide en dos planos. El **Gestor** (plano de control) es el cerebro: corre en el VPS de
+INTELLIHELP con Docker, razona y orquesta, y expone el panel del administrador. El **Agente** (plano
+de datos) es liviano, corre en una PC de la oficina y sólo ejecuta lo que el Gestor le indica
+—hablar por los parlantes, escuchar el micrófono, leer el control de acceso—. Ambos se comunican por
+WebSocket autenticado. Hay un solo Gestor y un solo agente; no es un producto a la venta.
 
 ## La aplicación por dentro
 
-Capturas tomadas con la aplicación corriendo en un entorno local de prueba: empresas,
-personas, tickets y números ficticios, sin conexión a sistemas reales.
-
-### Centro de mando del Gestor
-
-Vista del superadministrador: empresas dadas de alta, cuántas están activas y conectadas en
-este momento, y la actividad del mes (tickets gestionados por la IA, anuncios por voz y
-consultas respondidas).
-
-<p align="center"><img src="docs/capturas/01-centro-de-mando.png" alt="Centro de mando del Gestor" width="100%"></p>
-
-### Empresas y estado en vivo
-
-Cada empresa es un inquilino aislado. La tarjeta muestra su sistema de tickets, el control de
-acceso, la IA y los canales configurados, y el estado en vivo de cada componente (agente,
-control de acceso, micrófono y WhatsApp). Las credenciales se ven siempre enmascaradas.
-
-<p align="center"><img src="docs/capturas/02-empresas.png" alt="Empresas y estado en vivo" width="100%"></p>
+Capturas tomadas con la aplicación corriendo en un entorno local de prueba: personas, tickets y
+números ficticios, sin conexión a sistemas reales.
 
 ### Métricas y reportes ITIL
 
-Estado de los tickets del cliente y cumplimiento de SLA, y debajo los KPIs ITIL del período:
-volumen, SLA de resolución y de primera respuesta, MTTR y desglose por prioridad, categoría,
-técnico, estado y antigüedad del backlog. Se descargan en PDF o CSV.
+Estado de los tickets y cumplimiento de SLA, y debajo los KPIs ITIL del período: volumen, SLA de
+resolución y de primera respuesta, MTTR y desglose por prioridad, categoría, técnico, estado y
+antigüedad del backlog. Se descargan en PDF o CSV.
 
 <p align="center"><img src="docs/capturas/03-metricas-itil.png" alt="Métricas y reportes ITIL" width="100%"></p>
 
-### Portal del cliente
-
-Cada empresa tiene su portal privado: estado del sistema, vinculación del WhatsApp de la
-empresa, sus tickets y su SLA, sus reportes y la base de conocimiento propia.
-
-<p align="center"><img src="docs/capturas/04-portal-cliente.png" alt="Portal del cliente" width="100%"></p>
-
 ### Agente de escritorio
 
-La aplicación que se instala en el equipo del cliente (Windows, Linux o macOS). Muestra el
-estado de la conexión con el Gestor y de cada componente, la actividad técnica en vivo y las
-opciones de mantenimiento del caché de voz.
+La aplicación que se instala en la PC de la oficina (Windows). Muestra el estado de la conexión
+con el Gestor y de cada componente, la actividad técnica en vivo y las opciones de mantenimiento del
+caché de voz.
 
 <p align="center"><img src="docs/capturas/05-agente-escritorio.png" alt="Agente de escritorio" width="80%"></p>
 
@@ -113,133 +88,106 @@ con «Hey ITHOS». Los mensajes son los que genera la aplicación con los datos 
 
 ### Informe ITIL en PDF
 
-El mismo reporte, listo para enviar al cliente.
+El mismo reporte en PDF, el que llega al grupo de soporte.
 
 <p align="center"><img src="docs/capturas/07-informe-pdf.png" alt="Informe ITIL en PDF" width="70%"></p>
 
-### Alta de empresa
-
-Formulario completo de alta: datos de la empresa, cadena de IA (primaria y respaldos),
-sistema de tickets, control de acceso y canales de aviso.
-
-<p align="center"><img src="docs/capturas/09-alta-empresa.png" alt="Alta de empresa" width="100%"></p>
-
-### En el celular
-
-El portal del cliente se adapta a la pantalla del teléfono.
-
-<p align="center"><img src="docs/capturas/08-celular.png" alt="Portal del cliente en el celular" width="320"></p>
-
 ## Características
 
-- **Portero por voz.** Anuncia los accesos leídos del control biométrico (IVMS) por los parlantes, con voz natural y verbatim (TTS dedicado de Gemini, *Charon*). Cada terminal se descubre sola y se mapea a entrada, salida o sala con su propio saludo y frecuencia; el de entrada es coherente con la hora, no repite a la misma persona en el día y suena al instante porque el padrón está pre-cacheado. Opcional: aviso de accesos fuera de horario.
-- **Mesa de ayuda con IA.** Clasifica, prioriza, asigna, responde y gestiona el ciclo de vida de los tickets. Respeta la intervención manual del técnico, deja notas internas privadas, pide procedimientos para la base de conocimiento y gestiona el SLA por calendario y horario. Si el ticket espera una confirmación del cliente, recuerda una vez por día hábil y escala al técnico asignado a los 5 días hábiles sin respuesta.
-- **Cadena multi-IA.** Una IA por consulta; salta a la siguiente sólo al agotarse (Gemini → Cerebras → Groq, configurable). Aviso al cliente cuando una está por agotarse o cambia. Opción **100 % local** (Ollama) para datos que no salen de la red del cliente.
-- **WhatsApp conversacional.** Escucha el grupo del cliente (hay que llamarlo: «Hey ITHOS…», en texto o audio) y responde o ejecuta acciones reales sobre los tickets, @mencionando al técnico asignado cuando avisa algo suyo. Los grupos se separan por **ámbito**: uno para consultas, otro para las alertas de tickets, otro para el tablero y otro para los avisos del sistema.
+- **Portero por voz.** Anuncia los accesos leídos del control biométrico (IVMS) por los parlantes, con voz natural y verbatim (TTS dedicado de Gemini, *Charon*). Cada terminal se descubre sola y se mapea a entrada, salida o sala con su propio saludo y frecuencia; el de entrada es coherente con la hora, no repite a la misma persona en el día y suena al instante porque el padrón está pre-cacheado.
+- **Mesa de ayuda con IA.** Clasifica, prioriza, asigna, responde y gestiona el ciclo de vida de los tickets de GLPI. Respeta la intervención manual del técnico, deja notas internas privadas, pide procedimientos para la base de conocimiento y gestiona el SLA por calendario y horario. Si el ticket espera una confirmación del cliente, recuerda una vez por día hábil y escala al técnico asignado a los 5 días hábiles sin respuesta.
+- **Cadena de IA.** Una IA por consulta; salta a la siguiente sólo al agotarse: **Gemini → Groq → IA local** (Ollama, en el mismo VPS). Avisa por el grupo de sistema cuando una está por agotarse o cambia.
+- **WhatsApp conversacional.** Escucha los grupos del equipo (hay que llamarlo: «Hey ITHOS…», en texto o audio) y responde o ejecuta acciones reales sobre los tickets, @mencionando al técnico asignado cuando avisa algo suyo. Los grupos se separan por **ámbito**: ITHOS para consultas, ITHOS_SOPORTE para las alertas de tickets, ITHOS_TRELLO para el tablero e ITHOS_SISTEMA para los avisos del sistema.
 - **Tareas del equipo (Planka).** Mantiene el tablero Kanban al día desde WhatsApp: resumen diario, seguimiento horario, alta y movimiento de tarjetas por voz o texto, y **rollover mensual/semanal automático** con arrastre de lo pendiente.
-- **Reportes ITIL.** Resumen automático (volumen, SLA, MTTR) por período cerrado, en la zona horaria y los días hábiles del cliente. Lecturas masivas, sin consultas por ítem.
-- **Se explica a si mismo, con control de acceso.** Cuando el dueno pide detalle, ITHOS responde con la documentacion completa del sistema (el documento maestro del repositorio, montado en el Gestor); sin pedir detalle, lo mismo resumido. A cualquier otro le cuenta que hace, nunca como esta hecho.
-- **Multi-inquilino y multiplataforma.** Aislamiento por cliente, secretos cifrados en reposo (AES-256-GCM), y Gestor + Agente ejecutables en Windows, Linux y macOS.
+- **Reportes ITIL.** Resumen automático (volumen, SLA, MTTR) por período cerrado, en la zona horaria y los días hábiles configurados. Lecturas masivas, sin consultas por ítem.
+- **Se explica a sí mismo, con control de acceso.** Cuando el dueño pide detalle, ITHOS responde con la documentación completa del sistema (el documento maestro del repositorio, montado en el Gestor); sin pedir detalle, lo mismo resumido. A cualquier otro le cuenta qué hace, nunca cómo está hecho.
+- **Seguro por defecto.** Todo el panel exige el login del administrador y los secretos se cifran en reposo (AES-256-GCM) con una clave maestra aparte.
 
 ## Arquitectura
 
-El producto se divide en dos planos. El **Gestor** (plano de control, `ITHOS/central/`) es el cerebro:
-se hospeda en la nube con Docker, expone el WebSocket de los agentes, los webhooks, el panel de
-administración, el alta y el dashboard del cliente, y concentra toda la lógica —triage, ciclo de vida,
-proactivo, reportes, tareas del equipo y base de conocimiento—. El **Agente** (plano de
-datos, `ITHOS/agente/`) es liviano y corre en el equipo del cliente: sólo ejecuta lo que el Gestor le
-indica —hablar por los parlantes, escuchar el micrófono y leer el control de acceso local—, es una
-aplicación con interfaz propia y se instala en Windows, Linux o macOS.
+El sistema se divide en dos planos. El **Gestor** (plano de control, `ITHOS/central/`) es el cerebro:
+corre en el VPS de INTELLIHELP (Hostinger KVM 2) con Docker, expone el WebSocket del agente y el panel
+del administrador, y concentra toda la lógica —triage, ciclo de vida, proactivo, reportes, tareas del
+equipo, wiki y base de conocimiento—. El **Agente** (plano de datos, `ITHOS/agente/`) es liviano y corre
+en una PC de la oficina: sólo ejecuta lo que el Gestor le indica —hablar por los parlantes, escuchar el
+micrófono y leer el control de acceso—, y es una aplicación de Windows con interfaz propia.
 
 El agente **sale** hacia el Gestor por `wss://DOMINIO/ws`, de modo que atraviesa cualquier NAT sin abrir
-puertos en la red del cliente, y se autentica con la **api_key de la empresa más una contraseña de
-agente** comparada en tiempo constante. El Gestor le devuelve su configuración —voz, idioma, velocidad,
-integrador de acceso, micrófono— en el mismo intercambio: el agente no guarda lógica de negocio, así una
-mejora se despliega en un solo lugar y los agentes instalados no se tocan.
+puertos en la oficina, y se autentica con una **api_key más una contraseña de agente** comparadas en
+tiempo constante. El Gestor le devuelve su configuración —voz, idioma, velocidad, integrador de acceso,
+micrófono— en el mismo intercambio: el agente no guarda lógica de negocio, así una mejora se despliega en
+un solo lugar y el agente instalado no se toca.
 
-El diagrama es el **mapa completo del producto**: todo lo que ITHOS integra. Cada cliente activa sólo lo
-que usa —una mesa de ayuda, los canales que quiera, un sistema de acceso, una cadena de IA— y el resto
-queda disponible sin tocar código.
+El diagrama es el **mapa completo**: todo lo que ITHOS integra.
 
 ```mermaid
 flowchart LR
-    subgraph Cliente["Red del cliente"]
-        AG["<b>AGENTE</b> (.exe firmado, Win/Linux/Mac)<br/>app con UI · versionado · singleton"]
+    subgraph Oficina["Oficina de INTELLIHELP"]
+        AG["<b>AGENTE</b> (Windows, instalador firmado)<br/>app con UI · versionado · singleton"]
         HW["Parlantes · Micrófono"]
         subgraph Acc["Control de acceso"]
             AC1["IVMS<br/>(SQL Server)"]
         end
-        LOC["IA local opcional<br/>Ollama · LM Studio"]
         AG --- HW
         AG --- Acc
-        AG -.->|"privacidad total"| LOC
     end
 
-    subgraph Nube["VPS — Docker (solo Caddy publica puertos)"]
+    subgraph Nube["VPS Hostinger KVM 2 — Docker (solo Caddy publica puertos)"]
         CY["<b>Caddy</b> 80/443<br/>TLS + WSS (Let's Encrypt)"]
-        CA["<b>GESTOR</b> · central:8080<br/>WebSocket del agente · webhooks<br/>triage · ciclo · proactivo · reportes"]
-        PA["<b>PANEL</b> :8090<br/>superadmin · alta · dashboard del cliente"]
-        DB[("Datos por cliente<br/>SQLite + volumen<br/>secretos AES-256-GCM")]
+        CA["<b>GESTOR</b> · central:8080<br/>WebSocket del agente<br/>triage · ciclo · proactivo · reportes"]
+        PA["<b>PANEL</b> :8090<br/>todo con login del administrador"]
+        OL["<b>ollama</b> :11434<br/>IA local (qwen3:4b), sólo red interna"]
+        DB[("Volumen de datos (ITHOS_DATA)<br/>SQLite + JSON<br/>secretos AES-256-GCM")]
         CY --> CA
         CY --> PA
         PA -.-> CA
         CA --- DB
         PA --- DB
+        CA --> OL
     end
 
     AG <==>|"WSS · api_key + token de agente"| CY
 
-    subgraph IA["Cadena multi-IA (1 por consulta, salta al agotarse)"]
+    subgraph IA["Cadena de IA (1 por consulta, salta al agotarse)"]
         I1["Gemini"]
-        I2["Claude"]
-        I3["OpenAI / ChatGPT"]
-        I4["Grok"]
-        I5["Groq"]
-        I6["Cerebras"]
-        I7["DeepSeek"]
-        I8["Mistral · OpenRouter"]
-        I9["Local (Ollama)"]
+        I2["Groq"]
+        I3["IA local (ollama)"]
+        I1 --> I2 --> I3
     end
 
     subgraph VOZ["Voz y audio"]
-        V1["TTS Charon<br/>(Gemini, verbatim)"]
-        V2["edge-tts (gratis)"]
-        V3["SAPI / TTS local"]
-        V4["STT: Whisper (Groq)<br/>Gemini · Vosk local"]
+        V1["TTS Charon<br/>(Gemini, verbatim) · parlantes"]
+        V2["edge-tts (gratis)<br/>respaldo + notas de voz"]
+        V4["STT: Whisper (Groq) · Gemini"]
         V5["VAD Silero → webrtc → energía"]
-        V6["voz-id del dueño<br/>+ llamada 'Hey ITHOS'"]
+        V6["voz-id del dueño<br/>+ llamada 'Hey ITHOS' (Vosk)"]
     end
 
-    subgraph TK["Mesa de ayuda"]
-        T1["GLPI"]
-        T6["ninguna"]
-    end
-
-    subgraph CH["Canales (avisan y conversan)"]
+    subgraph CH["WhatsApp (avisa y conversa)"]
         C2["WhatsApp<br/>(neonize · QR)"]
         C7["Grupos por ámbito<br/>consultas · soporte · tareas · sistema"]
         C2 --- C7
     end
 
     CA --> IA
-    CA --> TK
+    CA --> T1["GLPI<br/>mesa de ayuda"]
     CA <--> CH
     CA <--> PL["Planka<br/>tareas del equipo + rollover"]
-    CA --> KB["Base de conocimiento<br/>automática + Outline"]
+    CA <--> KB["Base de conocimiento<br/>automática + wiki Outline"]
     AG --- VOZ
     CA --- VOZ
 ```
 
 Cada capa degrada de forma controlada: si la IA primaria agota su cuota, la cadena salta al respaldo sin
-cortar el servicio; si un canal falla, el resto sigue operando; la voz cae a un motor gratuito sólo como
-respaldo temporal. Un cliente que exige privacidad total puede correr la IA en su propia red sin cambiar
-la orquestación.
+cortar el servicio, y la IA local sigue atendiendo cuando las nubes se quedan sin cuota; si WhatsApp
+falla, el resto sigue operando; la voz de los parlantes cae a un motor gratuito sólo como respaldo
+temporal.
 
 ## Cadena multi-IA
 
 Una sola IA atiende cada consulta y se pasa a la siguiente **únicamente** cuando se agota su cuota, de
-modo que no se consumen dos proveedores por el mismo pedido. El cliente recibe aviso cuando una está por
-agotarse y cuando el sistema cambia de proveedor.
+modo que no se consumen dos proveedores por el mismo pedido. El grupo de sistema recibe aviso cuando una
+está por agotarse y cuando cambia de proveedor.
 
 ```mermaid
 flowchart LR
@@ -254,10 +202,9 @@ flowchart LR
     R --> CU["Registra consumo por cliente<br/>y avisa cuando queda poco"]
 ```
 
-Proveedores elegibles por cliente, cualquiera de ellos como primaria, secundaria o terciaria: **Gemini,
-Claude, OpenAI/ChatGPT, Grok, Groq, Cerebras, DeepSeek, Mistral, OpenRouter** y **local (Ollama o
-LM Studio)** para quien exige que ningún dato salga de su red. El modelo se elige solo según si la clave
-es gratuita o paga, sin que el cliente tenga que saber de modelos, y el consumo se registra por empresa.
+La cadena es **Gemini → Groq → IA local** (Ollama, en el mismo VPS). Son los únicos tres proveedores
+que hay en el código y el orden lo fija la configuración (`ia`, `secundario`, `terciario`). Gemini y Groq
+se usan con su plan gratuito, y el modelo se elige solo según si la clave es gratuita o paga.
 
 La cuota gratuita se cuenta **por modelo y por día**, y entre modelos del mismo proveedor cambia mucho:
 el más eficiente puede tener un límite diario chico que se agota con pocos tickets. Por eso, antes de
@@ -283,10 +230,11 @@ minutos es mejor que ninguno. Cuando salga un modelo nuevo o cambie la VPS, se v
 ## Voz y audio
 
 La identidad sonora es **Charon**, el TTS dedicado de Gemini, que lee el texto tal cual y por eso no se
-come nombres propios. Cada frase se guarda en caché junto con su velocidad, el ajuste de ritmo se hace
-con WSOLA para no distorsionar, y si no hay cuota o el servicio falla, la voz cae a `edge-tts` y, en
-último caso, al motor del sistema operativo. Del lado de la entrada, el audio pasa por un filtro de voz
-humana antes de transcribirse: si nadie habló, no se transcribe nada.
+come nombres propios. Es la voz de los **parlantes**: cada frase se guarda en caché junto con su
+velocidad, el ajuste de ritmo se hace con WSOLA para no distorsionar, y si no hay cuota o el servicio
+falla, cae a `edge-tts`. Las **notas de voz de WhatsApp salen siempre con `edge-tts`**, porque Charon
+gasta la cuota diaria de Gemini. Del lado de la entrada, el audio pasa por un filtro de voz humana antes
+de transcribirse: si nadie habló, no se transcribe nada.
 
 ```mermaid
 flowchart TD
@@ -295,17 +243,18 @@ flowchart TD
         M2["Nota de voz de WhatsApp"] --> G["Mismo gateo que el micrófono<br/>(comun/wake.py)"]
         W --> V["VAD: Silero (ONNX)<br/>→ webrtcvad → energía"]
         G --> V
-        V --> S["STT: Whisper large-v3 (Groq)<br/>· Gemini · Vosk local"]
-        S --> ID["voz-id del dueño<br/>(voiceprint MFCC + cohorte)"]
+        V --> S["STT: Whisper large-v3 (Groq)<br/>· Gemini"]
+        S --> ID["voz-id del dueño<br/>(voiceprint MFCC + cohorte;<br/>ante la duda, no autoriza)"]
     end
     ID --> AS["Asistente / triage<br/>(acciones reales sobre el ticket)"]
     subgraph SAL["Salida de voz"]
         AS --> L["Locución: sin emojis,<br/>diccionario de pronunciación"]
-        L --> T1["TTS Charon (Gemini, verbatim)<br/>+ caché por frase y velocidad"]
+        L --> T1["Parlantes: TTS Charon (Gemini, verbatim)<br/>+ caché por frase y velocidad"]
         T1 -->|"sin cuota / falla"| T2["edge-tts (gratis)"]
-        T2 -->|"último recurso"| T3["SAPI / TTS local"]
-        T1 --> PAR["Parlantes del cliente<br/>(también con la sesión bloqueada / tras RDP)"]
-        T2 --> NV["Nota de voz por el canal"]
+        T1 --> PAR["Parlantes de la oficina<br/>(también con la sesión bloqueada / tras RDP)"]
+        T2 --> PAR
+        L --> T3["Notas de voz: edge-tts SIEMPRE<br/>(no gasta la cuota de Gemini)"]
+        T3 --> NV["Nota de voz por WhatsApp"]
     end
 ```
 
@@ -314,22 +263,23 @@ en español o en inglés— y después el pedido. Nombrar la marca suelta no act
 interviene cuando el equipo simplemente lo menciona en la conversación. El mismo criterio rige en los
 canales de texto y en el micrófono, y tolera que el reconocedor parta la palabra, la pegue o la
 transcriba con pronunciación inglesa. La **identificación por voz** del dueño se entrena sola con sus
-audios y protege el modo administrador cuando se habla por micrófono, donde no hay identidad conocida.
+audios y protege el modo administrador cuando se habla por micrófono, donde no hay identidad conocida;
+ante la duda, no autoriza.
 
 ## Portero por voz
 
-El agente lee el control de acceso del cliente y, al arrancar, fija una línea de base para no repetir
+El agente lee el control de acceso (IVMS) y, al arrancar, fija una línea de base para no repetir
 eventos viejos. Cada terminal se descubre sola y el Gestor decide qué decir según las reglas que se
 configuran desde el panel.
 
 ```mermaid
 flowchart TD
-    subgraph AGE["AGENTE (equipo del cliente)"]
+    subgraph AGE["AGENTE (PC de la oficina)"]
         SIS["Control de acceso<br/>IVMS (SQL Server)"] --> INT["Integrador: lee sólo los eventos NUEVOS<br/>(baseline al arrancar)"]
         INT --> EV["Evento 'acceso'<br/>{nombre, device, es_fallo}"]
         DESC["Descubre las terminales<br/>y las lista para el panel"]
     end
-    EV -->|"WSS"| CLA["GESTOR: clasifica por las REGLAS del cliente<br/>(device → entrada / salida / sala + saludo + frecuencia)"]
+    EV -->|"WSS"| CLA["GESTOR: clasifica por las REGLAS de cada terminal<br/>(device → entrada / salida / sala + saludo + frecuencia)"]
     DESC -->|"WSS"| MAP["El panel mapea cada terminal<br/>(sin tocar código)"]
     MAP -.-> CLA
     CLA --> DED{"¿ya se le saludó?<br/>frecuencia: siempre ·<br/>1 por día · 1 por persona"}
@@ -352,16 +302,12 @@ flowchart TD
 Un fichaje **denegado** se anuncia distinto del autorizado. Los saludos se **pre-cachean** a velocidad
 uniforme —todas las variantes por franja horaria—, así la fichada suena al instante; hay una acción para
 cachear sólo las personas nuevas sin regenerar el padrón. El audio funciona con la sesión bloqueada y
-también después de una sesión remota, y el equipo no se suspende mientras ITHOS corre.
-
-De forma opcional y **apagada por defecto**, ITHOS avisa por los canales del cliente cuando alguien ficha
-fuera de su horario o es denegado por franja horaria. Se apoya en los sistemas que traen su propia
-configuración de horarios por API; con IVMS no aplica.
+también después de una sesión remota, y la PC no se suspende mientras ITHOS corre.
 
 ## Mesa de ayuda: ciclo de vida del ticket
 
-**GLPI** está implementado de punta a punta contra la
-misma interfaz común, de modo que todo lo que sigue vale para cualquiera de ellos.
+La mesa de ayuda de INTELLIHELP es **GLPI**, integrado de punta a punta detrás de una interfaz común.
+ITHOS trabaja con su propio usuario de GLPI (`integrador_glpi.ithos_user_id` y su token).
 
 ```mermaid
 flowchart TD
@@ -423,6 +369,8 @@ que no es equipamiento va a **escalamiento**; y todo lo demás —Baja y Media, 
 **mesa**, que se reparte **por carga**: cada ticket va al técnico que tenga **menos tickets abiertos
 en ese momento**. La cuenta se le pide a GLPI en el acto, porque un contador propio se desincronizaría
 en cuanto alguien asigna a mano. Si GLPI no contesta, el ticket entra igual, al primero de la mesa.
+Quién cubre cada rol lo dice la configuración, no el código: `reparto` =
+`{"mesa": [...], "instalaciones": "...", "escalamiento": "..."}`.
 
 **Quién puede responder.** Los observadores **del cliente** pasan también a solicitantes, porque la
 mesa de ayuda sólo deja escribir a los solicitantes. Las **cuentas internas** (`admin`, la de súper
@@ -477,9 +425,9 @@ llamada de IA por cada comentario de cada cliente en cada vuelta; ese filtro só
 lado —si no reconoce la palabra, el ticket sigue como estaba—, así que nunca cierra de más.
 
 Todos los avisos de un ticket —y la alerta de **SLA en riesgo o vencido**, agrupada por técnico— salen por
-los canales del cliente **mencionando sólo al asignado**, así cada uno ve lo suyo.
+el grupo de soporte **mencionando sólo al asignado**, así cada uno ve lo suyo.
 
-Cuando **el cliente responde** se avisa por los canales del equipo **cada vez**, citando lo que dijo.
+Cuando **el cliente responde** se avisa por el grupo de soporte **cada vez**, citando lo que dijo.
 Si respondió dentro del horario, el ticket vuelve a **en curso**; si respondió de noche, un sábado o
 un domingo, queda **en espera** y se reabre solo al abrir la jornada, para que el SLA no corra todo
 un fin de semana contra un equipo que no está trabajando y el lunes el ticket no nazca vencido. Y si
@@ -491,8 +439,9 @@ resolvió** en «Asignado a» —se lo asigna si no lo tenía— y saca al resto
 el SLA a todos los asignados y el reporte no dice quién resolvió qué, y la @mención los nombra a todos.
 ITHOS queda asignado: es el agente que sigue trabajando el ticket, no una persona que compita en el reporte.
 
-El **equipo** se declara en la configuración del cliente (`tecnicos`): con eso ITHOS reconoce a cada
-técnico, le asigna, le menciona y le responde «mis tickets» por su número, sin tocar código. Un
+El **equipo** se declara en la configuración (`tecnicos`, `reparto` e `integrador_glpi.ithos_user_id`;
+ya no queda ningún técnico escrito en el código): con eso ITHOS reconoce a cada técnico, le asigna, le
+menciona y le responde «mis tickets» por su número, sin tocar código. Un
 técnico en **formación** puede tener un `responsable`: entonces el ticket que le toca a esa persona
 se le asigna también a él, al mismo tiempo y con el mismo criterio, hasta que pueda resolverlo solo.
 
@@ -516,7 +465,8 @@ roto—. Ahora sólo cuenta un sí o un no inequívoco; ante la duda, el ticket 
 
 Por chat o por voz se puede pedir: cerrar, reabrir, poner en espera, posponer con fecha y hora, responder
 al cliente, categorizar, fijar SLA, cambiar prioridad, escalar, asignar, crear, buscar, leer un ticket
-completo y ver reportes. Dos acciones trabajan **por técnico asignado**, filtrando por el campo «Asignado
+completo (con todos sus seguimientos: GLPI devuelve 50 por página y ITHOS pide las que hagan falta) y ver
+reportes. Dos acciones trabajan **por técnico asignado**, filtrando por el campo «Asignado
 a» y nunca por observador o solicitante: **consultar** («¿cómo están los tickets asignados a mí?», «los de
 Alejandro») devuelve los abiertos con su estado, y **actuar en lote** («poné en espera los míos hasta
 mañana 10:00») los pone en espera o los pospone juntos. Decir «mis tickets» alcanza: la persona se
@@ -564,23 +514,30 @@ existen. El histórico leído se reutiliza unos minutos, así dos preguntas segu
 
 ## Asistente y canales
 
-Recibe y responde en **WhatsApp** (con el número propio, vinculado por QR) y por el **micrófono**
-del equipo. En WhatsApp puede trabajar con **varios grupos, cada uno con su
-ámbito**: uno para consultas de cualquier tema (que no recibe ninguna alerta), otro para las alertas y
-consultas de tickets, otro para el tablero del equipo y otro para los avisos del sistema. Cada aviso nace
-con su tipo y va sólo a donde corresponde, y una consulta fuera del alcance de un grupo se deriva al que
-sí la maneja.
+Recibe y responde en **WhatsApp** (con el número propio, vinculado por QR desde el panel) y por el
+**micrófono** de la oficina. En WhatsApp trabaja con **cuatro grupos, cada uno con su ámbito**:
+**ITHOS** para consultas de cualquier tema (que no recibe ninguna alerta), **ITHOS_SOPORTE** para las
+alertas y consultas de tickets, **ITHOS_TRELLO** para el tablero del equipo e **ITHOS_SISTEMA** para los
+avisos del sistema (antes se llamaba ITHOS_DEMO). Cada aviso nace con su tipo y va sólo a donde
+corresponde —el reporte ITIL en PDF, por ejemplo, va a soporte y no a consultas—, y una consulta fuera
+del alcance de un grupo se deriva al que sí la maneja.
 
 | Ámbito | Qué avisos recibe | Sobre qué se consulta ahí |
 |---|---|---|
 | `consultas` | **ninguno** | **todo** lo que ITHOS sabe hacer |
 | `soporte` | tickets y SLA (incluidos los reportes) | sólo tickets |
 | `tareas` | el tablero del equipo | sólo el tablero |
-| `sistema` | reinicios, cuotas de IA, cobranza y voz | todo |
+| `sistema` | reinicios del Gestor y del agente, cuotas de IA, wiki y voz | todo |
 | `todo` | todos | todo |
- Antes de responder carga el panorama real del cliente —tickets, SLA, estado— y usa su base de
-conocimiento y su memoria. Responde corto por defecto y detalla cuando se lo piden, en el idioma que el
-cliente eligió, y puede contestar en texto, en nota de voz o en ambos.
+
+Antes de responder carga el panorama real —tickets, SLA, estado— y usa la base de conocimiento y la
+memoria. Responde corto por defecto y detalla cuando se lo piden, en el idioma configurado, y puede
+contestar en texto, en nota de voz o en ambos.
+
+El panel y el agente muestran si WhatsApp, el micrófono y el integrador están activos, también después
+de que el agente se reconecta. Antes de un deploy ITHOS avisa «en mantenimiento» por el grupo de sistema
+y, cuando el agente vuelve, «disponible»; el aviso de «en línea» sale una sola vez, no en cada
+reconexión.
 
 El detalle técnico de **cómo está construido** ITHOS es propietario: sólo se revela a las identidades del
 dueño, y cuando éste pide detalle la respuesta se arma con la **documentación completa del sistema** —el
@@ -591,8 +548,9 @@ coincida** con el perfil del dueño.
 
 ## Base de conocimiento, reportes y tareas del equipo
 
-La **base de conocimiento** se regenera sola una vez por semana a partir de los casos resueltos del propio
-cliente y se usa en las respuestas; el alta permite sumar instructivos.
+La **base de conocimiento** se regenera sola una vez por semana, en la hora de la zona configurada, a
+partir de los casos resueltos, y se usa en las respuestas; desde el panel se pueden subir instructivos y
+regenerarla a mano.
 
 **La wiki del equipo (Outline) está conectada en los dos sentidos.** ITHOS la **lee** —cada documento entra
 en la base de conocimiento y se resincroniza cada seis horas— y la **escribe**: cuando un ticket se
@@ -607,10 +565,12 @@ le suma el caso**; y si el caso nuevo trae el procedimiento más completo, el ar
 conserva sus casos. Tres reglas: **nada sensible** (la colección de credenciales no se lee ni se escribe),
 **nada inventado** y **nada personal** (ni el nombre ni el legajo del afectado).
 
-Los **reportes ITIL** cubren volumen, cumplimiento de SLA, MTTR, backlog y desglose por prioridad,
-categoría y técnico. Salen automáticos —diario, semanal o mensual— sobre el **período cerrado**, en la zona
-horaria del cliente y sólo en días hábiles, o a demanda desde su panel en PDF y CSV. Las lecturas son
-masivas: no hay una consulta por ítem.
+Los **reportes ITIL** cubren volumen, cumplimiento de SLA de resolución y de primera respuesta (la demora
+que registra GLPI, no la resolución), MTTR, backlog y desglose por prioridad, categoría y técnico. Salen
+automáticos al grupo de soporte —diario, semanal o mensual— sobre el **período cerrado**, en la zona
+horaria configurada y sólo en días hábiles, o a demanda desde el panel en PDF y CSV. Las lecturas son
+masivas: no hay una consulta por ítem. Las métricas de uso se guardan en el volumen de datos
+(`ITHOS_DATA`) y sobreviven a un deploy.
 
 Las columnas del tablero mantienen siempre los mismos colores y cada mes nuevo nace igual que el
 anterior; y quien entra al equipo se suma como miembro de todos los tableros del mes, incluidos los
@@ -618,44 +578,50 @@ que ya existían.
 
 Las **tareas del equipo** se mantienen al día sobre Planka desde WhatsApp: resumen por persona a primera
 hora, seguimiento de lo que está en curso, alta y movimiento de tarjetas por texto o audio, y **rollover**
-automático de semana, mes y año que arrastra lo no terminado y archiva lo cerrado. Además **avisa los
+automático de semana, mes y año que arrastra lo no terminado y archiva lo cerrado (un mes se borra sólo
+después de quedar archivado). Además **avisa los
 cambios del tablero**: cuando una tarjeta cambia de estado —incluso movida a mano— lo anuncia en el grupo
 con el estado del que viene, el nuevo y quién la tiene asignada, antes de cualquier seguimiento, y ese
 estado persiste en disco para no perder los movimientos ocurridos mientras el Gestor estuvo fuera.
 
-## Alta de cliente y seguridad
+## Configuración y seguridad
 
 ```mermaid
 flowchart LR
-    A["INTELLIHELP genera<br/>un enlace de alta"] -->|"un solo uso, revocable"| F["Formulario: tickets · acceso ·<br/>canales · IA · zona · horario"]
-    F --> CFG["clientes.json<br/>(secretos cifrados AES-256-GCM)"]
-    CFG --> K["api_key + contraseña de agente<br/>por empresa"]
-    K --> AGN["El agente se instala y conecta<br/>(WSS, hmac del token)"]
-    CFG --> QR["Vinculación de WhatsApp por QR<br/>(sesión aislada por cliente)"]
+    ADM["Administrador de INTELLIHELP<br/>(login: todo el panel lo exige)"] --> PAN["Panel: configuración · terminales ·<br/>grupos · KB"]
+    PAN --> CFG["clientes.json<br/>(secretos cifrados AES-256-GCM)"]
+    CFG -->|"cambió: el Gestor lo nota<br/>(cada 15 s) y se reinicia solo"| GES["El Gestor aplica la configuración"]
+    CFG --> K["api_key + contraseña de agente"]
+    K --> AGN["El agente de la oficina se conecta<br/>(WSS, hmac del token)"]
+    PAN --> QR["Vinculación de WhatsApp por QR"]
     QR --> GRP["Grupos por ámbito<br/>consultas · soporte · tareas · sistema"]
 ```
 
-El alta de una empresa es un **enlace temporal de un solo uso**, revocable, con el formulario completo
-—mesa de ayuda, control de acceso, canales, cadena de IA, zona horaria y horario de atención—. Al
-guardarlo, el panel entrega la **api_key** y la **contraseña de agente** con las que el agente se conecta,
-y los secretos quedan **cifrados en reposo** con AES-256-GCM bajo una clave maestra que vive aparte de los
-datos. Cada empresa es un inquilino aislado: su configuración, su memoria, su base de conocimiento, sus
-métricas y su sesión de WhatsApp. El acceso al Gestor es sólo de INTELLIHELP, con usuario
-y contraseña hasheada, cookies seguras, límite de intentos y HSTS; el cliente entra únicamente a su
-dashboard.
+Toda la configuración vive en `clientes.json`: GLPI, IVMS, los grupos de WhatsApp, la cadena de IA, el
+equipo técnico, la zona horaria y el horario de atención. Se edita desde el panel o a mano, y lo que se
+guarda se aplica solo: el Gestor revisa el archivo cada 15 segundos y, si cambió, se reinicia para
+tomarlo. Al guardar desde el panel se conserva lo que el formulario no muestra (la velocidad de la voz,
+el intervalo de consulta a GLPI, el equipo técnico, Planka, la sesión de WhatsApp) y, si la
+configuración actual no se puede leer, **no se guarda nada**: una lectura fallida nunca termina en una
+configuración vacía.
+
+Los secretos quedan **cifrados en reposo** con AES-256-GCM bajo una clave maestra que vive aparte de los
+datos. **Todo el panel exige el login del administrador** —sólo `/login` y `/logout` quedan abiertos, y una
+ruta nueva nace privada—, con contraseña hasheada, cookies seguras, límite de intentos y HSTS. No hay alta
+por enlace, ni portal de cliente, ni ninguna ruta que devuelva la configuración con sus claves.
 
 ## Stack técnico
 
 | Capa | Tecnología |
 | --- | --- |
 | Gestor (control-plane) | Python 3.11+, FastAPI, WebSocket (front-controller propio, sin framework pesado) |
-| Agente (data-plane) | Python, interfaz `pywebview`, empaquetado como `.exe` firmado (Inno Setup) |
-| Inteligencia | Cadena multi-IA: Gemini · Cerebras · Groq · local (Ollama) — enchufable por cliente |
-| Voz | TTS dedicado de Gemini (*Charon*, verbatim) para los parlantes; `edge-tts` de respaldo |
-| Datos por cliente | SQLite aislado por inquilino; secretos cifrados en reposo (AES-256-GCM) |
+| Agente (data-plane) | Python, interfaz `pywebview` + ícono de bandeja (`pystray`), empaquetado como `.exe` firmado (Inno Setup) |
+| Inteligencia | Cadena de IA: Gemini → Groq → IA local (Ollama, `qwen3:4b`, en el mismo VPS) |
+| Voz | TTS dedicado de Gemini (*Charon*, verbatim) para los parlantes; `edge-tts` de respaldo y para las notas de voz; Vosk para la llamada por micrófono |
+| Datos | SQLite + JSON en el volumen de datos (`ITHOS_DATA`); secretos cifrados en reposo (AES-256-GCM) |
 | Mensajería | WhatsApp con el número propio (`neonize`), con grupos separados por ámbito |
 | Integraciones | GLPI · IVMS · Planka · Outline |
-| Empaquetado | Docker (Gestor + Panel + Caddy con TLS/WSS automático); instalador Inno firmado (Agente) |
+| Empaquetado | Docker (central + panel + ollama + Caddy con TLS/WSS automático); instalador Inno firmado (Agente) |
 
 ## Estructura del proyecto
 
@@ -665,16 +631,16 @@ ITHOS/                    # todo el software, autocontenido y desplegable
 │                         #   Planka, cifrado, memoria, métricas, reportes ITIL
 ├─ central/               # el Gestor: main (WebSocket), panel, triage, cerebro,
 │                         #   integradores, reportes programados, clientes.json
-├─ agente/                # el Agente: voz, escucha, integradores de acceso, GUI
-├─ docker-compose.yml     # despliegue del Gestor (central + panel + caddy)
+├─ agente/                # el Agente: voz, escucha, integrador IVMS, GUI
+├─ docker-compose.yml     # despliegue del Gestor (central + panel + ollama + caddy)
 └─ Caddyfile              # TLS / WSS automático
 docs/                     # documentación (instalación, arquitectura, informes) y banner
 tests/                    # baterías de regresión (probar_*.py)
-compilador/               # build (PyInstaller, Inno, firma) · instaladores · dist
+compilador/               # build (PyInstaller, Inno, firma) · instaladores/actualizar.sh · dist
 DOCUMENTO_MAESTRO.md      # índice técnico del proyecto
 ```
 
-La configuración real (`ITHOS/central/clientes.json`, `ITHOS/.env`) y todo dato por cliente **no se
+La configuración real (`ITHOS/central/clientes.json`, `ITHOS/.env`) y los datos **no se
 versionan**: el repositorio incluye únicamente plantillas (`ITHOS/central/clientes.ejemplo.json`,
 `.env.example`) con marcadores. El despliegue se completa con secretos nuevos.
 
@@ -684,51 +650,51 @@ versionan**: el repositorio incluye únicamente plantillas (`ITHOS/central/clien
 
 | Archivo | Responsabilidad |
 | --- | --- |
-| `ia.py` | Cadena multi-IA enchufable (Gemini, Claude, OpenAI, Grok, Groq, Cerebras, DeepSeek, Mistral, OpenRouter, local) + transcripción + voz Charon. Una IA por consulta, salto al agotarse. |
-| `cuota.py` | Consumo y cuota por cliente; avisa cuándo se agota y a qué hora se reinicia cada proveedor. |
+| `ia.py` | Cadena de IA (Gemini → Groq → IA local con Ollama) + transcripción + voz Charon. Una IA por consulta, salto al agotarse. |
+| `cuota.py` | Consumo y cuota de la cadena configurada; avisa cuándo se agota y a qué hora se reinicia cada proveedor. |
 | `conversacion.py` | Puerta de entrada del asistente: re-exporta los dos módulos de abajo, así quien lo importaba sigue igual. |
 | `asistente.py` | El que conversa: arma el panorama real antes de responder, decide, responde y ejecuta; KB y memoria. |
 | `herramientas.py` | QUÉ puede hacer sobre los tickets: lo que puede LEER (estado, reportes, antecedentes) y lo que puede ESCRIBIR (cerrar, responder, asignar). Nunca escribe sin pedido explícito. |
 | `conocimiento.py` | Contexto técnico propietario + autorización por identidad (los números del dueño) y clave de admin por micrófono. |
 | `wake.py` | La llamada "Hey ITHOS" (texto y micrófono) — única fuente de verdad de la activación. |
-| `horario.py` | Horario de atención y días hábiles del cliente: puerta de todo lo que sale hacia afuera. |
-| `tickets.py` | Adaptador de la mesa de ayuda detrás de una INTERFAZ COMÚN (hoy GLPI), más la búsqueda de antecedentes sobre todo el histórico. |
-| `glpi.py` | Cliente REST de GLPI (sesiones reutilizadas por token/rol, lecturas masivas, saludo al solicitante). |
+| `horario.py` | Horario de atención y días hábiles configurados: puerta de todo lo que sale hacia afuera. |
+| `tickets.py` | Acceso a la mesa de ayuda (GLPI) detrás de una interfaz común, más la búsqueda de antecedentes sobre todo el histórico. |
+| `glpi.py` | Cliente REST de GLPI (sesiones reutilizadas por token/rol, lecturas masivas paginadas, saludo al solicitante). |
 | `whatsapp.py` · `whatsapp_link.py` · `ambitos.py` | WhatsApp con el número propio (neonize): avisos, @menciones, notas de voz, vinculación por QR y los **grupos por ámbito**. |
-| `notificadores.py` | Agrupa los canales del cliente y reparte cada aviso según su TIPO (tickets, SLA, tablero, sistema). Sumar un canal es una clase con `enviar()`. |
-| `voz_tts.py` · `locucion.py` · `audio.py` · `vozid.py` | TTS de respaldo, pronunciación/locución sin emojis, captura + VAD (Silero/webrtc/energía) e identificación por voz del dueño. |
+| `notificadores.py` | Reparte cada aviso según su TIPO (tickets, SLA, tablero, sistema, voz) al grupo que corresponde. |
+| `voz_tts.py` · `locucion.py` · `audio.py` · `vozid.py` | Notas de voz con edge-tts, pronunciación/locución sin emojis, captura + VAD (Silero/webrtc/energía) e identificación por voz del dueño. |
 | `planka.py` | Cliente de Planka (X-API-Key): tableros, listas, tarjetas, miembros, comentarios. |
 | `outline.py` | Cliente de la wiki Outline: lee y escribe, y nunca toca las colecciones de credenciales. |
-| `kb.py` | Base de conocimiento por cliente (lectura y uso en las respuestas). |
-| `memoria.py` · `metricas.py` | Memoria y métricas por cliente (aisladas, SQLite/JSON). |
+| `kb.py` | Base de conocimiento (lectura y uso en las respuestas). |
+| `memoria.py` · `metricas.py` | Memoria y métricas (SQLite/JSON, en el volumen de datos `ITHOS_DATA`). |
 | `reportes_itil.py` | KPIs ITIL (volumen, SLA, MTTR, por técnico/categoría) con lecturas masivas. |
-| `cifrado.py` | Cifrado en reposo AES-256-GCM de los secretos de cada cliente (clave maestra aparte). |
+| `cifrado.py` | Cifrado en reposo AES-256-GCM de los secretos de la configuración (clave maestra aparte). |
 | `agenda.py` | Reactivaciones programadas (posponer un ticket, reapertura por horario). |
-| `despierto.py` | Evita que el equipo se suspenda mientras ITHOS corre (Windows/Linux/Mac). |
+| `despierto.py` | Evita que la PC se suspenda mientras ITHOS corre. |
 | `version.py` · `estilo_ithos.py` | Versionado SemVer y estilo visual compartido. |
 
 **`ITHOS/central/` — el Gestor (lo que hosteamos)**
 
 | Archivo | Responsabilidad |
 | --- | --- |
-| `main.py` | FastAPI + WebSocket: autentica al agente por empresa, le manda su config (voz/integrador) y arranca por cliente el integrador de tickets, Planka, reportes, proactivo y KB. |
-| `registro.py` | Registro multi-cliente desde `clientes.json` (descifra secretos y normaliza nombres de config). |
+| `main.py` | FastAPI + WebSocket: autentica al agente, le manda su config (voz/integrador) y arranca el integrador de tickets, Planka, reportes, proactivo, KB y wiki. Vigila `clientes.json` cada 15 s y se reinicia solo si cambió. |
+| `registro.py` | Lee `clientes.json` (descifra secretos y normaliza nombres de config). |
 | `triage.py` | Triage del ticket nuevo: clasifica, asigna, contesta y deja la nota interna privada al técnico. |
 | `ciclo.py` | **Ciclo de vida** del ticket: esperas por el cliente con recordatorio diario y escalada, avisos de cada respuesta, pausa del SLA fuera de horario y reapertura silenciosa. |
-| `equipo.py` | Quién es quién: los técnicos del cliente, sus ids y a quién le toca cada cosa. |
+| `equipo.py` | Quién es quién, todo desde la config: los técnicos (`tecnicos`), el reparto (`reparto`), la cuenta de ITHOS y las cuentas internas. |
 | `textos_ticket.py` | Todo lo que se le escribe a una persona (cliente o técnico), en un solo lugar y en castellano claro. |
 | `cerebro.py` | El prompt de clasificación (categoría, prioridad, responsable, 1ª respuesta, nota interna). |
 | `integrador_glpi.py` | Vigilante de tickets: detecta nuevos, dispara el triage y empuja los avisos (voz + canales con @mención). |
 | `proactivo.py` | Alerta de SLA en riesgo/vencido, agrupada por técnico asignado y dentro del horario de atención. |
-| `reportes.py` · `reportes_programados.py` | Reportes ITIL y su envío automático (diario/semanal/mensual, período cerrado, zona y días hábiles del cliente). |
+| `reportes.py` · `reportes_programados.py` | Reportes ITIL y su envío automático (diario/semanal/mensual, período cerrado, zona y días hábiles configurados). |
 | `kb_auto.py` | Regeneración automática de la base de conocimiento desde los casos resueltos. |
 | `wiki.py` | La wiki del equipo conectada: la sincroniza con la KB y publica los procedimientos de los tickets cerrados. |
 | `planka_integrador.py` · `planka_rollover.py` | Tareas del equipo: resumen 9:00, seguimiento horario, alta/movimiento por WhatsApp y rollover semanal/mensual/anual. |
-| `panel.py` · `panel_ui.py` | Panel superadmin, alta de empresas y dashboard del cliente (responsive, con login). |
-| `autenticacion.py` | Login del Gestor (hash scrypt), cookies seguras, enlaces de alta de un solo uso y revocación. |
+| `panel.py` · `panel_ui.py` | Panel del administrador (responsive, todo con login): estado, métricas, SLA, reportes, KB, terminales y configuración. |
+| `autenticacion.py` | Login del Gestor (hash scrypt), cookies seguras y límite de intentos. |
 | `procesador.py` · `protocolo.py` | Eventos del agente (portero: saludo por hora, dedup) y el protocolo Gestor↔Agente. |
 
-**`ITHOS/agente/` — el Agente (en el equipo del cliente)**
+**`ITHOS/agente/` — el Agente (en la PC de la oficina)**
 
 | Archivo | Responsabilidad |
 | --- | --- |
@@ -736,58 +702,64 @@ versionan**: el repositorio incluye únicamente plantillas (`ITHOS/central/clien
 | `gui.py` · `bandeja.py` | La app con UI de ITHOS (pywebview) y el ícono de bandeja: estado, arranque/detención, versión. |
 | `voz.py` | Voz por los parlantes: caché por frase y velocidad, WSOLA, streaming, respaldo edge, audio tras RDP. |
 | `escucha.py` | Micrófono: wake-word con Vosk, grabación por silencio, filtro de voz y envío al Gestor. |
-| `integrador_ivms.py` | Control de acceso: lee sólo los fichajes/eventos NUEVOS y los manda al Gestor con `device` y `es_fallo`. Es el contrato de cualquier integrador. |
+| `integrador_ivms.py` | Control de acceso IVMS: lee sólo los fichajes/eventos NUEVOS de su SQL Server y los manda al Gestor con `device` y `es_fallo`. |
 
 **Fuera del software:** `tests/` contiene las baterías (ver [Tests](#tests)), `compilador/build` la receta
-para construir y firmar el agente, `compilador/instaladores` los scripts de despliegue y `docs/` el resto
-de la documentación.
+para construir y firmar el agente, `compilador/instaladores/actualizar.sh` la actualización del Gestor en
+el VPS y `docs/` el resto de la documentación.
 
 ## Puesta en marcha
 
-### Gestor (VPS Linux, Docker)
+### Gestor (VPS Hostinger KVM 2, Docker)
 
 ```bash
 cp ITHOS/central/clientes.ejemplo.json ITHOS/central/clientes.json   # completar con datos reales
-cp .env.example ITHOS/.env                                           # ITHOS_ADMIN_USER/TOKEN, ITHOS_MASTER_KEY
-cd ITHOS && docker compose -p jarvis-cloud up -d --build             # -p conserva los volúmenes de datos
+cp .env.example ITHOS/.env                                           # ADMIN_USER/TOKEN, MASTER_KEY, DOMINIO
+docker compose -p jarvis-cloud -f ITHOS/docker-compose.yml up -d --build   # -p conserva los volúmenes
 ```
 
-Caddy resuelve TLS/WSS automático; el Agente del cliente se conecta a `wss://TU-DOMINIO/ws`.
-El detalle completo del despliegue está en [docs/INSTALACION.md](docs/INSTALACION.md) y
-[docs/HOSTINGER.md](docs/HOSTINGER.md).
+Levanta cuatro contenedores: `central` (WebSocket del agente), `panel`, `ollama` (IA local) y `caddy`,
+el único que publica puertos y resuelve TLS/WSS automático. El agente de la oficina se conecta a
+`wss://TU-DOMINIO/ws`. El detalle completo del despliegue está en
+[docs/INSTALACION.md](docs/INSTALACION.md) y [docs/HOSTINGER.md](docs/HOSTINGER.md).
 
-### Agente (equipo del cliente)
+### Agente (PC de la oficina, Windows)
 
-Instalador único por plataforma (Windows: Inno firmado, en `compilador/`; Linux/macOS: script
-en `compilador/instaladores/`). Los datos y la caché se guardan en `%LOCALAPPDATA%/ITHOS`; la
-desinstalación no deja rastro. Ver [docs/INSTALACION_AGENTE.md](docs/INSTALACION_AGENTE.md) y
+Un solo instalador, hecho con Inno Setup (`compilador/build/ithos-agente.iss`) y firmado con el
+certificado propio de INTELLIHELP, que el instalador deja como confiable en la PC. Crea la tarea
+«ITHOS Agente», que lo arranca al iniciar sesión con `--run`. La configuración y la caché se guardan en
+`%LOCALAPPDATA%\ITHOS`; la desinstalación no deja rastro. Ver
+[docs/INSTALACION_AGENTE.md](docs/INSTALACION_AGENTE.md) y
 [docs/ARQUITECTURA_GESTOR_AGENTE.md](docs/ARQUITECTURA_GESTOR_AGENTE.md).
 
 ## Operación: actualizar, respaldos y versiones
 
 Para actualizar el Gestor ya desplegado se sube el paquete del código y se ejecuta
 `bash compilador/instaladores/actualizar.sh`, que **respalda** `clientes.json`, el `.env` y el volumen de
-datos, avisa por los canales del cliente que entra en mantenimiento —se puede saltear con
-`ITHOS_SIN_AVISO=1`—, sube la versión, reconstruye con `docker compose -p jarvis-cloud` y verifica que los
-contenedores queden arriba. Si algo falla, el rollback es volver al commit anterior y correr el mismo
-script, o restaurar el respaldo de esa fecha.
+datos, avisa por el grupo de sistema que entra en mantenimiento —se puede saltear con
+`ITHOS_SIN_AVISO=1`—, deja asentada la revisión desplegada en `ITHOS/REVISION`, reconstruye con
+`docker compose -p jarvis-cloud` y verifica que los contenedores queden arriba. Si algo falla, el rollback
+es volver al commit anterior y correr el mismo script, o restaurar el respaldo de esa fecha.
 
-La **receta para construir el agente** está versionada en `compilador/build`: un solo comando sube la
-versión, empaqueta con PyInstaller, firma el ejecutable, arma el instalador y lo vuelve a firmar, de
-modo que el agente se puede reconstruir por completo desde el repositorio.
+La **receta para construir el agente** está versionada en `compilador/build`: un solo comando
+(`construir_agente.bat`) sube la versión, empaqueta con PyInstaller, firma el ejecutable, arma el
+instalador y lo vuelve a firmar, de modo que el agente se puede reconstruir por completo desde el
+repositorio.
 
 El **dominio** del despliegue vive en `ITHOS_DOMINIO` (en `ITHOS/.env`) y el `Caddyfile` lo lee de ahí, de
 modo que una actualización del código nunca lo pisa. El código compartido va **montado** —un reinicio lo
-toma— y el Gestor se **reconstruye**. Gestor y Agente suben de versión solos (SemVer) en cada despliegue o
-compilación, y el instalador del agente queda sincronizado con esa versión.
+toma— y el Gestor se **reconstruye**. Las versiones siguen SemVer: la del Gestor (hoy 1.2.0) se sube en
+el repositorio antes de armar el paquete (`python compilador/build/bump_version.py gestor`), porque
+subirla en el servidor la pisaba el paquete siguiente y nunca avanzaba; la del agente sube sola en cada
+compilación y el instalador queda sincronizado con ella.
 
-## Configurar un cliente
+## Configuración
 
-Sin tocar código: se copia un bloque de `ITHOS/central/clientes.ejemplo.json`, se pegan los valores
-reales (API key del agente, credenciales de IA, del sistema de tickets, del control de acceso
-y de los canales) y se reinicia el Gestor. El acceso al Gestor (panel de administración y
-APIs de gestión) queda restringido a INTELLIHELP con usuario y contraseña; cada cliente sólo
-accede a su propio dashboard, y el alta es un enlace temporal de un solo uso.
+Sin tocar código: `ITHOS/central/clientes.json` (la plantilla es `ITHOS/central/clientes.ejemplo.json`)
+lleva la api_key y la contraseña del agente, las credenciales de IA, de GLPI y de IVMS, los grupos de
+WhatsApp, el equipo (`tecnicos`, `reparto`, `integrador_glpi.ithos_user_id`), Planka y la wiki. Se edita
+desde el panel o a mano; el Gestor nota el cambio y se reinicia solo. El acceso al Gestor queda
+restringido a INTELLIHELP con usuario y contraseña.
 
 ## Tests
 
@@ -795,11 +767,12 @@ Baterías en [`tests/`](tests/):
 
 | Batería | Qué cubre | Necesita red |
 | --- | --- | --- |
-| `probar_requerimientos.py` | **115 requerimientos transversales**: multiplataforma, marca, UI/UX y responsive, tickets (nada de recordatorios falsos, respeta lo manual, notas privadas), portero y voz (saludo por hora, velocidad uniforme, pre-cacheo, cuota), seguridad (cifrado, login, altas), latencia sin N+1 y deploy en LF con rebuild. | No |
+| `probar_requerimientos.py` | **Requerimientos transversales**: marca, UI/UX y responsive, tickets (nada de recordatorios falsos, respeta lo manual, notas privadas), portero y voz (saludo por hora, velocidad uniforme, pre-cacheo, cuota), seguridad (cifrado, todo el panel con login, auth del agente), latencia sin N+1, deploy en LF con rebuild y la documentación al día. | No |
+| `probar_auditoria_18nov.py` | Regresión de los bugs de la auditoría del 18-nov-2026: PDF al grupo correcto, voz-id ante la duda, seguimientos completos, equipo desde la config, agenda, avisos del Gestor. | No |
 | `probar_helpdesk_mejoras.py` | Wake-word obligatorio, esperas con recordatorio y escalada, @mención al técnico asignado (mesa de ayuda simulada). | No |
 | `probar_portero_saludo.py` | Saludo coherente con la hora y una sola vez por día por persona. | No |
-| `probar_sistema.py` | Circuito completo por HTTP: alta, validaciones, edición, canales, métricas, portal. | Sí |
-| `probar_ciclo.py` · `probar_produccion.py` | Ciclo de vida real de un ticket y flujo del vigilante contra la mesa de ayuda del cliente. | Sí |
+| `probar_sistema.py` | Circuito completo del panel por HTTP: login, validaciones, edición, canales y ámbitos, estado, métricas. | Sí |
+| `probar_ciclo.py` · `probar_produccion.py` | Ciclo de vida real de un ticket y flujo del vigilante contra GLPI. | Sí |
 | `probar_grupos_ambito.py` | Ruteo por grupo: cada aviso va al que corresponde, el de consultas no recibe alertas y cada grupo contesta sólo lo suyo. | No |
 | `probar_respuesta_cliente.py` | El cliente responde: fuera de horario el ticket espera al día hábil (el SLA no corre), se avisa cada respuesta y se reclama al técnico que no contestó. | No |
 | `probar_triage_alcance.py` | El alcance del problema: un equipo o una sede caída nunca se trata como el caso de un usuario suelto (prioridad, responsable, sin pedir legajo, sin dejarlo en espera). | No |
@@ -813,33 +786,32 @@ requerimientos, para que nada se pierda con el tiempo.
 
 ```bash
 python tests/probar_requerimientos.py     # sin red: se corre en cada cambio
+python tests/probar_auditoria_18nov.py    # sin red
 python tests/probar_helpdesk_mejoras.py   # sin red
 python tests/probar_todo.py               # circuito completo
 ```
 
 ## Límites y pendientes
 
-- La voz de marca con cuenta **paga** de Gemini, para regenerar todo el padrón de saludos de una vez.
-- Empaquetar el agente con **Nuitka** y firmarlo con un certificado de **CA pública** (hoy la firma es
-  propia, válida en los equipos que confían el certificado, que el instalador agrega solo).
-- **Auto-update del agente por red** —el Gestor publica versión y manifiesto firmado, el agente avisa y el
-  usuario decide— y **métricas de flota** (qué agentes están conectados y con qué versión).
-- Importar la wiki de **Outline** y derivar tickets con balanceo entre técnicos.
+- La voz Charon usa la **cuota gratuita** de Gemini (se decidió no pagar): el padrón de saludos se cachea
+  de a poco y, mientras tanto, lo que no está en caché suena con `edge-tts`.
+- La **IA local** tarda unos 100 segundos por triage en el VPS sin GPU: sirve como último respaldo, no
+  como primaria.
+- Derivar tickets con balanceo entre técnicos más allá de la mesa por carga: se diseña con el equipo.
 - **IVMS** no expone API: se lee su base de fichadas, por eso ese integrador corre en el agente.
+- **WhatsApp no oficial** (neonize): si WhatsApp cierra la sesión, hay que volver a vincular por QR desde
+  el panel.
 
 El estado de cada punto se sigue en [docs/FALTANTES.md](docs/FALTANTES.md).
 
 ## Seguridad
 
-- Los secretos (credenciales de IA, tokens de tickets, claves de canales, `ITHOS_MASTER_KEY`)
-  viven en `clientes.json` o en variables de entorno; **nunca se versionan**. El repositorio
-  incluye sólo plantillas con marcadores.
-- Los secretos de cada cliente se **cifran en reposo** (AES-256-GCM) con una clave maestra
-  separada.
-- El acceso al Gestor exige usuario y contraseña (hasheada con *scrypt*); las llamadas
-  internas usan cabecera de token; el alta es un enlace de un solo uso que caduca.
-- Cookies `secure`/`httponly`, *rate-limit* de login, HSTS en Caddy y suspensión por impago
-  que congela la IA (nunca al propietario).
+- Los secretos (credenciales de IA, tokens de GLPI, `ITHOS_MASTER_KEY`) viven en `clientes.json` o en
+  variables de entorno; **nunca se versionan**. El repositorio incluye sólo plantillas con marcadores.
+- Los secretos se **cifran en reposo** (AES-256-GCM) con una clave maestra separada.
+- **Todo el panel** exige usuario y contraseña (hasheada con *scrypt*); las llamadas internas usan
+  cabecera de token. No hay alta por enlace ni portal de cliente.
+- Cookies `secure`/`httponly`, *rate-limit* de login y HSTS en Caddy.
 - Política de reporte de vulnerabilidades en [SECURITY.md](SECURITY.md).
 
 ## Licencia
@@ -854,4 +826,4 @@ reconocimiento de autoría (Ley 11.723 art. 52; Convenio de Berna art. 6 bis). V
 
 **Brian Sierra** — Administrador de sistemas (SysAdmin) en Intellihelp · [LinkedIn](https://www.linkedin.com/in/brian-gabriel-sierra/) · [GitHub](https://github.com/bsierra4262)
 
-Diseño, desarrollo e implementación completos: arquitectura Gestor/Agente, cadena multi-IA y voz, mesa de ayuda con triage, integraciones de tickets y control de acceso, mensajería por WhatsApp, gestión del equipo (Planka), empaquetado y despliegue.
+Diseño, desarrollo e implementación completos: arquitectura Gestor/Agente, cadena de IA y voz, mesa de ayuda con triage, integraciones con GLPI y el control de acceso, mensajería por WhatsApp, gestión del equipo (Planka), empaquetado y despliegue.

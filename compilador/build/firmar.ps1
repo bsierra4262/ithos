@@ -1,9 +1,9 @@
 <#
-  Firma de código de ITHOS — GRATIS (self-signed) para la flota controlada de INTELLIHELP.
+  Firma de código de ITHOS — GRATIS (self-signed) para las PCs de INTELLIHELP.
 
   Crea (una vez) un certificado de firma de código self-signed de INTELLIHELP y firma el .exe / el
-  instalador con TIMESTAMP (la firma sigue válida aunque venza el cert). Con esto, en las PCs de los
-  clientes donde se instaló el certificado como CONFIABLE (ver build\confiar_en_cliente.ps1 / GPO),
+  instalador con TIMESTAMP (la firma sigue válida aunque venza el cert). Con esto, en la PC donde
+  el instalador dejó el certificado como CONFIABLE (lo hace solo, con certutil),
   el agente figura como editor "INTELLIHELP S.A." y NO lo bloquea SmartScreen ni sale "editor
   desconocido". Es la vía oficial de Microsoft (New-SelfSignedCertificate + Set-AuthenticodeSignature).
 
@@ -12,8 +12,8 @@
      powershell -ExecutionPolicy Bypass -File build\firmar.ps1 -Files dist\ITHOS-Agente-Setup.exe
   (o sin -Files: firma los dos si existen)
 
-  Nota: NO reemplaza a un cert de CA pública (para una PC cualquiera de internet igual avisaría). Para
-  venta masiva fuera de la flota: cert OV/EV pago o Azure Trusted Signing (ver FALTANTES.md).
+  Nota: NO reemplaza a un cert de CA pública (una PC que no tenga el certificado igual avisaría).
+  Para uso interno alcanza.
 #>
 param(
   [string[]]$Files = @("build\exe\ithos-agente.exe", "dist\ITHOS-Agente-Setup.exe"),

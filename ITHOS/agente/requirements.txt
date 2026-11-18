@@ -1,7 +1,6 @@
-# Agente de ITHOS (corre en el equipo del cliente: parlantes/mic + control de acceso).
+# Agente de ITHOS (corre en la PC de la oficina: parlantes/mic + control de acceso).
 # Instala: pip install -r requirements.txt
-# Nota: para NOTAS DE VOZ hace falta ffmpeg (sistema); IVMS necesita el driver ODBC de
-# SQL Server. Ver INSTALACION.md.
+# IVMS necesita el driver ODBC de SQL Server. Ver INSTALACION_AGENTE.md.
 websockets>=12.0
 google-genai>=2.7,<4.0      # Gemini (texto + voz Charon). Techo: la 3.x cambió la API por defecto a v1 y rompió flash; ia.py fija v1beta, pero una mayor nueva se prueba antes
 pyodbc>=5.1                 # IVMS: leer la tabla de fichajes (SQL Server)
@@ -9,11 +8,12 @@ sounddevice>=0.4            # capturar el micrófono
 edge-tts>=7.3.1            # voz GRATIS de respaldo + notas de voz. MINIMO 7.3.1: desde
                           # 7.2.8 y anteriores el servicio de Microsoft rechaza el
                           # handshake con 403 y no se genera NADA de audio (13-oct-2026).
-pydub>=0.25                 # ajuste de velocidad
 audiotsm>=0.1.2             # time-stretch de audio
 numpy>=1.24                 # audio / VAD
 pygame>=2.5                 # reproducción de audio
-pvporcupine>=3.0            # wake-word legacy; hoy se usa Vosk (ver comun/wake.py)
 onnxruntime>=1.17           # Silero VAD (filtro de voz humana) + voz-id
 webrtcvad-wheels>=2.0.14    # VAD de respaldo (import: webrtcvad)
 vosk>=0.3.45              # wake-word "ITHOS" OPEN-SOURCE (STT local, sin registro ni limites)
+pywebview>=5.0              # la ventana del agente
+pystray>=0.19               # ícono en la bandeja (sin él la bandeja no aparece)
+Pillow>=10.0                # imagen del ícono de la bandeja

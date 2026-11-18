@@ -191,7 +191,7 @@ input[type=file]::file-selector-button:hover,input[type=file]::-webkit-file-uplo
  .acts{flex-direction:column}.acts .btn{width:100%}
 }
 /* Pantallas GRANDES (laptop/desktop/ultra-wide): aprovechan el ancho sin estirar de más.
-   'body .wrap' pisa el max-width que cada página fija inline (alta 860 / portal 960). */
+   'body .wrap' pisa el max-width que cada página fija inline. */
 @media (min-width:1100px){ .modal{max-width:900px} }        /* desktop: form a 2 columnas cómodo */
 @media (min-width:1200px){ body .wrap{max-width:1080px} .form{gap:16px} }
 @media (min-width:1500px){ body .wrap{max-width:1180px} }
@@ -201,7 +201,7 @@ input[type=file]::file-selector-button:hover,input[type=file]::-webkit-file-uplo
    en monitores anchos le damos un tope cómodo para que las líneas no queden larguísimas. */
 @media (min-width:2000px){ .main{max-width:1900px;margin:0 auto} }
 
-/* ---- Vinculación de WhatsApp por QR (panel + portal + alta) ---- */
+/* ---- Vinculación de WhatsApp por QR (panel) ---- */
 .pill.ok{color:var(--ok);border:1px solid rgba(57,224,138,.5);background:rgba(57,224,138,.1)}
 .pill.gold{color:var(--gold);border:1px solid rgba(255,196,107,.5);background:rgba(255,196,107,.1)}
 .pill.err{color:#ffb3bc;border:1px solid rgba(255,95,112,.5);background:rgba(255,95,112,.1)}

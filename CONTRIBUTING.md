@@ -7,7 +7,8 @@ Convenciones del proyecto **ITHOS**.
 1. Crear una rama desde `main`: `git checkout -b feat/mi-cambio`.
 2. Realizar cambios atómicos y acompañados de tests.
 3. Ejecutar las baterías antes de abrir el Pull Request: `python tests/probar_requerimientos.py`
-   (115 requerimientos transversales, sin red) y `python tests/probar_todo.py`.
+   (requerimientos transversales, sin red), `python tests/probar_auditoria_18nov.py` y
+   `python tests/probar_todo.py`.
 4. Abrir un Pull Request describiendo el qué y el porqué del cambio.
 
 ## Mensajes de commit — [Conventional Commits](https://www.conventionalcommits.org/es/)
@@ -35,12 +36,13 @@ test(rollover): regresión del arrastre de tarjetas al cambiar de mes
   diagrama de flujo si forma parte de uno. La batería de requerimientos lo verifica con una tabla de
   capacidades y **falla** si el código está y la documentación no; al agregar una funcionalidad hay
   que sumarla a esa tabla.
-- **Sin secretos ni datos reales en el repositorio.** Las credenciales se piden al instalar y
-  se cargan en `clientes.json`/`.env` (ver [`.gitignore`](.gitignore) y [SECURITY.md](SECURITY.md)).
-- **Cada cambio se aplica en todo por igual**: todos los proveedores de IA, todos los canales
-  y todos los sistemas integrados. Nada que funcione en uno y no en otro.
-- **Multiplataforma**: rutas portables (`pathlib`), codificación UTF-8 explícita, sin
-  dependencias atadas a un sistema operativo.
+- **Sin secretos ni datos reales en el repositorio.** Las credenciales se cargan en
+  `clientes.json`/`ITHOS/.env` (ver [`.gitignore`](.gitignore) y [SECURITY.md](SECURITY.md)).
+- **Cada cambio se aplica en todo por igual**: los tres proveedores de la cadena de IA (Gemini,
+  Groq e IA local), los cuatro grupos de WhatsApp y todas las integraciones (GLPI, IVMS, Planka,
+  Outline). Nada que funcione en uno y no en otro.
+- **Plataformas**: el Gestor corre en Linux (Docker) y el agente en Windows. Rutas portables
+  (`pathlib`/`os.path`), codificación UTF-8 explícita.
 
 ## Estilo
 

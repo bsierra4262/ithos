@@ -1,21 +1,16 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-ITHOS Gestor — autenticación del superadmin + enlaces de alta de un solo uso.
+ITHOS Gestor — autenticación del administrador.
 
-MODELO DE ACCESO (requerimiento permanente):
-  · Al GESTOR (panel superadmin `/` + APIs de gestión) accede SOLO INTELLIHELP S.A.
-    (la empresa propietaria). Se protege con un TOKEN de admin (cookie de sesión).
-  · El CLIENTE accede SOLO a su dashboard `/panel/<api_key>` (la api_key es su credencial).
-  · El ALTA `/alta` es un enlace TEMPORAL de un solo uso (token que caduca y se consume).
+MODELO DE ACCESO: ITHOS es una herramienta INTERNA de INTELLIHELP S.A. Al panel entra sólo el
+administrador, con usuario y contraseña (cookie de sesión firmada, vence a las 8 horas).
 
 El token de admin se toma de `ITHOS_ADMIN_TOKEN` (env). Si no está, se genera uno y se
 persiste en `_gestor_admin.token` (y conviene fijar uno propio en producción).
 """
 import os
-import json
 import time
-import threading
 import hmac
 import base64
 import hashlib
@@ -32,11 +27,6 @@ def _hash_file() -> str:
     d = (os.environ.get("ITHOS_DATA") or "").strip()
     return os.path.join(d or BASE, "_gestor_admin.hash")
 
-
-def _alta_path() -> str:
-    """Archivo de tokens de alta. `ITHOS_ALTA_FILE` (env) lo lleva al volumen persistente en
-    producción y a un archivo temporal en los tests."""
-    return (os.environ.get("ITHOS_ALTA_FILE") or "").strip() or os.path.join(BASE, "_alta_tokens.json")
 
 
 # --------------------------------------------------------- usuario + contraseña
@@ -68,9 +58,9 @@ def admin_token() -> str:
 
 # --------------------------------------------- contraseña de login (hash salado, cambiable)
 # La contraseña de LOGIN se puede cambiar desde el panel; se guarda como HASH salado (scrypt), nunca
-# en claro. Si todavía no se cambió, se usa ITHOS_ADMIN_TOKEN (bootstrap del .env). El token interno
-# de servicio (X-Admin-Token entre panel y central) SIGUE siendo ITHOS_ADMIN_TOKEN (no lo toca el
-# usuario): así el login humano es cambiable sin romper las llamadas internas.
+# en claro. Si todavía no se cambió, se usa ITHOS_ADMIN_TOKEN (bootstrap del .env). La cabecera
+# X-Admin-Token (llamadas programáticas al panel, p. ej. los tests) SIGUE siendo ITHOS_ADMIN_TOKEN:
+# así el login humano es cambiable sin romper esas llamadas.
 def _hash_password(clave: str, salt: bytes = None) -> str:
     salt = salt or secrets.token_bytes(16)
     dk = hashlib.scrypt(clave.encode("utf-8"), salt=salt, n=16384, r=8, p=1,
@@ -96,11 +86,6 @@ def _leer_hash() -> str:
             return f.read().strip()
     except OSError:
         return ""
-
-
-def password_cambiada() -> bool:
-    """True si el admin ya fijó su propia contraseña (hay hash guardado)."""
-    return bool(_leer_hash())
 
 
 def _secreto_login() -> str:
@@ -226,90 +211,6 @@ def borrar_cookie(response) -> None:
     response.delete_cookie(COOKIE)
 
 
-# --------------------------------------------------- enlaces de alta de un solo uso
-# Un enlace de alta vale UNA sola vez. Leer-modificar-escribir sin candado es una carrera: dos
-# envíos a la vez (el doble clic de siempre) leían los dos "sin usar" y los dos pasaban. Y una
-# escritura no atómica deja el archivo a medias si el proceso muere en el medio: al leerlo se cae
-# al `except` y se pierden TODOS los enlaces vigentes, en silencio.
-_ALTA_LOCK = threading.Lock()
-
-
-def _alta_cargar() -> dict:
-    try:
-        with open(_alta_path(), encoding="utf-8") as f:
-            return json.load(f)
-    except (OSError, ValueError):
-        return {}
-
-
-def _alta_guardar(d: dict) -> None:
-    try:
-        from comun import cifrado as CIF
-        CIF.escribir_json(_alta_path(), d)         # atómica: la misma que usa clientes.json
-    except Exception:  # noqa: BLE001
-        try:
-            with open(_alta_path(), "w", encoding="utf-8") as f:
-                json.dump(d, f)
-        except OSError:
-            pass
-
-
-def nuevo_alta_token(nombre: str = "", horas: int = 48) -> str:
-    """Crea un token de alta de un solo uso que caduca en `horas`. De paso limpia los viejos."""
-    with _ALTA_LOCK:
-        ahora = time.time()
-        d = {k: v for k, v in _alta_cargar().items()
-             if not v.get("usado") and v.get("exp", 0) > ahora}
-        t = secrets.token_urlsafe(18)
-        d[t] = {"nombre": nombre, "exp": ahora + horas * 3600, "usado": False}
-        _alta_guardar(d)
-        return t
-
-
-def alta_valido(t) -> bool:
-    x = _alta_cargar().get(str(t or ""))
-    return bool(x) and not x.get("usado") and time.time() < x.get("exp", 0)
-
-
-def alta_consumir(t) -> None:
-    with _ALTA_LOCK:
-        d = _alta_cargar()
-        if t in d:
-            d[t]["usado"] = True
-            _alta_guardar(d)
-
-
-def revocar_alta(t) -> bool:
-    """Revoca (elimina) un token de alta generado: si te equivocaste al generarlo, deja de valer YA.
-    Devuelve True si existía y se sacó."""
-    with _ALTA_LOCK:
-        tid = str(t or "")
-        d = _alta_cargar()
-        if tid in d:
-            del d[tid]
-            _alta_guardar(d)
-            return True
-        return False
-
-
-def consumir_si_valido(t) -> bool:
-    """ATÓMICO: si el token de alta es válido y NO usado, lo marca usado y devuelve True (una sola
-    vez). Si ya se usó / venció / no existe → False. Se llama al ENVIAR el formulario: el enlace
-    queda consumido en el acto (no se puede reusar) y evita la carrera del doble submit.
-
-    El candado es lo que lo hace atómico DE VERDAD: sin él, dos envíos simultáneos leían los dos
-    el mismo "sin usar" y los dos pasaban, que es exactamente lo que este enlace no puede permitir."""
-    with _ALTA_LOCK:
-        tid = str(t or "")
-        d = _alta_cargar()
-        x = d.get(tid)
-        if not x or x.get("usado") or time.time() >= x.get("exp", 0):
-            return False
-        d[tid]["usado"] = True
-        _alta_guardar(d)
-        return True
-
-
 # ------------------------------------------------------------------- login HTML
 LOGIN_HTML = """<!doctype html><html lang=es><meta charset=utf-8>
 <title>ITHOS Gestor - Acceso</title>
@@ -333,13 +234,3 @@ button:hover{background:#2b7bf5}.err{color:#ff8a8a;font-size:12.5px;margin-top:1
 <button type=submit>Entrar</button>
 <div class=err>%ERR%</div></form></html>"""
 
-ALTA_INVALIDO_HTML = """<!doctype html><html lang=es><meta charset=utf-8>
-<title>ITHOS - Enlace de alta</title>
-<meta name=viewport content="width=device-width,initial-scale=1">
-<style>body{background:#0a0e14;color:#cfe8ff;font-family:system-ui,'Segoe UI',sans-serif;
-display:flex;min-height:100vh;align-items:center;justify-content:center;margin:0;text-align:center}
-.box{background:#0f1622;border:1px solid #5f1d1d;border-radius:14px;padding:34px 30px;max-width:420px}
-h1{font-size:19px;margin:0 0 10px;color:#ffd0d0}p{color:#9fb8cf;font-size:14px;line-height:1.5;margin:0}
-</style><div class=box><h1>Enlace de alta invalido o vencido</h1>
-<p>Este enlace de alta ya se uso o caduco. Pedile a <b>INTELLIHELP S.A.</b> un nuevo
-enlace temporal para dar de alta tu empresa.</p></div></html>"""

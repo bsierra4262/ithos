@@ -10,51 +10,49 @@ y una posible mitigación. El reporte recibirá respuesta a la brevedad.
 
 ## Manejo de secretos y datos
 
-- Las credenciales reales (claves de IA, tokens de los sistemas de tickets y de control de
-  acceso, claves de los canales, `ITHOS_MASTER_KEY`, `ITHOS_ADMIN_TOKEN`) residen en
-  `ITHOS/central/clientes.json` o en variables de entorno; **no se versionan**. El repositorio
-  incluye únicamente `ITHOS/central/clientes.ejemplo.json` y `.env.example` con marcadores.
-- Los secretos de cada cliente se **cifran en reposo** con AES-256-GCM, bajo una clave maestra
-  (`ITHOS_MASTER_KEY`) que se conserva por separado de los datos.
-- El repositorio no contiene datos reales de clientes: ni memorias, ni sesiones de WhatsApp,
-  ni métricas, ni bases de conocimiento, ni tokens de alta.
+- Las credenciales reales (claves de IA, tokens de GLPI, contraseña de la base de fichajes de
+  IVMS, contraseña del agente, `ITHOS_MASTER_KEY`, `ITHOS_ADMIN_TOKEN`) residen en
+  `ITHOS/central/clientes.json` o en `ITHOS/.env`; **no se versionan**. El repositorio incluye
+  únicamente `ITHOS/central/clientes.ejemplo.json` y `.env.example` con marcadores.
+- Los secretos de la configuración se **cifran en reposo** con AES-256-GCM, bajo una clave
+  maestra (`ITHOS_MASTER_KEY`) que se conserva por separado de los datos.
+- El repositorio no contiene datos reales: ni memorias, ni sesiones de WhatsApp, ni métricas,
+  ni bases de conocimiento. Los datos del Gestor viven en el volumen `ithos_data` (`ITHOS_DATA`).
 
 ## Control de acceso
 
-- El acceso al Gestor (panel de administración y APIs de gestión) exige **usuario y
-  contraseña**; la contraseña se almacena hasheada con *scrypt* y es rotable.
-- Las llamadas internas o programáticas usan una cabecera de token de administración.
-- Cada cliente accede **únicamente** a su propio dashboard. El alta de un cliente es un
-  **enlace temporal de un solo uso** que caduca tras su utilización.
-- Cookies `secure`/`httponly`, *rate-limit* en el login, HSTS en Caddy y cierre de sesión.
-
-## Aislamiento entre inquilinos
-
-Cada empresa es un inquilino aislado: memoria, configuración y secretos propios.
-La autorización de las funciones sensibles es por **identidad** (número, correo o usuario),
-nunca por el canal de origen. Un cliente no puede acceder al contexto de otro.
+- ITHOS es una herramienta interna de INTELLIHELP: **todo el panel exige el login del
+  administrador**. Sólo `/login` y `/logout` quedan abiertos; la regla es denegar por defecto,
+  así una ruta nueva nace privada aunque nadie se acuerde de protegerla.
+- La contraseña se almacena hasheada con *scrypt* y es rotable desde el panel. Las llamadas
+  internas usan una cabecera de token de administración.
+- No hay alta por enlace, ni portal de cliente, ni ninguna ruta que devuelva la configuración
+  con sus claves.
+- Cookies `secure`/`httponly`, *rate-limit* en el login (contando la IP real detrás de Caddy),
+  HSTS en Caddy y cierre de sesión.
+- El agente se autentica con `api_key` + contraseña de agente, comparadas en tiempo constante.
+- La autorización de las funciones sensibles del asistente es por **identidad** (número, correo
+  o usuario del dueño), nunca por el grupo de origen; por micrófono se exige además la clave y
+  que la voz coincida con la del dueño (ante la duda, no autoriza).
 
 ## Capas de defensa
 
 ```mermaid
 flowchart TD
     subgraph Red["Perímetro"]
-        FW["Firewall del servidor:<br/>sólo 22 / 80 / 443<br/>(8080 y 8090 nunca se publican)"]
+        FW["Firewall del servidor:<br/>sólo 22 / 80 / 443<br/>(8080, 8090 y 11434 nunca se publican)"]
         TLS["Caddy: TLS + HSTS<br/>certificado automático"]
         FW --> TLS
     end
     TLS --> Q{"¿quién entra?"}
-    Q -->|"INTELLIHELP"| AD["Panel superadmin y APIs:<br/>usuario + contraseña (scrypt),<br/>cookie secure/httponly,<br/>rate-limit y cierre de sesión"]
-    Q -->|"cliente"| DA["Sólo su dashboard<br/>(/panel/&lt;api_key&gt;)"]
-    Q -->|"empresa nueva"| AL["Alta: enlace de un solo uso,<br/>con vencimiento y revocable"]
+    Q -->|"administrador de INTELLIHELP"| AD["Todo el panel:<br/>usuario + contraseña (scrypt),<br/>cookie secure/httponly,<br/>rate-limit y cierre de sesión"]
+    Q -->|"cualquier otro"| NO["Sólo ve /login<br/>(denegar por defecto)"]
     Q -->|"agente"| AG["api_key + contraseña de agente,<br/>comparadas con hmac"]
-    AD --> DAT[("Datos por cliente:<br/>secretos cifrados AES-256-GCM<br/>clave maestra en el .env, aparte")]
-    DA --> DAT
+    AD --> DAT[("Configuración y datos:<br/>secretos cifrados AES-256-GCM<br/>clave maestra en el .env, aparte")]
     AG --> DAT
-    AL --> DAT
     DAT --> PR["Contexto propietario:<br/>sólo las identidades del dueño;<br/>por micrófono, clave + voz-id"]
 ```
 
-Cada capa se verifica en la batería de requerimientos (`tests/probar_requerimientos.py`): puertos y
-firewall documentados, login y rate-limit, altas de un solo uso, autenticación del agente por empresa y
-cifrado en reposo con clave maestra separada.
+Cada capa se verifica en las baterías (`tests/probar_requerimientos.py` y
+`tests/probar_auditoria_seguridad.py`): puertos y firewall documentados, login en todo el panel y
+rate-limit, autenticación del agente y cifrado en reposo con clave maestra separada.

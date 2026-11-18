@@ -1,12 +1,10 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Capa de IA ENCHUFABLE (compartida por central y agente).
-
-Se elige por cliente SIN tocar el central:
-  - "gemini" (default): nube de Google (texto + voz Charon).
-  - "local": 100% en la red del cliente (Ollama + TTS local) para privacidad total.
-  - "deepseek": texto por API DeepSeek (barata) + voz por Gemini.
+Capa de IA de ITHOS. La cadena la define la config (`ia`: primaria, secundario, terciario):
+  - "gemini": Google Gemini (texto, transcripción y la voz Charon). Plan gratuito.
+  - "groq":   Groq (texto y transcripción Whisper). Plan gratuito.
+  - "local":  la IA local del servidor (Ollama), sin cuota: el último respaldo.
 
 Métodos:
   chat(system, prompt, json_out)  -> texto (triage/respuestas)
@@ -29,20 +27,6 @@ for _ruidoso in ("httpx", "httpcore", "google_genai.models", "google_genai.types
     logging.getLogger(_ruidoso).setLevel(logging.WARNING)
 
 # Instrucción para que la voz sea ITHOS, literal, en el idioma del cliente.
-_ACENTOS = {
-    "es-AR": "en ESPAÑOL LATINOAMERICANO con acento neutro; NUNCA acento de España",
-    "es-ES": "en ESPAÑOL de España",
-    "en": "in ENGLISH with a neutral accent",
-    "pt-BR": "em PORTUGUÊS do Brasil",
-    "fr": "en FRANÇAIS",
-    "it": "in ITALIANO",
-}
-
-
-# La voz sale del TTS DEDICADO de Gemini: lee el texto VERBATIM, palabra por palabra.
-# El modelo 'native-audio' es CONVERSACIONAL —no genera audio por `generateContent`, así que
-# hoy devuelve 404— y además interpretaba el texto y se comía nombres. Una config vieja que lo
-# tenga guardado se corrige sola acá: es preferible una voz que suena a una que no.
 VOZ_MODELO = "gemini-2.5-flash-preview-tts"
 
 
@@ -50,13 +34,6 @@ def modelo_voz(cfg):
     """El modelo de voz del cliente, siempre que sea un TTS de verdad."""
     m = str((cfg or {}).get("modelo_voz") or "").strip()
     return m if m.endswith("-tts") or "-tts-" in m else VOZ_MODELO
-
-
-def _sys_voz(idioma="es-AR"):
-    acento = _ACENTOS.get(idioma, _ACENTOS["es-AR"])
-    return ("Eres ITHOS Pronuncia EXACTAMENTE el texto que te envía el usuario, "
-            "palabra por palabra, sin agregar ni cambiar nada. Voz grave, serena, "
-            f"elegante. Habla SIEMPRE {acento}.")
 
 
 # MULTI-IDIOMA: la transcripción usa el idioma CONFIGURADO por cada cliente (soporta todos
@@ -89,28 +66,14 @@ def codigo_idioma(idioma):
 # Estrategia (Brian): en GRATIS, el modelo con MÁS cuota/velocidad (no el más avanzado que
 # consume/limita más), compensado con PROMPTS PROFESIONALES para que rinda como uno grande.
 # En PAGO, el más capaz pero COST-EFFECTIVE (no el flagship, para no dispararle el costo).
-# Mapa por PROVEEDOR (todos los que se conectan por API):
-#   'free' = el modelo con MÁS cuota/velocidad de su tier gratis.
-#   'pago' = el más CAPAZ pero COST-EFFECTIVE (NO el flagship carísimo — sería incoherente).
-# OpenRouter da acceso por UNA API a casi todos los modelos del mundo (incluye ':free').
+# Modelo por proveedor: 'free' = el de MÁS cuota en el plan gratis; 'pago' = el más capaz pero
+# económico (sólo si la config marca la clave como paga).
 _MODELOS = {
-    "gemini":     {"free": "gemini-2.5-flash-lite",                    "pago": "gemini-2.5-flash"},
-    "groq":       {"free": "openai/gpt-oss-120b",                      "pago": "openai/gpt-oss-120b"},
-    "cerebras":   {"free": "gpt-oss-120b",                             "pago": "gpt-oss-120b"},
-    "mistral":    {"free": "mistral-small-latest",                     "pago": "mistral-medium-latest"},
-    "openrouter": {"free": "meta-llama/llama-3.3-70b-instruct:free",   "pago": "openai/gpt-4o-mini"},
-    "deepseek":   {"free": "deepseek-chat",                            "pago": "deepseek-chat"},
-    # El de la VPS de hoy, elegido midiendo (tools/elegir_ia_local.py). Un 14B no entra en 7,8 GB.
-    "local":      {"free": "qwen3:4b",                                 "pago": "qwen3:4b"},
-    "deepseek_local": {"free": "deepseek-r1",                          "pago": "deepseek-r1"},
-    # Proveedores SIN tier gratis por API -> siempre el cost-effective (no el flagship).
-    "openai":     {"free": "gpt-4o-mini",     "pago": "gpt-4o-mini"},
-    "chatgpt":    {"free": "gpt-4o-mini",     "pago": "gpt-4o-mini"},
-    "claude":     {"free": "claude-3-5-haiku-latest", "pago": "claude-sonnet-4-5"},
-    "grok":       {"free": "grok-2-latest",   "pago": "grok-2-latest"},
+    "gemini": {"free": "gemini-2.5-flash-lite", "pago": "gemini-2.5-flash"},
+    "groq":   {"free": "openai/gpt-oss-120b",   "pago": "openai/gpt-oss-120b"},
+    # El de la VPS de hoy, elegido midiendo. Un 14B no entra en 7,8 GB de RAM.
+    "local":  {"free": "qwen3:4b",              "pago": "qwen3:4b"},
 }
-# Estos no tienen cuota gratis real por API: se tratan como PAGO (modelo cost-effective).
-_SIEMPRE_PAGO = {"openai", "chatgpt", "claude", "grok"}
 
 # ESCALERA DE MODELOS por proveedor: a cuáles se corre ITHOS cuando el que está usando no sirve,
 # ANTES de cambiar de proveedor. Dos motivos reales, los dos vistos en producción:
@@ -125,8 +88,6 @@ _ESCALERA_GEMINI = ["gemini-2.5-flash-lite", "gemini-2.5-flash"]
 _ESCALERAS = {
     "gemini": _ESCALERA_GEMINI,
     "groq": ["openai/gpt-oss-120b", "openai/gpt-oss-20b", "qwen/qwen3.6-27b"],
-    "cerebras": ["gpt-oss-120b", "gemma-4-31b"],
-    "mistral": ["mistral-small-latest", "ministral-8b-latest", "ministral-3b-latest"],
 }
 
 
@@ -150,97 +111,10 @@ def es_pago(cfg):
         "pago", "paid", "premium", "pro")
 
 
-def _planes_archivo():
-    base = os.environ.get("ITHOS_DATA") or os.path.join(os.path.expanduser("~"), ".ithos")
-    return os.path.join(base, "planes_ia.json")
-
-
-def _escribir_atomico(ruta, datos):
-    """Escribe JSON sin dejarlo a medias: a un temporal y recién ahí se renombra.
-
-    Escribir directo sobre el archivo lo TRUNCA antes de empezar: si el proceso muere en el
-    medio —un deploy, un reinicio— queda cortado, y como todas las lecturas tienen un `except` que
-    devuelve vacío, el archivo roto se lee como "no hay nada" y el estado se pierde EN SILENCIO."""
-    import json as _j
-    import os as _o
-    tmp = str(ruta) + ".tmp"
-    try:
-        with open(tmp, "w", encoding="utf-8") as f:
-            _j.dump(datos, f, ensure_ascii=False)
-        _o.replace(tmp, ruta)
-    except OSError:
-        try:
-            _o.remove(tmp)
-        except OSError:
-            pass
-        raise
-
-
-def _plan_cache_leer():
-    import json
-    try:
-        return json.load(open(_planes_archivo(), encoding="utf-8"))
-    except Exception:  # noqa: BLE001
-        return {}
-
-
-def _plan_cache_guardar(d):
-    try:
-        os.makedirs(os.path.dirname(_planes_archivo()), exist_ok=True)
-        _escribir_atomico(_planes_archivo(), d)
-    except Exception:  # noqa: BLE001
-        pass
-
-
-def _probe_plan(prov, key):
-    """Detección BARATA (sin gastar tokens de chat) del tier de la API. Devuelve 'pago'/'free'.
-    OpenRouter expone is_free_tier en /auth/key. Lo no detectable barato -> 'free' (gastar lo
-    mínimo: el modelo eficiente igual funciona en free y en pago)."""
-    try:
-        if prov == "openrouter" and key:
-            import json as _j
-            import urllib.request
-            req = urllib.request.Request(
-                "https://openrouter.ai/api/v1/auth/key",
-                headers={"Authorization": f"Bearer {key}"})
-            with urllib.request.urlopen(req, timeout=10) as r:
-                d = (_j.load(r) or {}).get("data", {}) or {}
-                return "free" if d.get("is_free_tier", True) else "pago"
-    except Exception:  # noqa: BLE001
-        pass
-    return "free"
-
-
 def detectar_plan(proveedor, cfg):
-    """AUTOMÁTICO: decide si la API del proveedor es PAGA o GRATIS, sin que el cliente elija
-    nada y (donde se puede) SIN gastar tokens. Cachea 24 h por clave. Reglas:
-      · override manual (ilimitada/plan) -> pago.
-      · OpenAI/Claude/Grok/DeepSeek: no tienen tier gratis por API -> pago.
-      · si el modelo free y el pago son el MISMO -> no hace falta detectar (free).
-      · OpenRouter: se consulta /auth/key (is_free_tier) — gratis, sin tokens.
-      · el resto (Gemini/Mistral/Cerebras/local): no hay forma barata/fiable de saberlo ->
-        'free' (usamos el modelo EFICIENTE; gasta lo mínimo y funciona igual en free o pago)."""
-    import time
-    cfg = cfg or {}
-    prov = (proveedor or "").lower()
-    if es_pago(cfg):
-        return "pago"
-    if prov in _SIEMPRE_PAGO or prov == "deepseek":
-        return "pago"
-    tabla = _MODELOS.get(prov, {})
-    if tabla.get("free") == tabla.get("pago"):      # mismo modelo -> detectar no cambia nada
-        return "free"
-    key = cfg.get(f"{prov}_api_key") or cfg.get("api_key") or ""
-    import hashlib
-    ck = prov + ":" + hashlib.sha1((key or "").encode()).hexdigest()[:12]
-    cache = _plan_cache_leer()
-    ent = cache.get(ck)
-    if ent and time.time() - float(ent.get("ts", 0)) < 86400:
-        return ent.get("plan", "free")
-    plan = _probe_plan(prov, key)
-    cache[ck] = {"plan": plan, "ts": time.time()}
-    _plan_cache_guardar(cache)
-    return plan
+    """'pago' sólo si la config lo dice (`ilimitada` o `plan: pago`); si no, 'free': se usa el
+    modelo de más cuota gratis, que funciona igual con una clave paga."""
+    return "pago" if es_pago(cfg or {}) else "free"
 
 
 def elegir_modelo(cfg, proveedor, defecto):
@@ -532,284 +406,8 @@ class LocalIA(ProveedorIA):
         raise NotImplementedError("TTS local (Piper/XTTS) — a implementar por cliente")
 
 
-class DeepSeekIA(ProveedorIA):
-    def __init__(self, cfg):
-        self.api_key = cfg.get("deepseek_api_key", "")
-        self.modelo_texto = elegir_modelo(cfg, "deepseek", "deepseek-chat")
-        self._gem = GeminiIA(cfg)
-
-    def chat(self, system, prompt, json_out=True, max_tokens=None):
-        import json
-        import urllib.request
-        payload = {"model": self.modelo_texto, "messages": [
-            {"role": "system", "content": system},
-            {"role": "user", "content": prompt}]}
-        if json_out:
-            payload["temperature"] = 0.2
-            payload["response_format"] = {"type": "json_object"}
-        else:
-            payload["temperature"] = 0.1          # texto: menos confabulación de datos/versiones
-            payload["max_tokens"] = max_tokens or 1600   # detalle sin volcar de más; cap dinámico
-        req = urllib.request.Request(
-            "https://api.deepseek.com/chat/completions",
-            data=json.dumps(payload).encode(),
-            headers={"Content-Type": "application/json",
-                     "Authorization": f"Bearer {self.api_key}"})
-        with urllib.request.urlopen(req, timeout=120) as r:
-            return json.load(r)["choices"][0]["message"]["content"]
-
-    def transcribir(self, audio_bytes, mime="audio/ogg", idioma=None):
-        return self._gem.transcribir(audio_bytes, mime, idioma=idioma)
-
-    def voz_pcm(self, texto):
-        return self._gem.voz_pcm(texto)
-
-    async def voz_stream(self, texto):
-        async for c in self._gem.voz_stream(texto):
-            yield c
-
-
-class ClaudeIA(ProveedorIA):
-    """Texto por la API de Anthropic (Claude). Voz: Charon (Gemini)."""
-
-    def __init__(self, cfg):
-        self.api_key = cfg.get("anthropic_api_key") or os.environ.get("ANTHROPIC_API_KEY", "")
-        self.modelo = elegir_modelo(cfg, "claude", "claude-sonnet-4-5")
-        self._gem = GeminiIA(cfg)
-
-    def chat(self, system, prompt, json_out=True, max_tokens=None):
-        import json
-        import urllib.request
-        if json_out:
-            prompt = prompt + "\n\nRespondé SOLO con JSON válido, sin texto extra."
-        body = {"model": self.modelo, "system": system,
-                "temperature": 0.2 if json_out else 0.1,    # texto: menos confabulación
-                "max_tokens": (max_tokens or 1024) if json_out else (max_tokens or 1600),   # cap dinámico
-                "messages": [{"role": "user", "content": prompt}]}
-        req = urllib.request.Request(
-            "https://api.anthropic.com/v1/messages", data=json.dumps(body).encode(),
-            headers={"x-api-key": self.api_key, "anthropic-version": "2023-06-01",
-                     "content-type": "application/json"})
-        with urllib.request.urlopen(req, timeout=60) as r:
-            d = json.load(r)
-        return d["content"][0]["text"]
-
-    def transcribir(self, audio_bytes, mime="audio/ogg", idioma=None):
-        return self._gem.transcribir(audio_bytes, mime, idioma=idioma)
-
-    def voz_pcm(self, texto):
-        return self._gem.voz_pcm(texto)
-
-    async def voz_stream(self, texto):
-        async for c in self._gem.voz_stream(texto):
-            yield c
-
-
-class OpenAIIA(ProveedorIA):
-    """Texto por la API de OpenAI (GPT). Voz: Charon (Gemini)."""
-
-    def __init__(self, cfg):
-        self.api_key = cfg.get("openai_api_key") or os.environ.get("OPENAI_API_KEY", "")
-        self.modelo = elegir_modelo(cfg, "openai", "gpt-4o-mini")
-        self._gem = GeminiIA(cfg)
-
-    def chat(self, system, prompt, json_out=True, max_tokens=None):
-        import json
-        import urllib.request
-        payload = {"model": self.modelo, "messages": [
-            {"role": "system", "content": system}, {"role": "user", "content": prompt}]}
-        if json_out:
-            payload["temperature"] = 0.2
-            payload["response_format"] = {"type": "json_object"}
-        else:
-            payload["temperature"] = 0.1          # texto: menos confabulación de datos/versiones
-            payload["max_tokens"] = max_tokens or 1600   # detalle sin volcar de más; cap dinámico
-        req = urllib.request.Request(
-            "https://api.openai.com/v1/chat/completions", data=json.dumps(payload).encode(),
-            headers={"Content-Type": "application/json",
-                     "Authorization": f"Bearer {self.api_key}"})
-        with urllib.request.urlopen(req, timeout=60) as r:
-            return json.load(r)["choices"][0]["message"]["content"]
-
-    def transcribir(self, audio_bytes, mime="audio/ogg", idioma=None):
-        return self._gem.transcribir(audio_bytes, mime, idioma=idioma)
-
-    def voz_pcm(self, texto):
-        return self._gem.voz_pcm(texto)
-
-    async def voz_stream(self, texto):
-        async for c in self._gem.voz_stream(texto):
-            yield c
-
-
-class GrokIA(ProveedorIA):
-    """Texto por la API de xAI (Grok), compatible OpenAI. Voz: Charon (Gemini)."""
-
-    def __init__(self, cfg):
-        self.api_key = cfg.get("grok_api_key") or os.environ.get("XAI_API_KEY", "")
-        self.modelo = elegir_modelo(cfg, "grok", "grok-2-latest")
-        self._gem = GeminiIA(cfg)
-
-    def chat(self, system, prompt, json_out=True, max_tokens=None):
-        import json
-        import urllib.request
-        payload = {"model": self.modelo, "messages": [
-            {"role": "system", "content": system}, {"role": "user", "content": prompt}]}
-        if json_out:
-            payload["temperature"] = 0.2
-            payload["response_format"] = {"type": "json_object"}
-        else:
-            payload["temperature"] = 0.1          # texto: menos confabulación de datos/versiones
-            payload["max_tokens"] = max_tokens or 1600   # detalle sin volcar de más; cap dinámico
-        req = urllib.request.Request(
-            "https://api.x.ai/v1/chat/completions", data=json.dumps(payload).encode(),
-            headers={"Content-Type": "application/json",
-                     "Authorization": f"Bearer {self.api_key}"})
-        with urllib.request.urlopen(req, timeout=60) as r:
-            return json.load(r)["choices"][0]["message"]["content"]
-
-    def transcribir(self, audio_bytes, mime="audio/ogg", idioma=None):
-        return self._gem.transcribir(audio_bytes, mime, idioma=idioma)
-
-    def voz_pcm(self, texto):
-        return self._gem.voz_pcm(texto)
-
-    async def voz_stream(self, texto):
-        async for c in self._gem.voz_stream(texto):
-            yield c
-
-
-class _OpenAICompat(ProveedorIA):
-    """Base para proveedores compatibles con la API de OpenAI (mismo formato de chat).
-    La VOZ siempre es Charon (Gemini). Subclases definen URL, key y proveedor del modelo."""
-    URL = ""
-    PROV = ""
-    DEFECTO = "gpt-4o-mini"
-    _EXTRA = {}
-
-    def __init__(self, cfg):
-        self.api_key = cfg.get(f"{self.PROV}_api_key") or os.environ.get(
-            f"{self.PROV.upper()}_API_KEY", "")
-        self.modelo = elegir_modelo(cfg, self.PROV, self.DEFECTO)
-        self._escalera = escalera_de(self.PROV, self.modelo)
-        self._gem = GeminiIA(cfg)
-
-    # UA de navegador: Cerebras/otros están detrás de Cloudflare y bloquean el UA de Python.
-    _UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-           "(KHTML, like Gecko) Chrome/125.0 Safari/537.36")
-    MAX_KEY = "max_tokens"        # Cerebras usa 'max_completion_tokens' (lo pisa su subclase)
-
-    def chat(self, system, prompt, json_out=True, max_tokens=None):
-        import json
-        import urllib.error
-        import urllib.request
-        payload = {"messages": [
-            {"role": "system", "content": system}, {"role": "user", "content": prompt}]}
-        if json_out:
-            payload["temperature"] = 0.2
-            payload["response_format"] = {"type": "json_object"}
-            payload[self.MAX_KEY] = max_tokens or 2000   # el JSON del agente es corto -> no pasar el TPM
-        else:
-            # Texto conversacional: temperatura MÁS baja (menos confabulación de datos/versiones) y
-            # un tope de tokens acotado para no volcar documentación de más ante algo puntual (igual
-            # alcanza para una respuesta detallada cuando la piden).
-            payload["temperature"] = 0.1
-            payload[self.MAX_KEY] = max_tokens or 1600
-        # Si el proveedor dio de baja el modelo, se sigue con el siguiente de su escalera en vez de
-        # dejar al cliente sin IA (pasó de verdad: Groq retiró los Llama y todo devolvía 404).
-        for modelo in self._escalera:
-            req = urllib.request.Request(
-                self.URL, data=json.dumps({**payload, "model": modelo}).encode(),
-                headers={"Content-Type": "application/json", "User-Agent": self._UA,
-                         "Authorization": f"Bearer {self.api_key}", **self._EXTRA})
-            try:
-                with urllib.request.urlopen(req, timeout=60) as r:
-                    if modelo != self.modelo:
-                        log.info("%s: '%s' ya no está; sigo con '%s'.",
-                                 self.PROV, self.modelo, modelo)
-                        self.modelo = modelo          # no volver a probar el retirado
-                        self._escalera = escalera_de(self.PROV, modelo)
-                    return json.load(r)["choices"][0]["message"]["content"]
-            except urllib.error.HTTPError as e:
-                cuerpo = e.read().decode("utf-8", "replace")
-                if _modelo_retirado(cuerpo) and modelo != self._escalera[-1]:
-                    continue
-                raise RuntimeError(f"HTTP {e.code} {self.PROV}: {cuerpo[:300]}") from e
-        return ""
-
-    def transcribir(self, audio_bytes, mime="audio/ogg", idioma=None):
-        return self._gem.transcribir(audio_bytes, mime, idioma=idioma)
-
-    def voz_pcm(self, texto):
-        return self._gem.voz_pcm(texto)
-
-    async def voz_stream(self, texto):
-        async for c in self._gem.voz_stream(texto):
-            yield c
-
-
-class OpenRouterIA(_OpenAICompat):
-    """OpenRouter: UNA API para CASI TODOS los modelos del mundo (incluye modelos ':free').
-    Ideal para el plan gratis con mucha variedad. Voz: Charon (Gemini)."""
-    URL = "https://openrouter.ai/api/v1/chat/completions"
-    PROV = "openrouter"
-    DEFECTO = "meta-llama/llama-3.3-70b-instruct:free"
-    _EXTRA = {"HTTP-Referer": "https://intellihelp.tech", "X-Title": "ITHOS"}
-
-
-class MistralIA(_OpenAICompat):
-    """Mistral AI (La Plateforme). Compatible OpenAI. Voz: Charon.
-
-    Su plan gratis son 10 dólares de crédito POR MES, que se renuevan —a diferencia del de
-    Cerebras, que eran 5 una sola vez y vencían—. Igual es crédito: si se agota, la cadena sigue
-    con el proveedor siguiente.
-
-    Los modelos se piden por su alias `-latest`, que Mistral va moviendo a la versión vigente: así
-    una versión con fecha que se retire no nos deja tirados. Los nombres se verificaron contra la
-    API en vivo (`/v1/models`), NO contra la documentación: la doc listaba nombres que la API no
-    reconoce."""
-    URL = "https://api.mistral.ai/v1/chat/completions"
-    PROV = "mistral"
-    DEFECTO = "mistral-small-latest"
-
-
-class DeepSeekLocalIA(_OpenAICompat):
-    """DeepSeek corriendo 100% LOCAL (privacidad total), SIN Ollama: contra un servidor local
-    compatible con OpenAI (LM Studio, vLLM, llama.cpp --server, text-generation-webui). El
-    cliente BAJA el modelo DeepSeek (ej. deepseek-r1) en ese servidor y ITHOS le pega por HTTP
-    local. La URL es configurable ('deepseek_local_url'); por defecto LM Studio (127.0.0.1:1234).
-    Voz: Charon (Gemini). Es distinto del proveedor 'local' (Ollama) y del 'deepseek' (nube)."""
-    PROV = "deepseek_local"
-    DEFECTO = "deepseek-r1"
-    _UA = "ITHOS"        # es local: no hay Cloudflare que exija UA de navegador
-
-    def __init__(self, cfg):
-        # Servidor local OpenAI-compatible (LM Studio:1234 · vLLM:8000 · llama.cpp:8080).
-        self.URL = (cfg.get("deepseek_local_url") or os.environ.get("DEEPSEEK_LOCAL_URL")
-                    or "http://127.0.0.1:1234/v1/chat/completions")
-        super().__init__(cfg)
-        self.api_key = self.api_key or "local"   # los servers locales aceptan cualquier key
-
-
-class CerebrasIA(_OpenAICompat):
-    """Cerebras (api.cerebras.ai) — ultrarrápido, compatible OpenAI (usa 'max_completion_tokens').
-    Voz: Charon. Key en cloud.cerebras.ai.
-
-    OJO: acá lo GRATIS es un SALDO, no una cuota que se renueva. El "Free Trial" son 5 dólares de
-    crédito que además VENCEN a los 30 días; los límites que muestra la consola (2.400 pedidos y
-    1.000.000 de tokens por día) son el tope de VELOCIDAD de ese tier, no una franquicia diaria.
-    Agotado o vencido el crédito, la API corta con `402 payment_required` en TODOS los modelos —da
-    igual cuál se elija, los dos descuentan del mismo saldo— aunque la clave siga siendo válida
-    (listar modelos devuelve 200). Se destraba comprando crédito en la consola; el código no
-    necesita ningún cambio. Le pasó a la cuenta de INTELLIHELP en agosto de 2026."""
-    URL = "https://api.cerebras.ai/v1/chat/completions"
-    PROV = "cerebras"
-    DEFECTO = "gpt-oss-120b"
-    MAX_KEY = "max_completion_tokens"
-
-
 class GroqCloudIA(ProveedorIA):
-    """Texto por Groq Cloud (GRATIS, muy rápido, compatible OpenAI; corre Llama).
+    """Texto por Groq Cloud (GRATIS, muy rápido, API compatible con OpenAI; modelos gpt-oss).
     API key gratis en https://console.groq.com . Voz: Charon (Gemini)."""
 
     # UA de navegador: Groq está detrás de Cloudflare y bloquea el UA de Python.
@@ -977,7 +575,7 @@ def _es_sin_cuota(e):
 
 def es_por_dia(e):
     """True si el 429 es por el límite DIARIO (agotado hasta el reinicio): Gemini 'PerDay',
-    Groq 'requests per day (RPD)', u OpenAI 'insufficient_quota' (facturación)."""
+    Groq 'requests per day (RPD)'."""
     m = str(e).lower()
     return ("perday" in m or "per day" in m or "requestsperday" in m or "requests per day" in m
             or "rpd" in m or "insufficient_quota" in m)
@@ -1028,10 +626,7 @@ def _retry_delay(e):
 # (recuperación automática rápida sin esperar todo el cooldown). Los 429 son baratos.
 _REPROBE_PRIMARIA = 120
 
-_NOMBRE_IA = {
-    "GeminiIA": "Gemini", "GroqCloudIA": "Groq", "CerebrasIA": "Cerebras", "ClaudeIA": "Claude",
-    "OpenAIIA": "ChatGPT", "GrokIA": "Grok", "DeepSeekIA": "DeepSeek", "MistralIA": "Mistral",
-    "OpenRouterIA": "OpenRouter", "LocalIA": "IA local", "DeepSeekLocalIA": "DeepSeek local"}
+_NOMBRE_IA = {"GeminiIA": "Gemini", "GroqCloudIA": "Groq", "LocalIA": "IA local"}
 
 
 def _nombre_ia(prov):
@@ -1043,7 +638,7 @@ def _nombre_ia(prov):
 class MultiIA(ProveedorIA):
     """Multi-IA con RESPALDO EN CADENA: usa la primaria y, si se queda SIN CUOTA (429)
     o falla, salta sola a la secundaria y, si también falla, a la terciaria.
-    Identidad del cliente: Gemini primaria -> Cerebras secundaria -> Groq terciaria.
+    La cadena la dice la config (hoy: Gemini -> Groq -> IA local del servidor).
     La voz siempre es Charon (Gemini)."""
 
     def __init__(self, primaria, secundaria=None, terciaria=None, gestor=None):
@@ -1129,7 +724,7 @@ class MultiIA(ProveedorIA):
         """Avisa al canal del cliente (vía gestor -> notificar) que una IA se quedó sin cuota y que
         se pasa AUTOMÁTICAMENTE a la siguiente, para que el cliente vea cómo va todo. Dedup: una vez
         por IA cada ~5 min. Gemini y Groq ya los anuncia el GestorCuota (por cuota); acá se avisan
-        LOS DEMÁS motores de la cadena (Cerebras, Claude, etc.), así se cubre CUALQUIER IA."""
+        los demás motores de la cadena (la IA local), así se cubre CUALQUIER IA."""
         if not self.gestor or isinstance(agotada, (GeminiIA, GroqCloudIA)):
             return
         import time
@@ -1213,8 +808,8 @@ class MultiIA(ProveedorIA):
 
     def transcribir(self, audio_bytes, mime="audio/ogg", idioma=None):
         """Transcribe RÁPIDO. Motores reales DISTINTOS: Gemini (nativo) y Groq (Whisper nativo);
-        Cerebras/DeepSeek-local/etc. delegan su transcribe en Gemini -> son redundantes y solo
-        malgastan un intento contra la Gemini agotada. Probamos cada motor UNA vez."""
+        la IA local delega su transcribe en Gemini -> sería redundante y sólo malgastaría un
+        intento contra la Gemini agotada. Probamos cada motor UNA vez."""
         motores, vistos = [], set()
         for prov in self._orden():
             if not hasattr(prov, "transcribir"):
@@ -1267,24 +862,11 @@ def _single(cfg, gestor=None):
     prov = (cfg.get("proveedor") or "gemini").lower()
     if prov == "local":
         return LocalIA(cfg)
-    if prov == "deepseek":
-        return DeepSeekIA(cfg)
-    if prov == "claude":
-        return ClaudeIA(cfg)
-    if prov in ("openai", "chatgpt"):
-        return OpenAIIA(cfg)
-    if prov == "grok":
-        return GrokIA(cfg)
-    if prov == "openrouter":
-        return OpenRouterIA(cfg)
-    if prov == "cerebras":
-        return CerebrasIA(cfg)
-    if prov == "mistral":
-        return MistralIA(cfg)
-    if prov in ("deepseek_local", "deepseek-local", "deepseeklocal"):
-        return DeepSeekLocalIA(cfg)
     if prov == "groq":
         return GroqCloudIA(cfg, gestor=gestor)
+    if prov != "gemini":
+        # Un proveedor que ITHOS no tiene se dice en el log; se usa Gemini en su lugar.
+        log.error("Proveedor de IA '%s' no soportado (gemini, groq o local): uso Gemini.", prov)
     return GeminiIA(cfg, gestor=gestor)
 
 
@@ -1334,39 +916,17 @@ def crear_ia(cfg, gestor=None):
     return MultiIA(primaria, *respaldos[:2], gestor=gestor)   # hasta 3 IAs en cadena
 
 
-# ---------------------------------------------------------------------------
-# VOZ = identidad de ITHOS. Es SIEMPRE Charon (Gemini), tanto en nube como
-# para clientes con texto local. Solo un cliente que exija que NADA salga de su
-# red usaría voz local (clon de Charon con XTTS), aceptando calidad algo menor.
-# ---------------------------------------------------------------------------
+# VOZ = identidad de ITHOS: SIEMPRE Charon (Gemini), cualquiera sea la IA de texto.
 VOZ_IDENTIDAD = "Charon"
 
 
-class LocalVoz(ProveedorIA):
-    """Voz local (clon XTTS de la voz ITHOS) para privacidad total. Premium,
-    a implementar; necesita GPU ~8-12GB. No idéntica a Charon pero misma identidad."""
-
-    def __init__(self, cfg):
-        self.cfg = cfg
-
-    def voz_pcm(self, texto):
-        raise NotImplementedError("Voz local (clon XTTS de ITHOS) — a implementar")
-
-    async def voz_stream(self, texto):
-        raise NotImplementedError
-        yield b""
-
-
 def crear_texto(cfg, gestor=None):
-    """Proveedor de razonamiento (triage/respuestas). Pluggable por cliente."""
+    """Proveedor de razonamiento (triage/respuestas): la cadena de la config."""
     return crear_ia(cfg, gestor=gestor)
 
 
 def crear_voz(cfg, gestor=None):
-    """Proveedor de VOZ. SIEMPRE Charon por defecto (identidad ITHOS), aunque el
-    texto sea local. Voz local (clon) solo si el cliente lo exige explícitamente."""
+    """Proveedor de VOZ: siempre Charon (Gemini), aunque el texto vaya por otra IA."""
     cfg = dict(cfg or {})
     cfg.setdefault("voz", VOZ_IDENTIDAD)
-    if (cfg.get("proveedor") or "gemini").lower() == "local":
-        return LocalVoz(cfg)
     return GeminiIA(cfg, gestor=gestor)

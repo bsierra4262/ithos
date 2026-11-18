@@ -219,14 +219,18 @@ def _resolver_tecnico(persona, remitente, tecnicos):
     if p:
         for t in tecnicos:
             nom = _re.sub(r"\s+", " ", (t.get("nombre") or "").strip().lower())
-            if nom and (p == nom or p in nom or nom.split()[0] == p.split()[0] or (len(p) >= 3 and p in nom)):
+            # Nombre completo, una PALABRA del nombre ("laura") o su comienzo con 3 letras o más
+            # ("ale" -> Alejandro). Un pedazo de 1 o 2 letras no alcanza: "la" no es Laura.
+            pal = nom.split()
+            if nom and (p == nom or p in pal or (len(p) >= 3 and any(w.startswith(p) for w in pal))
+                        or (len(p) >= 4 and p in nom)):
                 return t
     return None
 
 
 def acciones_tickets(cli_cfg, avisar=None):
     """Acciones de ESCRITURA que el agente puede EJECUTAR sobre el sistema de tickets
-    del CLIENTE (el que sea). Por cliente. SIN alta de usuarios (a propósito).
+    de GLPI. SIN alta de usuarios (a propósito).
     `avisar(mensaje)`: callback OPCIONAL para notificar por WhatsApp cuando
     una acción CAMBIA EL ESTADO del ticket (en espera / cerrado / reabierto / pospuesto). Así el equipo
     se entera igual que con los avisos automáticos del ciclo. Best-effort (nunca rompe la acción)."""

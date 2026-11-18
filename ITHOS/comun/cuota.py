@@ -3,16 +3,17 @@
 """
 Gestor de cuota de IA (por cliente) — MULTI-MOTOR y con datos REALES.
 
-Rastrea las DOS IA gratis con su mecánica REAL (verificado en la doc oficial):
+Rastrea las IA gratis de la cadena con su mecánica REAL (verificado en la doc oficial):
 
-- PRIMARIA (Gemini free): NO expone "cuánto queda" por header, así que contamos localmente
-  los usos del día contra el límite diario (RPD; gemini-2.5-flash = 250/día). El límite DIARIO
-  se reinicia a medianoche hora del Pacífico (America/Los_Angeles).
+- Gemini (plan gratis): NO expone "cuánto queda" por header, así que contamos localmente los
+  usos del día contra `ia.limite_diario` de la config. OJO: la cuota gratis es POR MODELO y POR
+  DÍA (flash-lite tiene pocas consultas diarias); la escalera de modelos de ia.py estira el día.
+  El límite DIARIO se reinicia a medianoche hora del Pacífico (America/Los_Angeles).
     · 429 "PerMinute" = límite por MINUTO (transitorio, se recupera en segundos) -> NO es "sin
       cuota", no se avisa como agotada.
     · 429 "PerDay" = límite DIARIO agotado -> sí, hasta el reinicio.
 
-- SECUNDARIA (Groq free): devuelve en CADA respuesta los headers reales
+- Groq (plan gratis): devuelve en CADA respuesta los headers reales
   x-ratelimit-remaining-requests (cuántas quedan en el día) y x-ratelimit-reset-requests
   (cuánto falta para reiniciar, ej. "2m59.56s"). Los usamos tal cual: dato REAL.
 
@@ -44,12 +45,7 @@ ZONA_DEFAULT = "America/Argentina/Buenos_Aires"
 _DIAS = ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"]
 
 # Nombres lindos por proveedor (para reportar la cadena REAL del cliente sin inventar).
-NOMBRE_IA = {
-    "gemini": "Gemini", "groq": "Groq", "cerebras": "Cerebras", "mistral": "Mistral",
-    "openrouter": "OpenRouter", "deepseek": "DeepSeek", "local": "IA local",
-    "deepseek_local": "DeepSeek local", "openai": "OpenAI", "chatgpt": "ChatGPT",
-    "claude": "Claude", "grok": "Grok",
-}
+NOMBRE_IA = {"gemini": "Gemini", "groq": "Groq", "local": "IA local"}
 _ROLES = ["primaria", "secundaria", "terciaria", "cuaternaria"]
 
 

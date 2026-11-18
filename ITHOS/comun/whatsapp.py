@@ -130,10 +130,6 @@ class WhatsAppNoOficial:
         self.on_consulta = None      # callable(tipo, contenido, mime[, remitente]) -> str
         self.on_audio = None         # callable(audio_bytes, mime, remitente) -> None (voz-id)
         self.transcribir = None      # callable(audio_bytes, mime) -> str (para gatear audios)
-        self.ia_cfg = None           # notas de voz de WhatsApp/canales = edge-tts (rápido, gratis).
-        #                              La voz de MARCA (Charon) es para los PARLANTES (agente/voz.py),
-        #                              no para las notas que se ENVÍAN por WhatsApp.
-        self.tts = None              # callable(texto) -> wav_bytes (nota de voz)
         self.on_sesion_cerrada = None  # callable() -> None: la sesión de WhatsApp se cerró/caducó
         #                                (avisar por los OTROS canales; el panel muestra "re-vincular")
         self._desde = time.time()    # solo responder mensajes POSTERIORES a esto
@@ -328,12 +324,10 @@ class WhatsAppNoOficial:
                 # (no bloquea el handler). El audio llega apenas está listo, sin trabar nada.
                 def _mandar_audio(_resp=resp):
                     try:
-                        voz = self.tts(_resp) if self.tts else None   # override propio (si lo asignaron)
-                        if not voz:
-                            # MP3 nativo de edge: magic lo detecta 'audio/mpeg' y ffmpeg saca duración
-                            # -> send_audio arma un AUDIO REPRODUCIBLE inline (con play), no un archivo.
-                            from comun import voz_tts
-                            voz = voz_tts.audio(_resp, formato="mp3")
+                        # MP3 nativo de edge: magic lo detecta 'audio/mpeg' y ffmpeg saca duración
+                        # -> send_audio arma un AUDIO REPRODUCIBLE inline (con play), no un archivo.
+                        from comun import voz_tts
+                        voz = voz_tts.audio(_resp, formato="mp3")
                         if not voz:
                             log.warning("WhatsApp audio: no se pudo GENERAR (edge devolvió vacío).")
                             if self.respuesta == "audio":
@@ -543,16 +537,13 @@ class WhatsAppNoOficial:
 
         def _run(_t=texto):
             try:
-                voz = self.tts(_t) if self.tts else None
+                from comun import voz_tts
+                voz = voz_tts.audio(_t, formato="mp3")
                 if not voz:
-                    from comun import voz_tts
-                    voz = voz_tts.audio(_t, formato="mp3")
-                if not voz:
-                    # Se avisa UNA vez por corrida, no en cada mensaje. Hoy el respaldo gratuito
-                    # (edge-tts) está roto del lado de Microsoft —el servicio rechaza el handshake
-                    # con 403, y la última versión publicada de la librería tampoco entra—, así que
-                    # esto se repetiría en cada aviso y taparía lo que sí hay que mirar. El cliente
-                    # no se queda sin el mensaje: cae a texto.
+                    # Se avisa UNA vez por corrida, no en cada mensaje: si edge-tts deja de andar
+                    # (ya pasó: Microsoft rechazó el handshake con 403 hasta la versión 7.3.1 de la
+                    # librería) esto se repetiría en cada aviso y taparía lo que sí hay que mirar.
+                    # El mensaje no se pierde: cae a texto.
                     global _AVISO_VOZ_DADO
                     if not _AVISO_VOZ_DADO:
                         _AVISO_VOZ_DADO = True
@@ -583,23 +574,26 @@ class WhatsAppNoOficial:
                 log.warning("WhatsApp nota de voz: %s", e)
         threading.Thread(target=_run, name="wa-voz-aviso", daemon=True).start()
 
-    def enviar_documento(self, nombre, datos, mime="application/pdf", caption=""):
-        """Manda un archivo (PDF/CSV) al grupo como documento."""
-        if not self._listo.is_set() or self.grupo_jid is None:
+    def enviar_documento(self, nombre, datos, mime="application/pdf", caption="", tipo=None):
+        """Manda un archivo (PDF/CSV) como documento a los grupos que corresponden según el TIPO,
+        igual que `enviar`: el PDF del reporte va al MISMO grupo que su resumen. (Antes iba
+        siempre al primer grupo de la lista, que era el de consultas: el que no recibe avisos.)"""
+        if not self._listo.is_set():
             return False
-        try:
-            self.client.send_document(self.grupo_jid, datos, caption=caption or None,
-                                      filename=nombre, mimetype=mime, title=nombre)
-            return True
-        except Exception as e:  # noqa: BLE001
-            log.warning("WhatsApp documento: %s", e)
-            return False
+        destinos = self._destinos(tipo) if tipo else [g for g in self.grupos if g.get("jid")]
+        ok = False
+        for g in destinos:
+            try:
+                self.client.send_document(g["jid"], datos, caption=caption or None,
+                                          filename=nombre, mimetype=mime, title=nombre)
+                ok = True
+            except Exception as e:  # noqa: BLE001
+                log.warning("WhatsApp documento (%s): %s", g.get("grupo"), e)
+        return ok
 
 
 def crear_whatsapp(cfg):
-    """El canal de WhatsApp del cliente. Hoy sólo el NO OFICIAL (neonize, con el número propio y
-    los grupos por ámbito). Si algún día hace falta la Cloud API de Meta, se agrega acá otra clase
-    con la misma interfaz (`enviar`, `enviar_mencion`, `enviar_documento`)."""
+    """El WhatsApp de ITHOS: el número propio (neonize), con los grupos por ámbito."""
     if not cfg or not cfg.get("enabled"):
         return None
     return WhatsAppNoOficial(cfg)

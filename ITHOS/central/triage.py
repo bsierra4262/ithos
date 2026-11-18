@@ -45,7 +45,7 @@ NIVEL_POR_PRIORIDAD = {"Baja": "LEVE", "Media": "LEVE", "Alta": "GRAVE",
 # El equipo, los textos y el ciclo viven en sus propios módulos. Se re-exportan acá porque `triage`
 # es la puerta de entrada de todo lo de tickets del Gestor, y para no romper a quien ya lo importa.
 from equipo import (RESPONSABLES, NOMBRES, ITHOS_ID, TECNICOS,            # noqa: E402,F401
-                    MESA, MESA_PENDIENTE, menos_cargado, cuentas_internas,
+                    MESA, MESA_PENDIENTE, menos_cargado, cuentas_internas, escalamiento,
                     TECNICOS_HUMANOS, ids_humanos, ids_tecnicos,
                     _asignados_humanos, _nombres_por_id)
 from textos_ticket import (_MARCA_ESPERA_CLIENTE, _MARCA_SIN_ATENDER,     # noqa: E402,F401
@@ -108,6 +108,11 @@ class Triage:
         return int((self.cfg_glpi or {}).get("entity_id", 0) or 0)
 
     def __init__(self, cfg_glpi, cfg_ia, gestor=None):
+        # Sin la cuenta de ITHOS el triage no sabe qué tickets ya trabajó: re-triagearía todos en
+        # cada vuelta y pisaría a los técnicos. Mejor no arrancar, y decirlo.
+        if not ITHOS_ID:
+            raise RuntimeError("falta integrador_glpi.ithos_user_id en la config: sin la cuenta de "
+                               "ITHOS en GLPI no se puede triagear")
         self.cfg_glpi = cfg_glpi
         # SESIÓN DEL POOL, reutilizada. Antes era un cliente propio, y como cada método hace
         # `abrir()` … `cerrar()`, cada acción sobre un ticket costaba CUATRO viajes a GLPI:
@@ -117,8 +122,7 @@ class Triage:
         # UN viaje por operación. Si la sesión expira, `request()` la reabre sola.
         self.cli = G.sesion(cfg_glpi, cfg_glpi["glpi_ithos_token"])
         # Token de LECTURA para resolver el nombre del SOLICITANTE (el de ithos no puede leer /User).
-        self._tok_lect = (cfg_glpi.get("glpi_superadmin_token") or cfg_glpi.get("glpi_user_token")
-                          or cfg_glpi["glpi_ithos_token"])
+        self._tok_lect = cfg_glpi.get("glpi_user_token") or cfg_glpi["glpi_ithos_token"]
         self._nombres = {}          # caché uid -> nombre de pila del solicitante
         self.ia = IA.crear_texto(cfg_ia, gestor=gestor)
 
@@ -229,12 +233,14 @@ class Triage:
         if resp_login == MESA_PENDIENTE:
             resp_login = menos_cargado(self.cfg_glpi)
             log.info("Triage #%s: lo trabaja la mesa -> %s (el de menos carga).", tid, resp_login)
+        # Desde acá el responsable es la PERSONA: la nota interna dice su nombre, no "mesa".
+        a["responsable"] = resp_login
         from comun import tickets as TK
         _ficha = TK.tecnico_por_id(self.cfg_glpi, resp_login) or {}
         try:
             resp_id = int(_ficha.get("glpi_id"))
         except (TypeError, ValueError):
-            resp_id = RESPONSABLES.get(resp_login, RESPONSABLES["bsierra"])
+            resp_id = RESPONSABLES.get(resp_login) or RESPONSABLES.get(escalamiento())
         # ACOMPAÑAN: mientras alguien se forma, trabaja el MISMO ticket que su responsable, al mismo
         # tiempo y con el mismo criterio. Se declara en la config (`responsable` en su ficha).
         acompanan = [u for u in TK.acompanan_a(self.cfg_glpi, resp_login) if u != resp_id]
@@ -570,18 +576,6 @@ class Triage:
             return True
         except Exception as e:  # noqa: BLE001
             log.warning("Triage: no pude marcar resuelto #%s: %s", tid, e)
-            return False
-        finally:
-            self.cli.cerrar()
-
-    def recordar(self, tid, texto):
-        try:
-            self.cli.abrir()
-            self.cli.request("/ITILFollowup", "POST",
-                             {"input": {"itemtype": "Ticket", "items_id": tid, "content": texto}})
-            self.cli.request(f"/Ticket/{tid}", "PUT", {"input": {"status": 4}})
-            return True
-        except Exception:  # noqa: BLE001
             return False
         finally:
             self.cli.cerrar()

@@ -1,14 +1,29 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-QUIÉN es el equipo de soporte de cada cliente.
+QUIÉN es el equipo de soporte y a quién le entra cada ticket. TODO sale de la CONFIGURACIÓN
+(clientes.json), nunca del código:
 
-Separar esto importa: es lo que distingue un comentario NUESTRO de una respuesta del CLIENTE. Un
-técnico que no esté acá se lee como si fuera el cliente —su resolución no cierra el ticket y el
-ciclo cree que el cliente contestó—, así que sumar a alguien al equipo es cargarlo en la config
-(`tecnicos`), nunca tocar código.
+  · `tecnicos`: las personas (glpi_id, glpi_login, nombre, teléfonos, responsable).
+  · `integrador_glpi.ithos_user_id`: la cuenta de ITHOS en GLPI.
+  · `reparto`: qué login cubre cada ROL del triage —
+        {"mesa": ["login1", "login2"], "instalaciones": "login3", "escalamiento": "login4"}
+
+Separar el equipo importa: es lo que distingue un comentario NUESTRO de una respuesta del
+CLIENTE. Un técnico que no esté en la config se lee como si fuera el cliente —su resolución no
+cierra el ticket y el ciclo cree que el cliente contestó—, así que sumar a alguien es cargarlo
+en la config. Se lee al importar (el Gestor se reinicia cuando la config cambia).
+
+A QUIÉN LE ENTRA CADA TICKET (decisión de Brian, 17-nov-2026). Tres roles, y el orden importa:
+  1. INSTALACIONES — equipamiento caído en una sede. Hay que IR al lugar: gana sobre las otras.
+  2. ESCALAMIENTO — lo que sale Alta o Urgente (un sector, una sede o varias sin poder fichar).
+  3. MESA — todo lo demás (Baja y Media), repartido POR CARGA: cada ticket va al que tenga
+     menos tickets abiertos en ese momento. Turnarse a ciegas no sirve: dos tickets seguidos
+     no cuestan lo mismo y al que le toca el complicado se le acumulan los que vienen atrás.
 """
 
+import json
+import logging
 import os
 import sys
 
@@ -17,45 +32,98 @@ for _p in (os.path.join(_AQUI, ".."), _AQUI):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
-# Equipo por DEFECTO (SRT/ITH), sólo como respaldo si el cliente todavía no cargó el suyo.
-RESPONSABLES = {"bsierra": 7, "jayala": 8, "lzaltron": 30, "lcampos": 31}
-NOMBRES = {"bsierra": "Brian Sierra", "jayala": "Alejandro Ayala",
-           "lzaltron": "Laura Zaltron", "lcampos": "Lisandro Campos"}
-ITHOS_ID = 28
+log = logging.getLogger("equipo")
+
+# Se llenan EN EL LUGAR desde la config (`configurar`): quien los importó ve siempre lo vigente.
+RESPONSABLES = {}          # login -> id de GLPI
+NOMBRES = {}               # login -> nombre
+TECNICOS = set()           # ids de soporte: las personas + ITHOS
+TECNICOS_HUMANOS = set()   # las personas (sus comentarios pueden resolver un ticket)
+MESA = []                  # logins del rol "mesa"
+ROLES = {}                 # rol -> login ("instalaciones", "escalamiento")
+ITHOS_ID = None            # cuenta de ITHOS en GLPI
+
 # CUENTAS INTERNAS de la mesa de ayuda: no son personas del cliente ni del equipo, y no tienen que
 # figurar en ningún ticket. Hoy es una: `admin` (id 2), la cuenta de súper administrador que GLPI
-# crea al instalarse. Ve todos los tickets igual, así que agregarla no le suma nada a nadie.
-# Pasó de verdad: los clientes la elegían como observador en el formulario y ITHOS, que pasa a
-# solicitantes a los observadores del cliente para que puedan responder, la tomaba por uno de
-# ellos: quedaba como SOLICITANTE en 17 tickets. Se puede ampliar por cliente (`cuentas_internas`).
+# crea al instalarse. Pasó de verdad: los clientes la elegían como observador y ITHOS, que pasa a
+# solicitantes a los observadores del cliente, la dejaba como SOLICITANTE. Se amplía por config
+# (`cuentas_internas`).
 CUENTAS_INTERNAS = {2}
-TECNICOS = {28, 7, 8, 30, 31}
-TECNICOS_HUMANOS = {7, 8, 30, 31}  # técnicos personas (sin ITHOS): sus comentarios pueden resolver
 
-# ---------------------------------------------------------------------------------------------
-# A QUIÉN LE ENTRA CADA TICKET (decisión de Brian, 17-nov-2026).
-#
-# Los chicos ya tienen autonomía para resolver, así que el día a día es de ellos y no pasa por
-# Brian. Son tres destinos y el orden importa:
-#
-#   1. INSTALACIONES — equipamiento caído en una sede. Hay que IR al lugar, así que lo toma
-#      Alejandro, pase lo que pase con la prioridad. Gana sobre las otras dos reglas.
-#   2. ESCALAMIENTO — lo que sale Alta o Urgente, o sea un sector, una sede o varias sedes sin
-#      poder fichar. Eso lo mira Brian.
-#   3. MESA — todo lo demás (Baja y Media): lo trabajan Laura y Lisandro.
-#
-# La mesa se reparte POR CARGA: cada ticket va al que tenga menos tickets abiertos en ese
-# momento. Turnarse a ciegas no sirve, porque dos tickets seguidos no cuestan lo mismo y al que
-# le toca el complicado se le acumulan los que vienen atrás.
-MESA = ("lzaltron", "lcampos")     # el día a día, repartido por carga
-INSTALACIONES = "jayala"           # hay que ir al lugar
-ESCALAMIENTO = "bsierra"           # Alta y Urgente
 # Valor que usa el clasificador cuando el ticket es para la mesa: la PERSONA la elige el triage,
 # que es el único que puede preguntarle a GLPI cuántos tickets abiertos tiene cada uno.
 MESA_PENDIENTE = "mesa"
 
 
-def menos_cargado(cfg_glpi, logins=MESA):
+def configurar(cfg):
+    """Carga el equipo desde la config (`tecnicos`, `reparto`, `integrador_glpi.ithos_user_id`)."""
+    global ITHOS_ID
+    cfg = cfg or {}
+    gl = cfg.get("integrador_glpi") or {}
+    RESPONSABLES.clear()
+    NOMBRES.clear()
+    TECNICOS_HUMANOS.clear()
+    for t in (cfg.get("tecnicos") or gl.get("tecnicos") or []):
+        if not isinstance(t, dict):
+            continue
+        try:
+            uid = int(t.get("glpi_id") or t.get("id"))
+        except (TypeError, ValueError):
+            continue
+        login = str(t.get("glpi_login") or t.get("login") or "").strip().lower()
+        if login:
+            RESPONSABLES[login] = uid
+            NOMBRES[login] = t.get("nombre") or login
+        TECNICOS_HUMANOS.add(uid)
+    try:
+        ITHOS_ID = int(gl.get("ithos_user_id") or cfg.get("ithos_user_id"))
+    except (TypeError, ValueError):
+        ITHOS_ID = None
+    TECNICOS.clear()
+    TECNICOS.update(TECNICOS_HUMANOS | ({ITHOS_ID} if ITHOS_ID else set()))
+    reparto = cfg.get("reparto") or gl.get("reparto") or {}
+    MESA[:] = [str(x).strip().lower() for x in (reparto.get("mesa") or []) if str(x).strip()]
+    ROLES.clear()
+    for rol in ("instalaciones", "escalamiento"):
+        if reparto.get(rol):
+            ROLES[rol] = str(reparto[rol]).strip().lower()
+    if cfg.get("tecnicos") is not None or gl:
+        faltan = [x for x, ok in (("tecnicos", TECNICOS_HUMANOS),
+                                  ("integrador_glpi.ithos_user_id", ITHOS_ID),
+                                  ("reparto.mesa", MESA)) if not ok]
+        if faltan:
+            log.error("Equipo incompleto en la config: falta %s.", ", ".join(faltan))
+
+
+def _cargar_de_config():
+    """El equipo de la empresa de clientes.json (el mismo archivo que lee el Gestor). Los datos
+    del equipo no son secretos: no hace falta descifrar nada."""
+    ruta = os.environ.get("ITHOS_CLIENTES") or os.path.join(_AQUI, "clientes.json")
+    try:
+        with open(ruta, encoding="utf-8") as f:
+            clientes = json.load(f).get("clientes") or []
+    except (OSError, ValueError):
+        return
+    for c in clientes:
+        if c.get("activo", True) and (c.get("tecnicos") or (c.get("integrador_glpi") or {}).get("tecnicos")):
+            configurar(c)
+            return
+
+
+def instalaciones():
+    """Login de quien cubre INSTALACIONES (hay que ir al lugar)."""
+    return ROLES.get("instalaciones", "")
+
+
+def escalamiento():
+    """Login de quien cubre ESCALAMIENTO (Alta y Urgente)."""
+    return ROLES.get("escalamiento", "")
+
+
+_cargar_de_config()
+
+
+def menos_cargado(cfg_glpi, logins=None):
     """De `logins`, el que tenga MENOS tickets abiertos ahora. Ante un empate, el primero.
 
     Se le pregunta a GLPI, que es la única fuente que sabe la verdad: un contador nuestro se
@@ -64,6 +132,9 @@ def menos_cargado(cfg_glpi, logins=MESA):
     SI GLPI NO CONTESTA no se rompe nada: devuelve el primero de la lista. El ticket entra igual
     y con responsable; lo peor que pasa es que el reparto quede desparejo esa vez. Dejar un
     ticket sin asignar por no poder contar sería mucho peor."""
+    logins = list(logins or MESA)
+    if not logins:
+        return escalamiento()
     from comun import glpi as G
     from comun import tickets as TK
     cargas = []
@@ -95,9 +166,8 @@ def menos_cargado(cfg_glpi, logins=MESA):
 
 
 def ids_humanos(cfg):
-    """Ids de los TÉCNICOS PERSONAS del cliente (sin ITHOS), leídos de su config `tecnicos`. Sus
-    comentarios resuelven un ticket y son los que reciben las @menciones. Si el cliente todavía no
-    tiene el equipo cargado, se usa el de SRT/ITH por defecto."""
+    """Ids de los TÉCNICOS PERSONAS (sin ITHOS), leídos de la config `tecnicos`. Sus comentarios
+    resuelven un ticket y son los que reciben las @menciones."""
     from comun import tickets as TK
     ids = set()
     for t in TK.tecnicos(cfg):
@@ -136,7 +206,6 @@ def _asignados_humanos(cliente, tid):
 
 
 def _nombres_por_id(ids):
-    """Nombres de los técnicos por su user-id de GLPI, como respaldo si el cliente no configuró
-    el bloque 'tecnicos' (mapeo histórico de SRT/ITH)."""
+    """Nombres de los técnicos por su user-id de GLPI (de la config cargada)."""
     por_id = {uid: NOMBRES.get(login, login) for login, uid in RESPONSABLES.items()}
     return [por_id[i] for i in ids if i in por_id]

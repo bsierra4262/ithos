@@ -119,7 +119,7 @@ def subir_archivos(cliente, archivos):
 
 
 def importar_outline(cliente, base_url, api_token, limit=None, excluir=None):
-    """Trae la wiki de OUTLINE a la KB del cliente (botón del panel/portal). Es la misma
+    """Trae la wiki de OUTLINE a la KB (botón del panel). Es la misma
     sincronización que hace sola la tarea de la wiki (central/wiki.py): todas las páginas, sin las
     colecciones sensibles y sacando lo que se borró. Devuelve (traídos, total)."""
     import wiki
@@ -183,11 +183,13 @@ def _auto_guardar(cliente, st):
 async def vigilar(conf, stop=None):
     """Regenera la BASE DE CONOCIMIENTO SOLA, una vez por SEMANA (después de la semana laboral), sin
     que el cliente tenga que apretar ningún botón. Aprende de los tickets RESUELTOS (la wiki de
-    Outline la sincroniza aparte central/wiki.py). ON por defecto (se apaga con conf['kb']['auto']=false). Por
-    cliente, aislado, en el central. Config: conf['kb'] = {auto, dia_semana (0=lun..6=dom), hora}."""
+    Outline la sincroniza aparte central/wiki.py). ON por defecto (se apaga con conf['kb']['auto']=false).
+    Config opcional: conf['kb'] = {auto, dia_semana (0=lun..6=dom), hora}. La hora es la de la ZONA
+    de la empresa: el servidor corre en UTC, y 'sábado 03:00' en UTC era el viernes 00:00 en
+    Argentina, en plena semana laboral."""
     import asyncio
     import logging
-    from datetime import datetime
+    from comun.horario import ahora_zona
     log = logging.getLogger("kb-auto")
     kb = conf.get("kb") or {}
     if kb.get("auto") is False:
@@ -209,7 +211,7 @@ async def vigilar(conf, stop=None):
              cliente, dia, hh, mm)
     while stop is None or not stop.is_set():
         try:
-            ahora = datetime.now()
+            ahora = ahora_zona(conf)
             if ahora.weekday() == dia and ahora.hour == hh and ahora.minute == mm:
                 clave = "S" + ahora.strftime("%Y-%W")     # una vez por semana ISO
                 st = _auto_cargar(cliente)

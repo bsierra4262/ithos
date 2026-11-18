@@ -1,15 +1,15 @@
-# Instalar el AGENTE ITHOS en la PC del cliente (ejecutable + servicio)
+# Instalar el AGENTE ITHOS en la PC de la oficina (ejecutable + arranque)
 
-> **Modelo Gestor + Agente.** El **GESTOR** (el cerebro) lo hosteamos **nosotros (INTELLIHELP)**; el cliente
-> **nunca** accede al gestor. En la PC del cliente va solo el **AGENTE**: una app liviana que se conecta al gestor,
-> ejecuta la voz y lee el control de acceso local. Este documento es para instalar ESE agente. Ver la arquitectura
-> completa en [ARQUITECTURA_GESTOR_AGENTE.md](ARQUITECTURA_GESTOR_AGENTE.md).
+> **Modelo Gestor + Agente.** El **GESTOR** (el cerebro) corre en el VPS de INTELLIHELP. En la PC de la oficina
+> va sólo el **AGENTE**: una app liviana de Windows que se conecta al Gestor, habla por los parlantes, escucha el
+> micrófono y lee el control de acceso (IVMS). Este documento es para construir e instalar ESE agente. La
+> arquitectura completa está en [ARQUITECTURA_GESTOR_AGENTE.md](ARQUITECTURA_GESTOR_AGENTE.md).
 
-## Quién ve qué (modelo de acceso)
-- **Gestor / panel superadmin (`/`)** → **SOLO INTELLIHELP** (la empresa propietaria). El cliente NO entra acá.
-- **Dashboard del cliente (`/panel/<api_key>`)** → el cliente ve su SLA, métricas y config. Es lo único suyo.
-- **Portal de alta (`/alta`)** → **enlace TEMPORAL de un solo uso** que le damos al cliente para cargarse la
-  primera vez; no es público ni permanente (ver §Seguridad del gestor abajo).
+## Quién ve qué
+- **Panel del Gestor (`https://DOMINIO/`)** → sólo el administrador de INTELLIHELP, con login. Todo el panel lo
+  exige; no hay portal de cliente ni alta por enlace.
+- **Agente** → se conecta con una **api_key + contraseña de agente** que salen de la configuración del Gestor
+  (`clientes.json`). Hay **un solo agente**.
 
 ---
 
@@ -17,143 +17,122 @@
 
 ```mermaid
 flowchart LR
-    B["CONSTRUIR (una vez, en tu máquina)<br/>compilador\build\construir_agente.bat<br/>sube versión → icono → PyInstaller →<br/>firma → Inno → firma"] --> I["INSTALAR en la PC del cliente<br/>ITHOS-Agente-Setup.exe<br/>(instala el certificado como confiable)"]
+    B["CONSTRUIR (una vez, en una PC de desarrollo)<br/>compilador\build\construir_agente.bat<br/>sube versión → icono → PyInstaller →<br/>firma → Inno → firma"] --> I["INSTALAR en la PC de la oficina<br/>ITHOS-Agente-Setup.exe<br/>(instala el certificado como confiable)"]
     I --> C["CONFIGURAR en la app<br/>URL del Gestor + api_key +<br/>contraseña de agente"]
-    C --> O["OPERAR 24/7<br/>arranca al iniciar sesión · singleton por mutex<br/>reconecta con backoff + jitter<br/>habla aunque la sesión esté bloqueada o tras RDP"]
+    C --> O["OPERAR 24/7<br/>tarea 'ITHOS Agente' con --run al iniciar sesión<br/>singleton por mutex · reconecta con backoff + jitter<br/>habla aunque la sesión esté bloqueada o tras RDP"]
     O --> A{"¿versión nueva?"}
-    A -->|"hoy"| N["Se ejecuta el instalador nuevo:<br/>detecta la versión vieja, cierra el agente<br/>y actualiza conservando config y caché"]
-    A -->|"Fase 2"| AU["Auto-update por red<br/>(avisa y el usuario decide)"]
-    O --> M["MOVER a otra PC<br/>desinstalar acá (borra sus datos, no toca<br/>los del cliente) e instalar allá con la<br/>misma api_key y contraseña"]
+    A -->|"sí"| N["Se ejecuta el instalador nuevo:<br/>detecta la versión vieja, cierra el agente<br/>y actualiza conservando config y caché"]
+    O --> M["MOVER a otra PC<br/>desinstalar acá (borra sus datos, no toca<br/>GLPI ni las fichadas) e instalar allá con la<br/>misma api_key y contraseña"]
 ```
 
-> **Un solo agente por empresa.** Si querés pasarlo a otra PC, desinstalá el anterior: dos agentes con la misma
-> `api_key` compiten por la misma conexión en el Gestor y los anuncios se vuelven impredecibles.
+> **Un solo agente.** Si se pasa a otra PC, hay que desinstalar el anterior: dos agentes con la misma `api_key`
+> compiten por la misma conexión en el Gestor y los anuncios se vuelven impredecibles.
 
-## 1. Construir el INSTALADOR (una vez, en tu máquina)
-Un solo comando arma **todo** (icono → app `.exe` → firma → instalador → firma), y deja **SOLO el instalador** en
-`compilador\dist\` (limpia lo viejo):
+## 1. Construir el INSTALADOR (una vez, en una PC de desarrollo)
+Un solo comando arma **todo** (icono → app `.exe` → firma → instalador → firma) y deja **sólo el instalador** en
+`compilador\dist\` (limpia lo viejo). Requiere Python 3.11+ e Inno Setup:
 ```bat
-pip install pyinstaller pywebview pillow
-pip install -r requirements.txt
+pip install pyinstaller
+pip install -r ITHOS\agente\requirements.txt
 compilador\build\construir_agente.bat
 ```
-Queda **`compilador\dist\ITHOS-Agente-Setup.exe`** (el `.exe` va adentro; no hay un ejecutable suelto). El agente es una
-**APLICACIÓN con interfaz gráfica ITHOS** (no una consola): al abrirla ves el panel con el reactor, el estado y los
-botones para **configurar** (api_key + contraseña), **arrancar/detener** y **desinstalar/mover**. Multiplataforma
-(webview nativo de cada SO; en un server Linux sin pantalla cae a un menú de consola). El servicio 24/7 corre
-**headless** con `ithos-agente.exe --run` (lo pone la tarea del instalador).
+Queda **`compilador\dist\ITHOS-Agente-Setup.exe`** (el `.exe` va adentro; no hay un ejecutable suelto). La receta
+está en `compilador\build`: `agente.spec` (PyInstaller), `ithos-agente.iss` (Inno Setup), `firmar.ps1` (firma) y
+`bump_version.py` (sube la versión y la sincroniza con el instalador).
 
-El instalador: lo instala en `C:\Program Files\ITHOS`, crea accesos en el menú Inicio (**ITHOS Agente** + **Desinstalar**),
-opción de **arranque al iniciar sesión** (portero) y, al terminar, abre la app para configurarla. La config + el
-caché por cliente viven en **`%LOCALAPPDATA%\ITHOS`** (persistente y escribible; en un `.exe` onefile NO puede ir en
-la carpeta del programa). El **desinstalador** borra **todo lo del agente** (carpeta, datos, tarea, registro) sin
-dejar rastro — y **NO toca** el sistema de tickets del cliente, la base de fichadas ni el trabajo hecho.
+El `.exe` **no lleva neonize** (WhatsApp corre en el Gestor, no en la PC) ni las librerías del lado del servidor
+(FastAPI, reportes en PDF): el spec las excluye. Lleva lo nativo que el agente sí usa —onnxruntime, portaudio,
+Vosk, pyodbc—; si al correr el `.exe` faltara alguna librería nativa, se agrega en `datas/binaries` del spec.
 
-### Firma de código GRATIS (para que no salga "editor desconocido")
-No hay cert gratis de CA pública para software propietario. Para tu **flota** (instalás en PCs conocidas) la vía
-oficial de Microsoft, gratis, es un **certificado self-signed de INTELLIHELP** + confiarlo en la PC del cliente:
+El agente es una **aplicación con interfaz gráfica ITHOS** (pywebview, no una consola) con ícono en la bandeja
+(pystray): al abrirla se ve el estado y los botones para **configurar** (api_key + contraseña),
+**arrancar/detener** y **desinstalar/mover**. El servicio 24/7 corre **headless** con `ithos-agente.exe --run`
+(lo deja así la tarea del instalador).
+
+El instalador lo pone en `C:\Program Files\ITHOS`, crea accesos en el menú Inicio (**ITHOS Agente** +
+**Desinstalar**), ofrece el **arranque al iniciar sesión** (tarea programada «ITHOS Agente») y, al terminar, abre la
+app para configurarla. La configuración y la caché de voz viven en **`%LOCALAPPDATA%\ITHOS`** (persistente y
+escribible; en un `.exe` onefile no puede ir en la carpeta del programa). El **desinstalador** borra **todo lo del
+agente** (carpeta, datos, tareas, certificado) sin dejar rastro, y **no toca** GLPI, la base de fichadas ni el
+trabajo hecho.
+
+### Firma de código (para que no salga "editor desconocido")
+El agente se firma con un **certificado propio de INTELLIHELP** (self-signed, con timestamp). Lo hace solo
+`construir_agente.bat`, o a mano:
 ```bat
-:: firmar (lo hace solo compilador\build\construir_agente.bat; o a mano):
-powershell -ExecutionPolicy Bypass -File build\firmar.ps1
-:: -> crea el cert (1 vez), firma el .exe y el instalador con timestamp, y deja build\ithos-publisher.cer
+powershell -ExecutionPolicy Bypass -File compilador\build\firmar.ps1
+:: -> crea el cert (1 vez), firma el .exe y el instalador con timestamp, y deja compilador\build\ithos-publisher.cer
 ```
-**El propio instalador confía el certificado solo** (lleva el `ithos-publisher.cer` adentro y lo instala en Root +
-Editores de confianza al instalar, como admin): así el **agente instalado** queda firmado y **de confianza en esa
-PC sin que el cliente ejecute ningún comando**. Al desinstalar, lo saca (sin rastro). Para una **flota grande** por
-**GPO**, o si instalás sin el `.cer`, está `build\confiar_en_cliente.ps1` como alternativa.
-> **Ojo (honesto):** en una PC **nueva**, el **instalador en sí** todavía puede mostrar una vez el aviso de
-> SmartScreen ("editor desconocido") — quien instala hace clic en *Más información → Ejecutar de todas formas*. Para
-> que **ni eso** aparezca en **cualquier** PC hace falta un cert de **CA pública (pago)**: **Azure Trusted Signing
-> ~US$10/mes** o **OV/EV** (ver FALTANTES.md). Migrar a **Nuitka** reduce falsos positivos de antivirus.
+**El propio instalador confía el certificado** (lleva el `ithos-publisher.cer` adentro y lo instala en Raíz de
+confianza + Editores de confianza al instalar, como administrador): el agente instalado queda firmado y de
+confianza **sin que nadie ejecute ningún comando**. Al desinstalar, lo saca.
+> En una PC **nueva**, el **instalador en sí** puede mostrar una vez el aviso de SmartScreen («editor
+> desconocido»): quien instala hace clic en *Más información → Ejecutar de todas formas*. Para una PC de la oficina
+> alcanza; no se paga un certificado de CA pública.
 
-## 2. Configurar el agente (menú del ejecutable) — el mismo `.exe` para TODAS las empresas
-El **mismo ejecutable** sirve para cualquier cliente: se identifica por empresa con **api_key + contraseña de
-agente**, que **asigna el GESTOR** en el alta (la contraseña se genera sola y se ve/copiar en el panel, campo
-*"Contraseña de agente"* de la empresa). Corré el agente con **`--menu`** (o simplemente ejecutalo sin configurar) y
-usá el menú, con el diseño de la app:
+## 2. Configurar el agente
+El agente se identifica con **api_key + contraseña de agente**, las que figuran en `clientes.json` del Gestor
+(`api_key` y `agente_token`). Se cargan en la app, o con el menú de consola (`ithos-agente.exe --menu`, útil por
+SSH o sin pantalla):
 
 ```
   1) Configurar / conectar este equipo a una empresa   ← pegás api_key + contraseña (prueba la conexión)
   2) Arrancar el agente ahora
-  3) Desinstalar / mover a otra PC                       ← borra credenciales + arranque; instalás en otra PC igual
+  3) Desinstalar / mover a otra PC                       ← borra credenciales + arranque
   4) Salir
 ```
 
-El agente guarda **solo** `agente\config.json` = `{ central_url, api_key, agente_token }` (o la variable
-`ITHOS_AGENTE_CONFIG`). **El resto de la config —la voz Charon (con la clave del cliente), el integrador de acceso
-local y el micrófono— la MANDA el gestor** al autenticar (*thin agent*): no viven en el equipo del cliente.
+El agente guarda **sólo** `%LOCALAPPDATA%\ITHOS\config.json` = `{ central_url, api_key, agente_token }` (o el
+archivo que indique la variable `ITHOS_AGENTE_CONFIG`). **El resto —la voz Charon, el integrador de acceso y el
+micrófono— lo MANDA el Gestor** al autenticar (*thin agent*): no vive en la PC.
 
-> La **api_key** y la **contraseña de agente** se las das vos desde el gestor al dar de alta la empresa. Sin **ambas**
-> el gestor **rechaza** la conexión (un agente con solo la api_key NO entra). El agente **solo sale hacia afuera**
-> (WebSocket seguro): el cliente **no abre ningún puerto**.
+> Sin **las dos** credenciales el Gestor **rechaza** la conexión (con sólo la api_key no entra). El agente **sólo
+> sale hacia afuera** (WebSocket seguro): en la oficina no se abre ningún puerto.
 >
-> **Mover a otra PC:** opción **3** del menú (borra la config local y quita el arranque) → instalás el mismo `.exe`
-> en la PC nueva → opción **1** con la **misma** api_key + contraseña. No hace falta re-dar de alta la empresa.
+> **Mover a otra PC:** opción **3** (borra la config local y quita el arranque) → se instala el mismo instalador
+> en la PC nueva → opción **1** con la **misma** api_key + contraseña.
 
 ## 3. Dejarlo corriendo 24/7 (arranca solo tras un corte de luz, se reinicia si se cae)
 
 El agente tiene que **volver solo** ante cualquier cosa —corte de luz, reinicio, cierre— y **seguir funcionando
-aunque la PC/servidor esté bloqueado**. Hay dos formas según si el agente **habla por parlantes** o no.
-
-### 3.a — RECOMENDADO para PC con parlantes (portero + respuestas por voz)
-Como la voz necesita **audio** y un servicio en **sesión 0 no tiene audio** (ver §3.1), la PC‑portero se configura
-para que arranque en una **sesión interactiva con audio** y quede sola:
+aunque la PC esté bloqueada**. Como la voz necesita **audio** y un servicio en **sesión 0 no tiene audio** (ver
+§3.1), la PC del portero se configura para que arranque en una **sesión interactiva con audio** y quede sola:
 
 1. **Autologin del usuario** (para que tras un corte de luz la PC bootee y entre sola a la sesión, con audio):
    `netplwiz` → destildar "Los usuarios deben escribir…" → poner el usuario y su clave. *(O `Sysinternals Autologon`.)*
-2. **Arranque del agente al iniciar sesión, con reinicio si se cae** — Programador de tareas:
+2. **Arranque del agente al iniciar sesión** — lo crea el instalador si se tilda la opción. Si hay que crearlo a
+   mano, va **con `--run`** (sin eso se abre la ventana en vez del agente headless):
    ```bat
-   schtasks /Create /TN "ITHOS Agente" /TR "C:\Program Files\ITHOS\ithos-agente.exe" ^
+   schtasks /Create /TN "ITHOS Agente" /TR "\"C:\Program Files\ITHOS\ithos-agente.exe\" --run" ^
      /SC ONLOGON /RL HIGHEST /F
    ```
-   *(La tarea se llama **"ITHOS Agente"** — igual que la que crea el instalador y la que borra la opción 3 del menú.)*
-   En la tarea, pestaña **Configuración** → tildar *"Si la tarea falla, reiniciarla cada 1 minuto"* (hasta 999
-   veces). Trigger **Al iniciar sesión** = corre en la sesión interactiva → **tiene parlantes**.
+   *(La tarea se llama **"ITHOS Agente"**, igual que la que crea el instalador y la que borra la opción 3 del
+   menú.)* En la tarea, pestaña **Configuración** → tildar *"Si la tarea falla, reiniciarla cada 1 minuto"*.
+   Trigger **Al iniciar sesión** = corre en la sesión interactiva → **tiene parlantes**.
 
 Resultado: **vuelve la luz → la PC bootea → autologin → sesión con audio → arranca el agente → se reconecta solo al
-gestor → el portero suena**, aunque después se bloquee la pantalla.
+Gestor → el portero suena**, aunque después se bloquee la pantalla.
 
-### 3.b — Servicio NSSM (solo si el agente NO usa parlantes)
-Si ese agente solo hace tickets/avisos (sin voz local), sirve un servicio con **NSSM** (un `.exe`, gratis):
-```bat
-nssm install IthosAgente "C:\Program Files\ITHOS\ithos-agente.exe"
-nssm set IthosAgente AppDirectory "C:\Program Files\ITHOS"
-nssm set IthosAgente Start SERVICE_AUTO_START
-nssm start IthosAgente
-```
-Arranca con la PC y se reinicia solo, **sin necesidad de que nadie inicie sesión** — pero corre en **sesión 0, sin
-audio**, así que **no sirve para el portero**. (Para la venta formal, un **instalador MSI** que pida la API key y
-deje esto configurado — como el agente de Datadog — Fase 2.)
+> **IVMS:** la PC necesita el *ODBC Driver 18 for SQL Server* para leer la base de fichadas.
 
 ## 3.1. Audio por los parlantes: pantalla bloqueada, RDP y sesión
 
-Vale para **TODO lo que sale por los parlantes** —el portero (fichadas) **y** las respuestas por voz de tickets/
-consultas—: ambas rutas (audio cacheado y streaming) siguen la **misma lógica** de recuperar el dispositivo. Para
-que **suene siempre** (aunque la PC esté bloqueada o alguien entre por RDP):
+Vale para **todo lo que sale por los parlantes** —el portero (fichadas) **y** las respuestas por voz—: las dos rutas
+(audio cacheado y streaming) siguen la **misma lógica** para recuperar el dispositivo. Para que **suene siempre**:
 
-- **Correlo en una sesión interactiva con audio**, no como servicio en sesión 0 (ver §3.a: autologin + arranque al
+- **Correrlo en una sesión interactiva con audio**, no como servicio en sesión 0 (ver §3: autologin + arranque al
   iniciar sesión). Así tiene parlantes reales y vuelve solo tras un corte de luz.
-- **Que no se suspenda / no baje la pantalla:** el agente ya evita la suspensión (anti‑suspensión); igual conviene
-  poner el plan de energía en **"nunca suspender"**. Bloquear la pantalla **no** corta el audio.
-- **RDP:** cuando entrás por RDP, el audio del portero sigue saliendo por los **parlantes físicos de la PC‑portero**
-  (que es lo que querés para la puerta), no por tu equipo remoto. El agente ahora **re‑toma el dispositivo de audio
-  solo** si se pierde al conectar/desconectar RDP o al bloquear (init perezoso + reintento; ver regresión H33). Si
-  administrás por RDP, dejá el **audio remoto en "Reproducir en el equipo remoto"** para no desviar el sonido.
-- El agente **reintenta** el audio: si al arrancar no había dispositivo (arrancó bloqueado/headless), **vuelve a
-  intentar en cada reproducción** y suena apenas el audio está disponible. Todo esto queda registrado en el log.
+- **Que no se suspenda:** el agente ya evita la suspensión; igual conviene poner el plan de energía en **"nunca
+  suspender"**. Bloquear la pantalla **no** corta el audio.
+- **RDP:** al entrar por RDP, el audio del portero sigue saliendo por los **parlantes físicos de la PC** (lo que se
+  quiere para la puerta), no por el equipo remoto. El agente **re-toma el dispositivo de audio solo** si se pierde
+  al conectar/desconectar RDP o al bloquear, y al cerrar RDP devuelve la sesión a la consola con una tarea de un solo
+  uso (`ITHOS_Reconectar_Consola`). Conviene dejar el **audio remoto en "Reproducir en el equipo remoto"** para no
+  desviar el sonido.
+- El agente **reintenta** el audio: si al arrancar no había dispositivo (arrancó bloqueado), **vuelve a intentar en
+  cada reproducción** y suena apenas el audio está disponible. Todo queda registrado en el log.
 
-## 4. Actualizaciones (Fase 2)
-El agente se actualizará **solo, por la red** contra el gestor (estilo Chrome/Steam): **avisa** cuando hay una
-versión nueva y **el usuario decide** (ahora / más tarde); descarga, verifica la firma y se reemplaza. **Nunca se
-manda un archivo a mano.** Detalle en ARQUITECTURA_GESTOR_AGENTE.md §3.1.
-
-## Seguridad del gestor (lo hosteamos nosotros) — IMPLEMENTADO
-- El **panel superadmin (`/`)** y las APIs de gestión están **detrás de autenticación** (solo INTELLIHELP):
-  **usuario + contraseña** (`ITHOS_ADMIN_USER` / `ITHOS_ADMIN_TOKEN`); las llamadas internas usan la cabecera
-  `X-Admin-Token`.
-- El **alta (`/alta`)** es un **enlace temporal de un solo uso por cliente** (token que caduca): se genera desde el
-  panel (`/api/alta_link`) y se consume al usarse.
-
-> **Nota honesta:** el `.exe` hay que **construirlo y probarlo en una PC Windows del cliente** (trae libs nativas:
-> neonize/onnx/portaudio). El spec (`compilador/build/agente.spec`) es un punto de partida sólido; si al correr el `.exe`
-> falta alguna lib nativa, se agrega en `datas/binaries` del spec.
+## 4. Actualizaciones
+Para actualizar el agente se compila un instalador nuevo y se ejecuta en la PC: detecta la versión instalada,
+cierra el agente y actualiza conservando la configuración y la caché de voz. Una actualización del **Gestor** no
+obliga a tocar el agente: se reconecta solo y el handshake de versión es compatible hacia atrás.

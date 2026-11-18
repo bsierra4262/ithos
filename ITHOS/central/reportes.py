@@ -34,13 +34,12 @@ def generar(cfg_glpi, entidad, n=None):
     tickets = G.de_entidad(
         G.tickets_todos_cache(cfg_glpi) if not n else G.tickets_cache(cfg_glpi, n),
         G.entidades_de(cfg_glpi))
-    por_estado, por_cat, por_prio = {}, {}, {}
+    por_estado, por_prio = {}, {}
     total = len(tickets)
     cumplidos = incumplidos = medidos = 0
     for t in tickets:
         est = ESTADOS.get(int(t.get("status", 0)), "?")
         por_estado[est] = por_estado.get(est, 0) + 1
-        por_cat[t.get("itilcategories_id")] = por_cat.get(t.get("itilcategories_id"), 0) + 1
         por_prio[t.get("priority")] = por_prio.get(t.get("priority"), 0) + 1
         # SLA: resuelto dentro del time_to_resolve
         solve = _fecha(t.get("solvedate") or t.get("closedate"))

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Memoria de ITHOS POR CLIENTE (multi-tenant). Cada empresa tiene su PROPIA base de
+Memoria conversacional de ITHOS. Cada empresa tiene su PROPIA base de
 datos, aislada: un cliente NUNCA ve el contexto de otro. Guarda:
   - historial de conversación (lo que se habló, por canal),
   - hechos APRENDIDOS (preferencias, datos, atajos) que crecen con el uso.

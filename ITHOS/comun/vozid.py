@@ -8,14 +8,14 @@ no entra.
 Flujo (como lo pidió Brian):
   1) ENTRENAMIENTO: cada audio del dueño por WhatsApp (de su número autorizado) suma una
      muestra de su voz (solo la parte con voz, ya filtrada por VAD). Se guardan en
-     ~/.ithos/voz_dueno/.
-  2) Cuando hay MUESTRAS suficientes, se arma el PERFIL de voz (embedding promedio) y queda
+     ITHOS_DATA/voz_dueno/.
+  2) Cuando hay MUESTRAS suficientes, se arma el PERFIL de voz (huella promedio) y queda
      "terminado". A partir de ahí, verificar() compara una voz nueva contra el perfil.
-  3) El modo admin puede exigir, además de la clave, que la voz coincida (verificar()).
+  3) El modo admin por micrófono exige, además de la clave, que la voz coincida (verificar()).
 
-Embeddings por speaker-embedding ONNX (sin torch) si hay un modelo disponible
-(comun/voz_embed.onnx). Mientras no esté el modelo/perfil, verificar() NO bloquea
-(devuelve match=True) para no romper nada: primero juntamos tu voz.
+La huella es MFCC + deltas con numpy puro, normalizada contra una cohorte de otras voces
+(voz_cohorte.npy). Ante la DUDA —sin perfil, sin huella o con un error— verificar() dice que
+NO: es un control de identidad, y uno que ante la duda dice que sí no controla nada.
 """
 
 import os
@@ -146,15 +146,15 @@ def _a_int16(wav_bytes_o_muestras, fs):
 def verificar(wav_bytes_o_muestras, fs=16000):
     """Devuelve (es_el_dueño, score). Compara el voiceprint de la voz nueva contra el perfil
     del dueño, normalizado por una COHORTE de voces distintas (T-norm) para que sea robusto.
-    Si aún no hay perfil, NO bloquea (True) — así seguimos juntando tu voz sin romper nada."""
+    Sin perfil, sin voz utilizable o ante un error: (False, 0.0)."""
     import numpy as np
     if not perfil_listo():
-        return True, 1.0
+        return False, 0.0
     try:
         x, fs = _a_int16(wav_bytes_o_muestras, fs)
         v = _voiceprint(x, fs)
         if v is None:
-            return True, 1.0
+            return False, 0.0                            # audio sin voz utilizable
         perfil = np.asarray(json.load(open(_perfil_path(), encoding="utf-8"))["perfil"], dtype="float32")
         s = _cos(v, perfil)
         coh = _cohorte()
@@ -164,8 +164,8 @@ def verificar(wav_bytes_o_muestras, fs=16000):
             return z >= UMBRAL_Z, z
         return s >= UMBRAL_RAW, float(s)                 # sin cohorte: coseno crudo
     except Exception as e:  # noqa: BLE001
-        log.warning("verificar voz: %s", e)
-        return True, 1.0
+        log.warning("verificar voz (no se reconoce): %s", e)
+        return False, 0.0
 
 
 # =============================================================== VOICEPRINT (MFCC, numpy puro)

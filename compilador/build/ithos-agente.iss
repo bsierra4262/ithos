@@ -7,7 +7,7 @@
 ;  Requisito previo: build\construir_agente.bat (deja build\exe\ithos-agente.exe + build\ithos.ico)
 ; ============================================================================
 #define MyAppName "ITHOS Agente"
-#define MyAppVersion "1.1.30"
+#define MyAppVersion "1.1.31"
 #define MyAppPublisher "INTELLIHELP S.A."
 #define MyAppExeName "ithos-agente.exe"
 
@@ -80,6 +80,9 @@ Filename: "{sys}\taskkill.exe"; Parameters: "/F /T /IM {#MyAppExeName}"; \
 ; Al desinstalar, quita la tarea de arranque (no deja nada colgado).
 Filename: "{sys}\schtasks.exe"; Parameters: "/Delete /TN ""ITHOS Agente"" /F"; \
   Flags: runhidden; RunOnceId: "DelIthosTask"
+; Y la tarea de un solo uso que reconecta el audio a la consola tras cerrar RDP (agente/voz.py).
+Filename: "{sys}\schtasks.exe"; Parameters: "/Delete /TN ""ITHOS_Reconectar_Consola"" /F"; \
+  Flags: runhidden; RunOnceId: "DelIthosTaskRdp"
 ; Borrar los datos del agente de TODOS los perfiles de usuario (config + caché por cliente). El
 ; instalador corre como admin, así que {localappdata} sería la del admin, NO la del usuario real: por
 ; eso barremos %SystemDrive%\Users\*\AppData\Local\ITHOS. Así NO deja rastro. CRÍTICO: SOLO borra la
@@ -87,6 +90,10 @@ Filename: "{sys}\schtasks.exe"; Parameters: "/Delete /TN ""ITHOS Agente"" /F"; \
 Filename: "{cmd}"; \
   Parameters: "/C for /d %U in (""{sd}\Users\*"") do @rd /s /q ""%U\AppData\Local\ITHOS"" >nul 2>&1"; \
   Flags: runhidden; RunOnceId: "DelIthosUserData"
+; El modelo de voz de Vosk que se bajó la 1ª vez (micrófono "Hey ITHOS"): vive en la caché de Vosk.
+Filename: "{cmd}"; \
+  Parameters: "/C for /d %U in (""{sd}\Users\*"") do @rd /s /q ""%U\.cache\vosk"" >nul 2>&1"; \
+  Flags: runhidden; RunOnceId: "DelIthosVosk"
 ; Y saca el certificado de INTELLIHELP de las tiendas de confianza (no deja rastro).
 Filename: "{sys}\certutil.exe"; Parameters: "-delstore Root ""INTELLIHELP S.A."""; \
   Flags: runhidden; RunOnceId: "DelIthosCertRoot"

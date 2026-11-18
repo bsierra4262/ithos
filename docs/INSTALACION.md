@@ -1,45 +1,43 @@
 # 🛠️ Guía de instalación de ITHOS
 
-> **Guías relacionadas:** puesta en **producción en la VPS de Hostinger** → [HOSTINGER.md](HOSTINGER.md) ·
-> empaquetar e instalar el **agente como ejecutable/servicio** en el cliente → [INSTALACION_AGENTE.md](INSTALACION_AGENTE.md).
+> **Guías relacionadas:** puesta en **producción en el VPS de Hostinger** → [HOSTINGER.md](HOSTINGER.md) ·
+> construir e instalar el **agente** en la PC de la oficina → [INSTALACION_AGENTE.md](INSTALACION_AGENTE.md).
 
-ITHOS tiene **dos piezas** (se venden/entienden como **Gestor + Agente**; la carpeta interna sigue `central/`):
+ITHOS es una herramienta interna de INTELLIHELP y tiene **dos piezas**, una de cada una:
 
 | Pieza | Dónde va | Qué hace |
 |---|---|---|
-| **Gestor (cerebro)** | En el servidor **KVM 2** (VPS con Docker) | Piensa: triage GLPI con IA, cuota, reportes, panel. Nunca toca hardware. |
-| **Agente** | En la **PC del cliente** (con parlantes y micrófono) | Escucha el control de acceso local (IVMS/HikCentral/…) y reproduce la voz ITHOS. Se conecta al Gestor por WebSocket seguro (wss://). |
+| **Gestor (cerebro)** | En el **VPS Hostinger KVM 2** (Ubuntu con Docker) | Piensa: triage de GLPI con IA, ciclo de vida, cuota, reportes, Planka, wiki y el panel. Nunca toca hardware. |
+| **Agente** | En una **PC de la oficina** con Windows (parlantes y micrófono) | Lee el control de acceso (IVMS) y reproduce la voz de ITHOS. Se conecta al Gestor por WebSocket seguro (`wss://`). |
 
 ```
-   [ PC del cliente ]                         [ KVM 2 - VPS ]
-   Agente + parlantes  ── wss://ithos.tuempresa.com/ws ──►  Central (cerebro)
-   + control de acceso  ◄── comandos de voz ITHOS ────────  + Panel (8090)
+   [ PC de la oficina ]                         [ VPS Hostinger KVM 2 ]
+   Agente + parlantes  ── wss://ithos.intellihelp.tech/ws ──►  central + panel + ollama
+   + IVMS (SQL Server) ◄── comandos de voz ──────────────────  (detrás de caddy)
 ```
 
-> El agente **siempre sale hacia afuera** (conexión saliente), así que funciona detrás de cualquier router/NAT sin abrir puertos en el cliente.
+> El agente **siempre sale hacia afuera** (conexión saliente), así que funciona detrás de cualquier router/NAT sin abrir puertos en la oficina.
 
-> **Multi-sistema:** hay instaladores para **Windows, Linux y macOS**, tanto del Central como del Agente. Elegí el de tu sistema en cada paso.
-
-| | Windows | Linux | macOS |
-|---|---|---|---|
-| **Gestor** | `compilador/instaladores/central_windows.ps1` (nativo, sin Docker) | `compilador/instaladores/central_unix.sh` (Docker) | `central_unix.sh` (Docker Desktop) |
-| **Agente** | `compilador/dist/ITHOS-Agente-Setup.exe` (instalador firmado) | `compilador/instaladores/agente_linux.sh` | `compilador/instaladores/agente_mac.sh` |
-| **Verificar antes** | `python tests/probar_requerimientos.py` | ídem | ídem |
+| | Dónde | Cómo |
+|---|---|---|
+| **Gestor** | VPS Linux (Ubuntu 24.04) | `docker compose -p jarvis-cloud -f ITHOS/docker-compose.yml up -d --build` (ver [HOSTINGER.md](HOSTINGER.md)) |
+| **Agente** | PC Windows de la oficina | `compilador\dist\ITHOS-Agente-Setup.exe` (instalador firmado, se construye con `compilador\build\construir_agente.bat`) |
+| **Verificar antes** | Cualquier PC con Python 3.11+ | `python tests/probar_requerimientos.py` |
 
 ---
 
 ## 🚀 Cómo se pone en marcha (mapa)
 
-El stack de demo se retiró: el software es uno solo y se prueba con las **baterías** del repositorio
-(no necesitan servidor ni dominio) y después se despliega.
+No hay ambiente de demo: el software es uno solo, se verifica con las **baterías** del repositorio (no
+necesitan servidor ni dominio) y después se despliega.
 
 ```mermaid
 flowchart TD
-    T["1· Verificar en local<br/>python tests/probar_requerimientos.py<br/>python tests/probar_helpdesk_mejoras.py"] --> G["2· GESTOR en el servidor<br/>Docker + Caddy (TLS/WSS)<br/>.env: ADMIN · MASTER_KEY · DOMINIO"]
-    G --> AL["3· Alta de la empresa<br/>enlace de un solo uso →<br/>tickets · acceso · canales · IA · zona · horario"]
-    AL --> CR["4· El panel entrega<br/>api_key + contraseña de agente"]
-    CR --> AGT["5· AGENTE en el equipo del cliente<br/>Windows: instalador firmado<br/>Linux/Mac: script del SO"]
-    AGT --> V["6· Verificar: el panel marca Conectadas ≥ 1,<br/>el portero saluda una fichada nueva y<br/>un ticket nuevo entra al triage"]
+    T["1· Verificar en local<br/>python tests/probar_requerimientos.py<br/>python tests/probar_auditoria_18nov.py"] --> G["2· GESTOR en el VPS<br/>Docker: central · panel · ollama · caddy<br/>ITHOS/.env: ADMIN · MASTER_KEY · DOMINIO"]
+    G --> CF["3· Configuración en clientes.json<br/>(desde el panel o a mano):<br/>GLPI · IVMS · WhatsApp · IA · equipo · horario"]
+    CF --> CR["4· api_key + contraseña de agente<br/>(las fija la configuración)"]
+    CR --> AGT["5· AGENTE en la PC de la oficina<br/>instalador Windows firmado"]
+    AGT --> V["6· Verificar: el panel muestra el agente conectado,<br/>el portero saluda una fichada nueva y<br/>un ticket nuevo entra al triage"]
 ```
 
 **Requisito único para trabajar en local:** Python 3.11+ y las dependencias del repositorio
@@ -47,162 +45,110 @@ flowchart TD
 
 ---
 
-## 1️⃣ Instalar el Central en el KVM 2
+## 1️⃣ Instalar el Gestor en el VPS
 
-El cerebro vive en el KVM 2. Primero copiá la carpeta `jarvis-cloud/` a un **disco local** del servidor (no un recurso de red) y apuntá tu dominio (ej. `ithos.tuempresa.com`) por DNS **A** a la IP del KVM 2.
-
-### 🪟 KVM 2 con Windows (Windows Server / Windows) — recomendado para tu caso
-
-```powershell
-# PowerShell como Administrador
-Set-ExecutionPolicy -Scope Process Bypass -Force
-cd C:\ithos\instaladores      # donde copiaste el proyecto (disco local)
-.\central_windows.ps1
-```
-
-El script (sin Docker):
-- Instala Python + dependencias.
-- Crea `clientes.json` si no existe.
-- Crea las tareas programadas **ITHOS Central** (8080) y **ITHOS Panel** (8090) que arrancan solas al iniciar Windows y se reinician si se caen.
-- Te pide el **dominio** y, si lo ponés, descarga **Caddy** y crea la tarea **ITHOS Caddy** → HTTPS/WSS automático (Let's Encrypt).
-- Abre los puertos 8080/8090 en el firewall.
-
-### 🐧 / 🍎 KVM 2 con Linux o Mac (Docker)
+El cerebro vive en el VPS Hostinger KVM 2 con Ubuntu y Docker. El paso a paso completo (firewall, DNS,
+`.env`, cifrado, actualizaciones y respaldos) está en [HOSTINGER.md](HOSTINGER.md). En resumen:
 
 ```bash
-cd jarvis-cloud/instaladores
-sudo bash central_unix.sh        # Linux
-# o:  bash central_unix.sh       # macOS con Docker Desktop
+cd /root/jarvis-cloud
+cp ITHOS/central/clientes.ejemplo.json ITHOS/central/clientes.json   # completar con datos reales
+cp .env.example ITHOS/.env                                           # ADMIN_USER/TOKEN, MASTER_KEY, DOMINIO
+docker compose -p jarvis-cloud -f ITHOS/docker-compose.yml up -d --build
 ```
-Instala Docker (Linux), pide el dominio (configura el `Caddyfile`) y levanta 3 contenedores: **central**, **caddy** (TLS) y **panel**.
 
-### Al terminar (cualquier sistema)
-- Cerebro (para los agentes): `wss://ithos.tuempresa.com/ws`
-- Panel de administración: `http://IP-DEL-KVM2:8090/`
-- Alta autoservicio: `http://IP-DEL-KVM2:8090/alta`
+Levanta **cuatro contenedores**: **central** (8080, WebSocket del agente), **panel** (8090), **ollama**
+(11434, la IA local) y **caddy** (80/443, TLS automático). Sólo Caddy publica puertos.
 
-> **Sin dominio todavía:** dejá el dominio vacío y el central queda en `http://IP:8080`. Cuando tengas el dominio de Hostinger se agrega en un paso (Caddy en Windows, o una línea del `Caddyfile` + reinicio en Linux/Mac).
-
----
-
-## 2️⃣ Dar de alta un cliente
-
-Todo desde el **panel** (`http://IP-DEL-KVM2:8090/`), con un formulario profesional
-(sin tocar archivos). Cada empresa elige **su** configuración:
-
-- **Sistema de tickets:** GLPI.
-- **Canal:** WhatsApp con el número propio, con sus grupos separados por ámbito (consultas, soporte, tareas, sistema).
-- **Sistema de control de acceso:** IVMS.
-- **IA:** su propia API key de Gemini, límites de cuota, idioma.
-
-Dos formas de alta:
-
-**A) Superadmin (vos):** `→ Nueva empresa`, completás el formulario y **Guardar**. Podés
-editar TODO de cualquier empresa después, en caliente.
-
-**B) Autoservicio (el cliente):** pasale `http://IP-DEL-KVM2:8090/alta`. Carga toda su
-config y **recibe al instante su `api_key`** y la **URL de su portal**.
-
-Cada empresa recibe:
-- una **API key única** (lo único que necesita su agente para conectarse), y
-- una **URL de portal propia** (`/panel/<api_key>`) donde ve **su** SLA y **sus** métricas.
-  En el central (superadmin) vos ves la config de todas y el estado **en vivo**; las
-  métricas de cada cliente las ve cada uno en su portal.
+Al terminar:
+- Cerebro (para el agente): `wss://ithos.intellihelp.tech/ws`
+- Panel del administrador: `https://ithos.intellihelp.tech/` (pide login; todo el panel lo exige)
 
 ---
 
-## 3️⃣ Instalar el Agente en la PC del cliente
+## 2️⃣ Configurar ITHOS
 
-En la PC que tiene los parlantes/micrófono y ve el control de acceso.
+Todo vive en `ITHOS/central/clientes.json` (la plantilla es `clientes.ejemplo.json`) y se edita desde el
+**panel** o a mano:
 
-### Windows (lo habitual en la oficina)
+- **Mesa de ayuda:** GLPI (URL, app token, token del administrador y token del usuario de ITHOS, con su
+  `ithos_user_id`).
+- **Control de acceso:** IVMS (servidor SQL, base, usuario de lectura).
+- **WhatsApp:** el número propio, vinculado por QR desde el panel, con sus cuatro grupos por ámbito:
+  ITHOS (consultas), ITHOS_SOPORTE (soporte), ITHOS_TRELLO (tareas) e ITHOS_SISTEMA (sistema).
+- **IA:** la cadena Gemini → Groq → IA local, con sus claves.
+- **Equipo:** `tecnicos` (nombre, id/login de GLPI y teléfonos) y `reparto`
+  (`{"mesa": [...], "instalaciones": "...", "escalamiento": "..."}`). El equipo y el reparto se cargan
+  en el archivo: el formulario del panel no los muestra y, al guardar, los conserva.
+- **Planka** y la **wiki Outline**.
+- **Agente:** la `api_key` y la contraseña de agente (`agente_token`) con las que se conecta.
+
+Lo que se guarda desde el panel **se aplica solo**: el Gestor revisa el archivo cada 15 segundos y, si
+cambió, se reinicia para tomarlo.
+
+---
+
+## 3️⃣ Instalar el Agente en la PC de la oficina
+
+En la PC que tiene los parlantes/micrófono y llega al SQL Server de IVMS.
 
 Se instala con el **instalador firmado** `compilador\dist\ITHOS-Agente-Setup.exe` (se construye con
 `compilador\build\construir_agente.bat`). No hace falta instalar Python ni editar archivos: es una app con
-interfaz que pide la **URL del Gestor** (`wss://ithos.tuempresa.com/ws`), la **api_key** de la empresa y su
+interfaz que pide la **URL del Gestor** (`wss://ithos.intellihelp.tech/ws`), la **api_key** y la
 **contraseña de agente**, prueba la conexión y queda arrancando al iniciar sesión. Desde la misma app se
 **detiene, arranca, se ve el estado y la versión, se mueve el agente a otra PC o se desinstala**.
 
-El **control de acceso local ya no se configura a mano en el equipo**: al autenticarse, el Gestor le manda al
-agente su configuración (integrador, voz, idioma, micrófono). Detalle y casos particulares:
+El **control de acceso no se configura en la PC**: al autenticarse, el Gestor le manda al agente su
+configuración (integrador, voz, idioma, micrófono). Detalle y casos particulares (autologin, RDP, IVMS):
 [INSTALACION_AGENTE.md](INSTALACION_AGENTE.md).
-
-### Linux
-
-```bash
-cd jarvis-cloud/instaladores
-sudo bash agente_linux.sh        # crea el servicio systemd 'ithos-agente'
-```
-
-### macOS
-
-```bash
-cd jarvis-cloud/instaladores
-bash agente_mac.sh               # crea un LaunchAgent que arranca solo
-```
 
 ---
 
 ## 4️⃣ Verificarlo (sin desplegar nada)
 
 ```bash
-python tests/probar_requerimientos.py     # 115 requerimientos transversales (sin red)
+python tests/probar_requerimientos.py     # requerimientos transversales (sin red)
+python tests/probar_auditoria_18nov.py    # regresión de la auditoría del 18-nov (sin red)
 python tests/probar_helpdesk_mejoras.py   # esperas, escaladas y @menciones (sin red)
 python tests/probar_portero_saludo.py     # saludo por hora y una vez por día por persona
-python tests/probar_sistema.py            # circuito completo por HTTP (alta, panel, portal)
+python tests/probar_sistema.py            # circuito completo del panel por HTTP
 ```
 
-Para escuchar **la voz** en el equipo, fichá en una terminal: ITHOS saluda por los parlantes.
+Para escuchar **la voz** en la oficina, fichá en una terminal: ITHOS saluda por los parlantes.
 
 ---
 
-## 🎙️ Micrófono / wake-word (opcional)
+## 🎙️ Micrófono («Hey ITHOS»)
 
-Para hablarle (“**ITHOS**, ¿cuántos tickets hay abiertos?”), en `agente/config.json` agregá:
+El micrófono escucha la llamada **«Hey ITHOS»** con **Vosk** (open-source, local, sin registro ni
+límites; no hay que entrenar nada). Se activa desde la configuración del Gestor, en el bloque
+`microfono`, que el agente recibe al conectarse:
 
 ```json
 "microfono": {
   "enabled": true,
-  "picovoice_key": "TU-ACCESS-KEY-DE-PICOVOICE",
-  "keywords": ["ithos", "computer"],
-  "segundos_pedido": 5
+  "vosk_model": "C:/ruta/al/modelo (opcional: sin esto baja el modelo chico en español la primera vez)"
 }
 ```
 
-- Access key gratis en https://console.picovoice.ai/
-- `keywords` acepta varias palabras (ithos, computer, alexa, hey google, ok google, hey siri…).
-- Para una palabra **a medida** (ej. “Che ITHOS”), entrenala gratis en Picovoice, descargá el `.ppn` y ponelo en `"keyword_paths": ["C:/ruta/Che-Ithos_es.ppn"]`.
+Después de la llamada, el pedido se graba hasta el silencio, se filtra con el detector de voz y se
+transcribe en el Gestor. El modo administrador por micrófono exige además la clave y que la **voz
+coincida** con la del dueño (voz-id).
 
 ---
 
 ## ✅ Checklist rápido
 
-- [ ] Central levantado en el KVM 2 (`docker compose ps` muestra central/caddy/panel).
-- [ ] Dominio con HTTPS/WSS (o IP:8080 provisorio).
-- [ ] Cliente dado de alta (panel o `/alta`) → tengo su API key.
-- [ ] `agente/config.json` con `central_url`, `api_key` y el `integrador` del control de acceso.
-- [ ] Agente instalado como tarea/servicio (arranca solo).
+- [ ] Gestor levantado en el VPS (`docker compose -p jarvis-cloud -f ITHOS/docker-compose.yml ps` muestra central, panel, ollama y caddy).
+- [ ] Dominio con HTTPS/WSS (`ITHOS_DOMINIO` en `ITHOS/.env`).
+- [ ] `clientes.json` completo (GLPI, IVMS, WhatsApp, IA, equipo, `api_key` y contraseña de agente).
+- [ ] Agente instalado en la PC de la oficina, arrancando al iniciar sesión.
+- [ ] WhatsApp vinculado por QR desde el panel; los cuatro grupos reciben lo suyo.
 - [ ] Fichar en una terminal → ITHOS saluda por los parlantes.
 
 ---
 
-## 🧠 Funciones avanzadas por cliente (agente, memoria, reportes, SaaS)
-
-Todo se configura en el **panel**, por empresa (multi-tenant, aislado):
-
-- **Memoria:** automática. Cada empresa tiene su DB (`memoria_<empresa>.sqlite3`); ITHOS
-  recuerda lo hablado y aprende. Un cliente no ve el contexto de otro.
-- **Agente que ejecuta:** por voz/WhatsApp podés pedirle *"cerrá el #597"*, *"asigná el 601
-  a Ayala"*, *"creá un ticket…"* y lo hace en el sistema de tickets.
-- **Reportes proactivos:** en el form del cliente, sección **Reportes** → activar, elegir
-  *diario/semanal/mensual*, hora y día. ITHOS manda el resumen (tickets + SLA) por los
-  canales del cliente, solo.
-  en **pesos al dólar oficial del BNA** del día. Marcá *Empresa DUEÑA* para que **no se
-  cobre** (es nuestro caso, INTELLIHELP).
-
-
 ## 📦 Portabilidad (rutas relativas)
-Todo el proyecto usa **rutas relativas** (resueltas respecto a cada archivo): podés
-**mover la carpeta a donde quieras** y funciona, en Windows, Linux y macOS. Conviene trabajar sobre un
-disco **local**: desde un recurso de **red** algunas herramientas (Docker, el compilador del agente) no
-pueden usar la ruta.
+Todo el proyecto usa **rutas relativas** (resueltas respecto a cada archivo): se puede **mover la
+carpeta a donde se quiera** y funciona. Conviene trabajar sobre un disco **local**: desde un recurso de
+**red** algunas herramientas (Docker, el compilador del agente) no pueden usar la ruta.

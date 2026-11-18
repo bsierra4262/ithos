@@ -1,8 +1,8 @@
 # ============================================================================
-# ITHOS Cloud — dependencias COMPLETAS (demo + Gestor + agente).
+# ITHOS — dependencias COMPLETAS para desarrollo y tests (Gestor + agente).
 # Instalar:  python -m pip install -r requirements.txt
-# Además hay que instalar ffmpeg (sistema) para las notas de voz por WhatsApp/
-# Telegram, y el driver ODBC de SQL Server si se usa IVMS (ver INSTALACION.md).
+# Además hay que instalar ffmpeg (sistema) para las notas de voz por WhatsApp, y el driver
+# ODBC de SQL Server para IVMS (ver INSTALACION.md).
 # ============================================================================
 
 # --- Servidor central (FastAPI + WebSocket) ---------------------------------
@@ -23,8 +23,7 @@ segno>=1.5                  # QR de vinculación
 edge-tts>=7.3.1            # voz GRATIS de respaldo + notas de voz. MINIMO 7.3.1: desde
                           # 7.2.8 y anteriores el servicio de Microsoft rechaza el
                           # handshake con 403 y no se genera NADA de audio (13-oct-2026).
-pygame>=2.5                 # reproducción de audio en la demo
-pydub>=0.25                 # ajuste de velocidad (x1.25)
+pygame>=2.5                 # reproducción de audio en los parlantes (agente)
 audiotsm>=0.1.2             # time-stretch de audio (agente)
 
 # --- Micrófono / captura / detección de voz (VAD) ---------------------------
@@ -32,7 +31,6 @@ sounddevice>=0.4            # capturar el micrófono
 numpy>=1.24                 # audio / VAD
 onnxruntime>=1.17           # Silero VAD (comun/silero_vad.onnx) y voz-id
 webrtcvad-wheels>=2.0.14    # VAD liviano de respaldo (import: webrtcvad)
-pvporcupine>=3.0            # wake-word legacy; hoy el agente usa Vosk (ver comun/wake.py)
 
 # --- Reportes ITIL (PDF) -----------------------------------------------------
 reportlab>=4.0             # informes ITIL en PDF (métricas: SLA, MTTR, por técnico…)
@@ -41,8 +39,14 @@ pypdf>=4.0                 # leer PDFs de instructivos para la base de conocimie
 # --- Bases de datos / integraciones -----------------------------------------
 pyodbc>=5.1                 # IVMS: leer la tabla de fichajes (SQL Server)
 
+# --- App del agente (ventana + bandeja + ícono) -----------------------------
+pywebview>=5.0              # la ventana del agente (agente/gui.py)
+pystray>=0.19               # ícono en la bandeja (agente/bandeja.py); sin él la bandeja no aparece
+Pillow>=10.0                # imagen del ícono de la bandeja y del instalador
+
 # --- Calidad de código / auditoría (dev/test) -------------------------------
 pyflakes>=3.4               # lint: nombres indefinidos / imports sin usar (auditoría de calidad)
+PyYAML>=6.0                 # los tests leen el docker-compose.yml
 
 tzdata>=2024.1            # base de zonas horarias (ZoneInfo) — reportes en la hora del cliente
 vosk>=0.3.45              # wake-word "ITHOS" OPEN-SOURCE (STT local, sin registro ni limites)

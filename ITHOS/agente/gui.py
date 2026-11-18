@@ -140,7 +140,7 @@ class Api:
         return {"ok": True, "msg": "Caché borrado. ITHOS está regenerando todos los saludos desde cero."}
 
     def detectar_nuevos(self):
-        """Detecta las personas NUEVAS de la empresa (relee la DB/API según el sistema del cliente) y
+        """Detecta las personas NUEVAS (relee la base de fichadas de IVMS) y
         cachea SOLO las que falten — las ya cacheadas se conservan (el pre-cacheo saltea lo que ya está).
         Reinicia el agente SIN borrar el caché: el baseline re-descubre el roster y genera únicamente los
         saludos nuevos. Ideal cuando entran empleados nuevos, sin re-generar todo."""
@@ -191,13 +191,13 @@ def _html():
   <!-- CONEXIÓN con la empresa -->
   <section class="panel" id=connCard>
     <div class=cardhd>
-      <div><div class=ctitle>Conexión con la empresa</div>
-        <div class=hint id=connHint>Pegá la API key y la contraseña de agente que te dio INTELLIHELP.</div></div>
+      <div><div class=ctitle>Conexión con el Gestor</div>
+        <div class=hint id=connHint>Pegá la API key y la contraseña de agente (se ven en el panel del Gestor).</div></div>
       <button class="btn sm ghost" id=btnEditar onclick="toggleConn()" style="display:none">Editar</button>
     </div>
     <div id=connFields>
-      <div class="f full"><label>API key de la empresa</label><input id=api placeholder="EMPRESA-xxxxxxxxxxxx" autocomplete=off spellcheck=false></div>
-      <div class="f full"><label>Contraseña de agente</label><input id=tok type=password placeholder="la contraseña que te pasamos" autocomplete=off spellcheck=false></div>
+      <div class="f full"><label>API key del agente</label><input id=api placeholder="INTELLIHELP-xxxxxxxxxxxx" autocomplete=off spellcheck=false></div>
+      <div class="f full"><label>Contraseña de agente</label><input id=tok type=password placeholder="la del panel del Gestor" autocomplete=off spellcheck=false></div>
       <div class="f full"><label>Gestor (dejalo así salvo que te digamos otro)</label><input id=url spellcheck=false></div>
       <div class=row style="margin-top:14px"><button class=btn id=bsave onclick="guardar()">Probar y guardar</button></div>
       <div class=msg id=msg></div>

@@ -18,7 +18,7 @@ for _p in (os.path.join(_AQUI, ".."), _AQUI):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 # A quién le entra cada ticket sale de equipo.py, que es donde vive el equipo: acá sólo se aplica.
-from equipo import ESCALAMIENTO, INSTALACIONES, MESA_PENDIENTE   # noqa: E402
+from equipo import MESA_PENDIENTE, escalamiento, instalaciones   # noqa: E402
 
 REGLAS_SRT = """Eres ITHOS, agente de triage de una mesa de ayuda. Clasificás
 tickets de control de acceso (fichaje biométrico).
@@ -98,13 +98,6 @@ Con eso el ticket queda EN ESPERA de su confirmación —es él quien tiene que 
 cuándo podemos ir— y se le recuerda una vez por día hábil hasta que responda. Eso NO
 es "falta un dato del afectado": es una coordinación (necesita_info sigue en false).
 
-RESPONSABLE:
-- "jayala" (instalaciones/infra/redes): TODO lo que sea alcance "equipo", "sede" o
-  "masivo" de hardware —terminal/lector/molinete/reloj caído, sin energía, sin red,
-  instalación nueva—.
-- "bsierra" (soporte/fichaje): los casos individuales o de grupo, y el software
-  (Hik-Central, interface, reportes).
-
 PRIMERA RESPUESTA: cordial, breve y profesional; si corregís categoría/prioridad
 explicalo en positivo. Firmá "Soporte ITH" UNA sola vez, al final, y no agregues
 ninguna otra fórmula de cierre ni repitas la despedida.
@@ -134,7 +127,7 @@ cliente. Si ninguno se parece de verdad, ignoralos.
 Respondé SOLO este JSON:
 {"alcance":"individual|grupo|equipo|sede|masivo",
  "categoria":"TERMINALES|MOLINETES|HIK-CENTRAL|INTERFACE|OTRA",
- "prioridad":"Baja|Media|Alta|Urgente","responsable":"mesa|bsierra|jayala",
+ "prioridad":"Baja|Media|Alta|Urgente",
  "necesita_info":true|false,"requiere_visita":true|false,
  "resumen":"una linea","primera_respuesta":"texto",
  "nota_tecnico":"nota interna breve para el equipo, o \"\" si no hay nada"}"""
@@ -365,13 +358,14 @@ def coherente(a, asunto="", descripcion=""):
     # cayera en otra persona. El orden es el que importa (ver equipo.py):
     #   1. equipamiento caído en una sede -> INSTALACIONES, porque hay que ir al lugar;
     #   2. Alta o Urgente -> ESCALAMIENTO (un sector, una sede o varias sin poder fichar);
-    #   3. el resto -> la MESA, que se reparte por carga entre Laura y Lisandro.
+    #   3. el resto -> la MESA, que se reparte por carga.
+    # QUIÉN cubre cada rol lo dice la config (`reparto`), no el código.
     # La persona concreta de la mesa la elige el triage: es el único que puede preguntarle a GLPI
     # cuántos tickets abiertos tiene cada uno ahora.
     if alcance in ALCANCE_SERVICIO and a.get("categoria") in ("TERMINALES", "MOLINETES"):
-        destino, porque = INSTALACIONES, "lo toma instalaciones: hay equipamiento caído en la sede"
+        destino, porque = instalaciones(), "lo toma instalaciones: hay equipamiento caído en la sede"
     elif a["prioridad"] in ("Alta", "Urgente"):
-        destino, porque = ESCALAMIENTO, f"lo mira {ESCALAMIENTO}: sale {a['prioridad']}"
+        destino, porque = escalamiento(), f"lo mira {escalamiento()}: sale {a['prioridad']}"
     else:
         destino, porque = MESA_PENDIENTE, "lo trabaja la mesa (se asigna al que tenga menos carga)"
     if a.get("responsable") != destino:

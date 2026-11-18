@@ -1,14 +1,13 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-TTS COMPARTIDO para las NOTAS DE VOZ que se ENVÍAN por WhatsApp. Estas notas usan **edge-tts** (rápido, gratis, sin cuota): los canales llaman a
-`audio()` SIN `ia_cfg`. La voz de MARCA **Charon** es para los PARLANTES (respuestas habladas en el
-lugar + portero → `agente/voz.py`), NO para las notas que se mandan por chat.
-    · edge-tts (GRATIS)  -> notas de voz de los canales (default, sin API key).
-    · Charon (Gemini)    -> disponible como opción si un caller pasa `ia_cfg` y el texto es corto;
-                            hoy los canales no lo hacen (priorizan velocidad y costo cero).
-Aplica la misma limpieza/pronunciación/pausas (comun/locucion.py) y devuelve OGG/opus
-(formato de nota de voz de WhatsApp); sin ffmpeg devuelve lo que tenga (mp3/wav).
+TTS de las NOTAS DE VOZ que se ENVÍAN por WhatsApp: **edge-tts** (rápido, gratis, sin cuota).
+La voz de MARCA **Charon** es para los PARLANTES (respuestas habladas + portero → agente/voz.py), que
+la guardan y la reutilizan. Las notas de WhatsApp NO usan Charon a propósito: Charon gasta cuota de
+Gemini, y cada nota es un texto nuevo que no se puede reutilizar; si la cuota se agota, los
+parlantes se quedan sin la voz de marca.
+Aplica la misma limpieza/pronunciación/pausas (comun/locucion.py). Devuelve MP3 (lo que pide
+WhatsApp) u OGG/opus si se pide y hay ffmpeg.
 """
 
 import shutil
@@ -20,9 +19,6 @@ log = logging.getLogger("voz_tts")
 VOZ = "es-MX-JorgeNeural"
 
 
-# Charon (Gemini TTS) es lindo pero LENTO en textos largos; para notas largas conviene edge
-# (rápido, gratis, sin cuota). Umbral de caracteres para preferir Charon.
-_MAX_CHARON = 700
 # El audio sale COMPLETO, igual que el texto (sin límite artificial): el largo lo decide la
 # respuesta (corta por defecto, larga solo si piden detalle). Este techo es SOLO anti-patológico
 # (un runaway de miles de palabras que colgaría a edge-tts); en respuestas reales nunca corta.
@@ -43,19 +39,11 @@ def resumir_para_voz(texto, limite=_MAX_VOZ):
     return corte.rstrip() + " Te dejé el detalle completo por escrito, señor."
 
 
-def audio(texto, ia_cfg=None, idioma="es-AR", velocidad=1.25, formato="ogg"):
-    """Nota de voz ITHOS. Charon (Gemini) para respuestas CORTAS (calidad de marca); para
-    LARGAS usa edge (rápido, para que la nota llegue enseguida). Si Charon falla, cae a edge.
-    Respuestas muy largas se resumen (la voz no lee 4000 palabras).
-    formato 'ogg' (opus) o 'mp3'. Devuelve bytes o None."""
+def audio(texto, velocidad=1.25, formato="ogg"):
+    """Nota de voz ITHOS con edge-tts (ya aplica la velocidad en el rate). Respuestas muy largas
+    se resumen (la voz no lee 4000 palabras). formato 'ogg' (opus) o 'mp3'. Bytes o None."""
     texto = resumir_para_voz(texto)
-    # 1) Charon (Gemini) — solo si hay config y el texto no es muy largo (si no, sería lento).
-    if ia_cfg and len(texto or "") <= _MAX_CHARON:
-        wav = _charon_wav(texto, ia_cfg)
-        if wav:
-            return _a_ogg(wav, velocidad) if (formato == "ogg" and shutil.which("ffmpeg")) else wav
-    # 2) edge-tts (rápido y gratis). Ya aplica la velocidad en el rate.
-    mp3 = _edge_mp3(texto, idioma=idioma, velocidad=velocidad)
+    mp3 = _edge_mp3(texto, velocidad=velocidad)
     if not mp3:
         return None
     return _a_ogg(mp3, 1.0) if (formato == "ogg" and shutil.which("ffmpeg")) else mp3
@@ -81,29 +69,7 @@ def precalentar():
     threading.Thread(target=_run, name="precalentar-voz", daemon=True).start()
 
 
-def _charon_wav(texto, ia_cfg):
-    """PCM de Charon (Gemini) -> WAV bytes (24kHz mono). None si no hay cuota / falla."""
-    try:
-        import io
-        import wave
-        from comun import ia as IA
-        from comun import locucion
-        pcm = IA.crear_voz(ia_cfg).voz_pcm(locucion.preparar(texto, fonetica=False))
-        if not pcm:
-            return None
-        buf = io.BytesIO()
-        with wave.open(buf, "wb") as w:
-            w.setnchannels(1)
-            w.setsampwidth(2)
-            w.setframerate(24000)
-            w.writeframes(pcm)
-        return buf.getvalue()
-    except Exception as e:  # noqa: BLE001
-        log.info("Charon no disponible para la nota de voz (%s). Uso edge.", str(e)[:80])
-        return None
-
-
-def _edge_mp3(texto, idioma="es-AR", velocidad=1.25, voz=VOZ):
+def _edge_mp3(texto, velocidad=1.25, voz=VOZ):
     try:
         import asyncio
         import edge_tts
@@ -136,8 +102,7 @@ def _edge_mp3(texto, idioma="es-AR", velocidad=1.25, voz=VOZ):
 
 
 def _a_ogg(audio_bytes, velocidad=1.0):
-    """Convierte audio (wav/mp3) a OGG/opus con ffmpeg, ajustando velocidad si hace falta
-    (Charon viene a velocidad normal; edge ya viene acelerado)."""
+    """Convierte audio (mp3) a OGG/opus con ffmpeg, ajustando la velocidad si hace falta."""
     filtros = ["-filter:a", f"atempo={velocidad}"] if abs(velocidad - 1.0) > 0.01 else []
     try:
         p = subprocess.run(

@@ -4,17 +4,14 @@
 Escucha la LLAMADA "Hey ITHOS" (como "OK Google") en el micrófono del cliente. Al detectarla, graba el
 pedido, lo manda al central (evento consulta_voz) y el central responde/resuelve
 (la respuesta vuelve como voz). El AUDIO también sirve para el voz-id (que ITHOS verifique que sos vos
-para los comandos de administrador; el perfil de voz ya se entrenó con tus audios de WhatsApp).
+para los comandos de administrador; el perfil de voz se entrena con los audios del dueño por WhatsApp).
 
-DOS motores (config microfono -> "motor"):
-  · "vosk"  (POR DEFECTO, OPEN-SOURCE, sin registro ni límites): reconoce la palabra "ITHOS" con un
-     modelo de voz LOCAL (Vosk/Kaldi). No hay que entrenar nada: reconoce la llamada de fábrica y tolera
-     la mala pronunciación (mismo criterio difuso que WhatsApp). El modelo se toma de `vosk_model`
-     (carpeta) o se baja el pequeño en español la 1ª vez (una sola vez, sin registro).
-  · "picovoice" (LEGACY): Porcupine con access key + modelo ithos.ppn de console.picovoice.ai (registro).
+Motor: Vosk (OPEN-SOURCE, sin registro ni límites). Reconoce la palabra "ITHOS" con un modelo de voz
+LOCAL (Vosk/Kaldi): no hay que entrenar nada y tolera la mala pronunciación (mismo criterio difuso que
+WhatsApp). El modelo se toma de `vosk_model` (carpeta) o se baja el pequeño en español la 1ª vez.
 
-Config (agente/config.json -> microfono):
-  {"enabled": true, "motor": "vosk", "vosk_model": "C:/ruta/modelo (opcional)",
+Config (la manda el Gestor en `microfono`):
+  {"enabled": true, "vosk_model": "C:/ruta/modelo (opcional)",
    "activacion_palabra": "ithos", "max_seg_pedido": 15, "silencio_seg": 1.3}
   (`activacion_palabra` es la MARCA; la activación siempre es la llamada: "Hey <marca>")
 """
@@ -120,10 +117,7 @@ def _cargar_modelo_vosk(cfg):
 
 
 def vigilar(cfg, enviar_evento, stop=None):
-    """Punto de entrada: elige el motor (Vosk open-source por defecto; Picovoice legacy)."""
-    motor = (cfg.get("motor") or "vosk").lower()
-    if motor in ("picovoice", "porcupine"):
-        return _vigilar_picovoice(cfg, enviar_evento, stop)
+    """Punto de entrada: escucha con Vosk."""
     return _vigilar_vosk(cfg, enviar_evento, stop)
 
 
@@ -225,57 +219,3 @@ def _vigilar_vosk(cfg, enviar_evento, stop=None):
             pass
 
 
-def _vigilar_picovoice(cfg, enviar_evento, stop=None):
-    try:
-        import pvporcupine
-        import sounddevice as sd
-    except Exception as e:  # noqa: BLE001
-        log.error("Escucha por voz deshabilitada (falta pvporcupine/sounddevice): %s", e)
-        return
-    # Preferimos el MODELO PROPIO "ithos.ppn" (keyword_paths). Si no está, caemos a una
-    # palabra INCLUIDA de respaldo ("computer") con aviso, hasta que se cargue el ithos.ppn.
-    rutas = cfg.get("keyword_paths") or None
-    palabras = cfg.get("keywords") or [cfg.get("keyword", "computer")]
-    if not rutas:
-        log.warning("Sin 'keyword_paths' (ithos.ppn): activo por palabra de respaldo %s. "
-                    "Para activar por 'ITHOS', entrená el modelo en console.picovoice.ai "
-                    "y poné su .ppn en keyword_paths.", palabras)
-    try:
-        kw = {"access_key": cfg["picovoice_key"]}
-        if rutas:
-            kw["keyword_paths"] = rutas
-        else:
-            kw["keywords"] = palabras
-        porcupine = pvporcupine.create(**kw)
-    except Exception as e:  # noqa: BLE001
-        log.error("No se pudo iniciar Porcupine: %s", e)
-        return
-    etiquetas = [os.path.splitext(os.path.basename(p))[0] for p in rutas] if rutas else palabras
-    sr, fl = porcupine.sample_rate, porcupine.frame_length
-    # Grabación DINÁMICA: corta al detectar silencio (no una duración fija que trunca las
-    # frases largas). Parámetros configurables por si el ambiente es ruidoso.
-    max_seg = cfg.get("max_seg_pedido", 15)
-    silencio_seg = cfg.get("silencio_seg", 1.3)
-    umbral_min = cfg.get("umbral_voz", 280.0)
-    stream = sd.RawInputStream(samplerate=sr, blocksize=fl, channels=1, dtype="int16")
-    stream.start()
-    log.info("Escuchando palabra(s) clave: %s ...", ", ".join(etiquetas))
-    try:
-        while stop is None or not stop.is_set():
-            data, _ = stream.read(fl)
-            pcm = struct.unpack_from("h" * fl, data)
-            if porcupine.process(pcm) >= 0:
-                log.info("Palabra clave detectada. Grabando (corto al detectar silencio)...")
-                frames = _grabar_dinamico(stream, sr, fl, max_seg, silencio_seg, umbral_min)
-                frames = _solo_voz(frames, sr)     # filtro anti-ruido (Silero VAD)
-                if frames:
-                    enviar_evento({"evento": "consulta_voz",
-                                   "datos": {"audio_b64": _wav_b64(frames, sr),
-                                             "mime": "audio/wav"}})
-    finally:
-        try:
-            stream.stop()
-            stream.close()
-            porcupine.delete()
-        except Exception:  # noqa: BLE001
-            pass

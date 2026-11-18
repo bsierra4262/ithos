@@ -1,18 +1,10 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-ITHOS — Panel de control (estética Iron Man HUD).
+ITHOS — Panel de control (estética Iron Man HUD). Herramienta INTERNA de INTELLIHELP.
 
-SUPERADMIN (/) — vos: gestionás TODAS las empresas (crear/editar/activar/borrar),
-ves su config completa (IA, GLPI, WhatsApp, sistema de acceso), el estado de
-conexión EN TIEMPO REAL, y las métricas de tu propia empresa. Cada empresa tiene
-una URL de PORTAL propia para dársela al cliente.
-
-PORTAL DEL CLIENTE (/panel/{api_key}) — el cliente: ve SU SLA, SUS métricas, SU
-config (IA/WhatsApp/acceso) y puede corregirla. No ve a los demás.
-
-ALTA (/alta) — formulario COMPLETO: toma toda la config (GLPI + IA + WhatsApp +
-sistema de acceso con sus claves) y la incrusta en el sistema.
+Todo el panel exige el login del administrador: estado en vivo del agente y de WhatsApp,
+métricas, SLA, reportes ITIL, base de conocimiento y la configuración de ITHOS.
 
 Correr:  uvicorn panel:app --host 0.0.0.0 --port 8090
 """
@@ -75,44 +67,19 @@ from comun import ia as IA_VOZ    # noqa: E402  (sólo para el modelo de voz vig
 from comun.ambitos import AMBITOS  # noqa: E402
 import reportes as R              # noqa: E402
 import autenticacion as AUTH      # noqa: E402
-from panel_ui import HTML, HTML_ALTA, portal_html   # noqa: E402
+from panel_ui import HTML        # noqa: E402
 
 
 # ============================ MODELO DE ACCESO (seguridad) ====================
-# Al GESTOR (superadmin `/` + APIs de gestión) accede SOLO INTELLIHELP (cookie de
-# admin). El CLIENTE solo a su dashboard `/panel/<api_key>` (la api_key es su
-# credencial). El ALTA `/alta` es un enlace temporal de un solo uso (token que caduca).
-# Rutas que NO exigen sesión de superadmin. Es una lista de EXCEPCIONES, y el resto queda cerrado:
-# al revés —enumerando lo privado— cada ruta nueva nacía PÚBLICA sin que nadie lo notara, que es
-# justo el error que no se puede permitir en la puerta de entrada.
-#   · el login y el alta por enlace temporal se validan ellos mismos,
-#   · el PORTAL del cliente y sus APIs se autorizan con su `api_key` (su credencial),
-#   · los catálogos del formulario no tienen datos de nadie.
-_PUBLICAS_EXACTAS = {
-    "/login", "/logout", "/alta", "/favicon.ico",
-    "/api/integradores", "/api/ia_proveedores", "/api/tickets", "/api/canales", "/api/alta",
-}
-_PUBLICAS_PREFIJO = (
-    "/panel/",                 # dashboard del cliente (su api_key en la ruta)
-    "/api/cliente/",           # su config (REDACTADA si no es admin — ver `uno()`)
-    "/api/salud/", "/api/metricas/", "/api/sla/", "/api/terminales/",
-    "/api/config_agente/", "/api/reporte_ahora/", "/api/reporte_itil/",
-    "/api/kb_subir/", "/api/kb_outline/", "/api/kb_generar/",
-    "/api/whatsapp/",          # vincular/estado/desvincular: autoriza _resolver_sesion_wa
-)
+# ITHOS es una herramienta INTERNA: todo el panel exige la sesión del administrador. Lo único
+# abierto es la puerta de entrada (login/logout). Es una lista de EXCEPCIONES, y el resto queda
+# cerrado: así una ruta nueva nace PRIVADA aunque nadie se acuerde de protegerla.
+_PUBLICAS_EXACTAS = {"/login", "/logout"}
 
 
 def _requiere_admin(method: str, path: str) -> bool:
-    """DENEGAR POR DEFECTO: todo exige superadmin salvo lo declarado público arriba."""
-    if path in _PUBLICAS_EXACTAS:
-        return False
-    if any(path.startswith(pre) for pre in _PUBLICAS_PREFIJO):
-        # El alta/edición del propio cliente va por POST /api/clientes, que valida adentro
-        # (sin cookie sólo puede editar una empresa que YA existe, con su api_key).
-        return False
-    if path == "/api/clientes" and method == "POST":
-        return False               # lo valida `upsert` (admin, o el propio cliente con su api_key)
-    return True
+    """DENEGAR POR DEFECTO: todo exige la sesión del administrador salvo el login."""
+    return path not in _PUBLICAS_EXACTAS
 
 
 @app.middleware("http")
@@ -162,26 +129,6 @@ def logout():
     return resp
 
 
-@app.post("/api/alta_link")
-async def alta_link(request: Request):
-    """(Superadmin) genera un enlace de alta TEMPORAL de un solo uso para un cliente."""
-    b = await request.json()
-    try:
-        horas = int(b.get("horas", 48) or 48)
-    except (TypeError, ValueError):
-        horas = 48
-    t = AUTH.nuevo_alta_token((b.get("nombre") or "").strip(), horas)
-    return {"ok": True, "url": f"/alta?t={t}", "token": t, "horas": horas}
-
-
-@app.post("/api/alta_revocar")
-async def alta_revocar(request: Request):
-    """(Superadmin) revoca un enlace de alta generado (si te equivocaste, deja de valer YA)."""
-    b = await request.json()
-    quitado = AUTH.revocar_alta(b.get("token", ""))
-    return {"ok": quitado}
-
-
 @app.post("/api/cambiar_password")
 async def cambiar_password(request: Request):
     """(Superadmin) cambia la contraseña de login del Gestor. La fija el admin; nadie más la ve."""
@@ -204,40 +151,17 @@ INTEGRADORES = {
 }
 
 # --- Catálogo de PROVEEDORES DE IA (texto/razonamiento) ----------------------
+# La cadena de ITHOS: Gemini (gratis), Groq (gratis) y la IA local del servidor (Ollama, sin cuota).
 # La VOZ es SIEMPRE Charon (Gemini): se usa gemini_api_key aparte.
 IA_PROVEEDORES = {
-    "gemini": {"label": "Google Gemini (GRATIS)", "campos": [
+    "gemini": {"label": "Google Gemini (gratis)", "campos": [
         {"k": "modelo_texto", "l": "Modelo (auto = más eficiente en cuota gratis)", "ph": "auto"}]},
-    "cerebras": {"label": "Cerebras — GRATIS (Llama 70B, 1M tokens/día, ultrarrápido) ★", "campos": [
-        {"k": "cerebras_api_key", "l": "API key de Cerebras (gratis, sin tarjeta, en cloud.cerebras.ai)", "t": "password"},
-        {"k": "modelo_texto", "l": "Modelo (auto = el más capaz)", "ph": "auto"}]},
-    "groq": {"label": "Groq — GRATIS (Llama, muy rápido)", "campos": [
+    "groq": {"label": "Groq (gratis, muy rápido)", "campos": [
         {"k": "groq_api_key", "l": "API key de Groq (gratis en console.groq.com)", "t": "password"},
-        {"k": "modelo_texto", "l": "Modelo", "ph": "meta-llama/llama-4-scout-17b-16e-instruct"}]},
-    "claude": {"label": "Anthropic Claude (pago)", "campos": [
-        {"k": "anthropic_api_key", "l": "API key de Anthropic", "t": "password"},
-        {"k": "modelo_texto", "l": "Modelo", "ph": "claude-sonnet-4-5"}]},
-    "openai": {"label": "OpenAI · ChatGPT (pago)", "campos": [
-        {"k": "openai_api_key", "l": "API key de OpenAI", "t": "password"},
-        {"k": "modelo_texto", "l": "Modelo", "ph": "gpt-4o"}]},
-    "grok": {"label": "xAI · Grok (pago)", "campos": [
-        {"k": "grok_api_key", "l": "API key de xAI", "t": "password"},
-        {"k": "modelo_texto", "l": "Modelo", "ph": "grok-2-latest"}]},
-    "deepseek": {"label": "DeepSeek (pago, barato)", "campos": [
-        {"k": "deepseek_api_key", "l": "API key de DeepSeek", "t": "password"},
-        {"k": "modelo_texto", "l": "Modelo", "ph": "deepseek-chat"}]},
-    "openrouter": {"label": "OpenRouter — casi TODOS los modelos (tiene GRATIS)", "campos": [
-        {"k": "openrouter_api_key", "l": "API key de OpenRouter (openrouter.ai)", "t": "password"},
-        {"k": "modelo_texto", "l": "Modelo (auto = elige por plan)", "ph": "auto"}]},
-    "mistral": {"label": "Mistral AI (tiene GRATIS)", "campos": [
-        {"k": "mistral_api_key", "l": "API key de Mistral", "t": "password"},
-        {"k": "modelo_texto", "l": "Modelo (auto = elige por plan)", "ph": "auto"}]},
-    "local": {"label": "Local / privado — Ollama (cualquier modelo de Ollama)", "campos": [
-        {"k": "ollama_url", "l": "URL de Ollama", "ph": "http://127.0.0.1:11434"},
-        {"k": "modelo_texto", "l": "Modelo de Ollama (el que tengas bajado: llama3.1, qwen2.5, deepseek-r1, phi3…)", "ph": "qwen2.5:14b"}]},
-    "deepseek_local": {"label": "DeepSeek LOCAL (privado, sin Ollama · LM Studio/vLLM)", "campos": [
-        {"k": "deepseek_local_url", "l": "URL del servidor local OpenAI-compatible (LM Studio 1234 · vLLM 8000 · llama.cpp 8080)", "ph": "http://127.0.0.1:1234/v1/chat/completions"},
-        {"k": "modelo_texto", "l": "Modelo DeepSeek bajado en el servidor", "ph": "deepseek-r1"}]},
+        {"k": "modelo_texto", "l": "Modelo (auto = el más capaz)", "ph": "auto"}]},
+    "local": {"label": "IA local del servidor (Ollama, sin cuota)", "campos": [
+        {"k": "ollama_url", "l": "URL de Ollama", "ph": "http://ollama:11434"},
+        {"k": "modelo_texto", "l": "Modelo de Ollama", "ph": "qwen3:4b"}]},
 }
 
 
@@ -260,12 +184,6 @@ TICKETS = {
         {"k": "glpi_ithos_token", "l": "Token de ITHOS (usuario del agente)",
          "d": "Token de un usuario dedicado a ITHOS (rol técnico/helpdesk). Con este token ITHOS "
               "clasifica, asigna y responde los tickets. Se saca igual: Preferencias → API → Token."},
-        {"k": "glpi_bsierra_token", "l": "Token del TÉCNICO (helpdesk que resuelve)",
-         "d": "Token del usuario técnico que resuelve los tickets. Opcional: si no lo ponés, ITHOS "
-              "usa el de administrador."},
-        {"k": "glpi_test_token", "l": "Token del CLIENTE (crea/responde tickets)",
-         "d": "Token de un usuario con rol de cliente/solicitante (crea y responde tickets). Opcional; "
-              "sirve para probar el circuito completo."},
         {"k": "entity_id", "l": "Entidad de GLPI (entity_id)", "t": "number", "ph": "0",
          "d": "El número (ID) de la entidad de GLPI donde están tus tickets. Lo ves en GLPI: "
               "Administración → Entidades (columna ID, o en la URL al abrir la entidad). Si tenés una "
@@ -284,7 +202,6 @@ CANALES = {
               "eso; lo que se pregunta fuera de su tema se deriva al grupo que sí lo maneja."},
         {"k": "grupo", "l": "Grupo único (sólo si no usás grupos por tema)", "ph": "SOPORTE_ALERTAS",
          "d": "Compatibilidad: si dejás esto y ningún grupo arriba, todo va a un solo grupo."},
-        {"k": "session", "l": "Archivo de sesión", "ph": "wa_session.sqlite3"},
         {"k": "respuesta", "l": "Responder con", "t": "select",
          "opciones": ["ambos", "texto", "audio"]}]},
 }
@@ -293,7 +210,11 @@ CANALES = {
 _cache_cfg = {"mtime": None, "data": None}
 
 
-def _cargar():
+class ConfigIlegible(Exception):
+    """clientes.json no se pudo leer o descifrar: NO se puede guardar encima."""
+
+
+def _cargar(estricto=False):
     # Los secretos van CIFRADOS en disco (AES-256-GCM). Se descifran en memoria para trabajar con ellos.
     # OPTIMIZACIÓN: se CACHEA por mtime del archivo -> si no cambió, NO se re-descifra (descifrar AES el
     # config entero en CADA request laggeaba el dashboard). Se devuelve una COPIA para que el caller pueda
@@ -306,7 +227,11 @@ def _cargar():
         data = CIF.descifrar_datos(json.load(open(RUTA, encoding="utf-8")))
         _cache_cfg["mtime"], _cache_cfg["data"] = m, data
         return copy.deepcopy(data)
-    except Exception:  # noqa: BLE001
+    except Exception as e:  # noqa: BLE001
+        # Para MOSTRAR, una lectura fallida es una pantalla vacía. Para GUARDAR no: escribir sobre
+        # "lo que se pudo leer" (nada) dejaría el padrón sin la empresa. Quien guarda pide estricto.
+        if estricto:
+            raise ConfigIlegible(str(e)) from e
         return {"clientes": []}
 
 
@@ -326,17 +251,10 @@ def _cliente_por_key(api_key):
     return None
 
 
-def _tipo_integrador(c):
-    integ = c.get("integrador")
-    if isinstance(integ, dict):
-        return integ.get("tipo", "")
-    return integ or ""
-
-
 def _armar_ia(b):
     """Bloque de IA: proveedor primario + respaldo EN CADENA opcional (secundario y terciario),
     cada uno con su modelo y su clave. La VOZ es siempre Charon (gemini_api_key).
-    Config de esta empresa: Gemini primaria -> Cerebras secundaria -> Groq terciaria."""
+    Config de INTELLIHELP: Gemini primaria -> Groq secundaria -> IA local terciaria."""
     iap = b.get("ia_config") or {}
     ias = b.get("ia_config_2") or {}
     iat = b.get("ia_config_3") or {}
@@ -350,10 +268,8 @@ def _armar_ia(b):
         # (no genera audio por `generateContent`) y además se comía nombres al interpretarlos.
         "modelo_voz": IA_VOZ.VOZ_MODELO,
         "voz": "Charon",
-        "voz_motor": b.get("voz_motor", "charon"),                   # charon (Gemini) | edge (multiplataforma) | windows (solo Windows)
         "limite_diario": int(b.get("limite_diario") or 200),
         "avisar_en": int(b.get("avisar_en") or 15),
-        "ilimitada": bool(b.get("ilimitada", False)),
     }
     for k, v in iap.items():                # claves del proveedor primario
         if k != "modelo_texto" and v:
@@ -370,24 +286,20 @@ def _armar_ia(b):
 
 
 def _armar_cliente(b, api_key):
-    """Construye el registro de cliente a partir del formulario (alta o edición).
-    Sistema de tickets y canales de notificación son ELEGIBLES por el cliente."""
+    """Construye el registro a partir del formulario. Lo que el formulario no maneja (velocidad de
+    la voz, intervalo de GLPI, sesión de WhatsApp, técnicos, Planka…) NO va acá: se conserva lo
+    guardado al fusionar (`_fusionar_cliente`); los valores por omisión los pone `_nuevo_cliente`."""
     tk = b.get("tickets") or {}
-    tk_tipo = tk.get("tipo") or "glpi"
-    # GLPI conserva 'integrador_glpi' (lo usa el central para triage/SLA).
-    integrador_glpi = {"ubicacion": "central"}
-    if tk_tipo == "glpi":
-        integrador_glpi.update({
-            "glpi_url": (tk.get("glpi_url") or "").strip(),
-            "glpi_app_token": (tk.get("glpi_app_token") or "").strip(),
-            "glpi_user_token": (tk.get("glpi_user_token") or "").strip(),   # super admin
-            "glpi_ithos_token": (tk.get("glpi_ithos_token") or "").strip(),  # agente
-            "glpi_bsierra_token": (tk.get("glpi_bsierra_token") or "").strip(),  # helpdesk
-            "glpi_test_token": (tk.get("glpi_test_token") or "").strip(),    # cliente
-            "entity_id": int(tk.get("entity_id") or 0),
-            "poll_interval": 60,   # cada cuánto se miran los tickets; 5s era pegarle a GLPI 17.280 veces/día
-        })
-    tickets = {"tipo": tk_tipo, **{k: v for k, v in tk.items() if k != "tipo"}}
+    # GLPI vive en 'integrador_glpi' (lo usa el central para triage/SLA). Los tokens van UNA vez,
+    # acá: el bloque 'tickets' sólo dice qué sistema es.
+    integrador_glpi = {
+        "glpi_url": (tk.get("glpi_url") or "").strip(),
+        "glpi_app_token": (tk.get("glpi_app_token") or "").strip(),
+        "glpi_user_token": (tk.get("glpi_user_token") or "").strip(),   # administrador
+        "glpi_ithos_token": (tk.get("glpi_ithos_token") or "").strip(),  # usuario de ITHOS
+        "entity_id": int(tk.get("entity_id") or 0),
+    }
+    tickets = {"tipo": "glpi"}
     # Canal de avisos elegido (WhatsApp, con sus grupos).
     canales = []
     for n in b.get("notificaciones", []) or []:
@@ -399,17 +311,11 @@ def _armar_cliente(b, api_key):
         # Contraseña de AGENTE por empresa (la asigna el Gestor): el agente se autentica con
         # api_key + este token. Se genera una vez (fuerte) y se preserva en las ediciones.
         "agente_token": b.get("agente_token") or secrets.token_urlsafe(24),
-        # Sesión de WhatsApp no-oficial AISLADA por cliente. El frontend la fija al vincular por QR
-        # (incluso en el alta, antes de que exista la api_key); se preserva en las ediciones para no
-        # perder la vinculación. Si el cliente nunca vinculó, queda vacío y se deriva de la api_key.
-        "wa_session": b.get("wa_session") or "",
         "nombre": (b.get("nombre") or "").strip(),
-        "email": (b.get("email") or "").strip(),
         "activo": bool(b.get("activo", True)),
         "voz": "Charon",
         "idioma": b.get("idioma", "es-AR"),
         "zona_horaria": b.get("zona_horaria", "America/Argentina/Buenos_Aires"),
-        "velocidad": 1.25,
         "ia": _armar_ia(b),
         "integrador": b.get("integrador", "ivms"),
         "integrador_config": b.get("integrador_config", {}) or {},
@@ -421,10 +327,18 @@ def _armar_cliente(b, api_key):
         "notificaciones": canales,
         "reportes": b.get("reportes", {}) or {},        # reportes proactivos por cliente
         "proactivo": b.get("proactivo", {}) or {},      # alerta SLA por vencer (por cliente)
-        # Wiki Outline para la base de conocimiento (si el cliente la cargó en el alta/portal). Solo
-        # se guarda con valores reales (url/token) -> la KB puede importar de ahí sin re-cargarla.
+        # Wiki Outline para la base de conocimiento. Sólo con valores reales (url/token).
         "kb_outline": {k: v for k, v in (b.get("kb_outline") or {}).items() if v},
     }
+
+
+def _nuevo_cliente(b, api_key):
+    """Registro de una empresa NUEVA: el formulario más los valores por omisión de lo que el
+    formulario no maneja."""
+    cli = _armar_cliente(b, api_key)
+    cli["velocidad"] = 1.2
+    cli["integrador_glpi"]["poll_interval"] = 60   # 5 s era pegarle a GLPI 17.280 veces por día
+    return cli
 
 
 def _fusionar_cliente(previo: dict, nuevo: dict) -> dict:
@@ -439,8 +353,7 @@ def _fusionar_cliente(previo: dict, nuevo: dict) -> dict:
 
     Reglas:
       · lo que el formulario NO trae, se CONSERVA tal como estaba;
-      · un secreto que llega ENMASCARADO (el portal nunca recibe los de verdad) o VACÍO no pisa al
-        guardado: sólo se reemplaza cuando mandan uno nuevo de verdad;
+      · un secreto que llega VACÍO no pisa al guardado: sólo se reemplaza cuando mandan uno nuevo;
       · las listas sí se reemplazan enteras (son la edición completa de esa lista: canales,
         terminales), porque quitar un elemento tiene que poder quitarlo."""
     from comun import cifrado as CIF
@@ -451,9 +364,9 @@ def _fusionar_cliente(previo: dict, nuevo: dict) -> dict:
         if isinstance(v, dict):
             out[k] = _fusionar_cliente(out.get(k) if isinstance(out.get(k), dict) else {}, v)
         elif isinstance(v, str) and CIF._es_sensible(k) and k != "api_key":
-            if v and not es_oculto(v):
+            if v:
                 out[k] = v                   # secreto NUEVO de verdad
-            # vacío o enmascarado -> se conserva el que ya estaba
+            # vacío -> se conserva el que ya estaba
         else:
             out[k] = v
     return out
@@ -463,22 +376,6 @@ def _fusionar_cliente(previo: dict, nuevo: dict) -> dict:
 @app.get("/", response_class=HTMLResponse)
 def home():
     return HTML
-
-
-@app.get("/alta", response_class=HTMLResponse)
-def alta(request: Request):
-    # El alta es un enlace TEMPORAL de un solo uso: sin token válido no se muestra.
-    if not AUTH.alta_valido(request.query_params.get("t", "")):
-        return HTMLResponse(AUTH.ALTA_INVALIDO_HTML, status_code=403)
-    return HTML_ALTA
-
-
-@app.get("/panel/{api_key}", response_class=HTMLResponse)
-def portal(api_key: str):
-    c = _cliente_por_key(api_key)
-    if not c:
-        return HTMLResponse("<h1>Portal no encontrado</h1>", status_code=404)
-    return portal_html(api_key, c.get("nombre", ""))
 
 
 # ------------------------------------------------------------------- API core
@@ -507,58 +404,12 @@ def listar():
     return _cargar()
 
 
-# Marca de "valor oculto": lo que ve el cliente en lugar de un secreto. Es el MISMO formato que
-# ya usaba la pantalla (`mask()` en panel_ui), así no cambia nada visualmente. Al guardar, un valor
-# con esta marca significa "no lo toques" (ver `_fusionar_cliente`).
-_OCULTO = "••••"
-
-
-def _enmascarar(valor: str) -> str:
-    v = str(valor or "")
-    if len(v) <= 10:
-        return _OCULTO
-    return v[:6] + _OCULTO + v[-4:]
-
-
-def es_oculto(valor) -> bool:
-    """True si el valor que llega es la MÁSCARA de un secreto (no un secreto nuevo)."""
-    return isinstance(valor, str) and _OCULTO in valor
-
-
-def _redactar(obj, raiz=True):
-    """Copia del cliente con TODOS los secretos enmascarados (tokens, claves, contraseñas).
-
-    El portal del cliente necesita su configuración para mostrarla y editarla, pero NO necesita
-    —ni debe— recibir los secretos en claro: la `api_key` viaja en la URL del portal, así que
-    termina en los logs del proxy, en el historial y en el `Referer`. Cualquiera con ese enlace
-    se llevaba los tokens de GLPI (incluido el de super admin), las claves de IA, la contraseña
-    del agente y la de la base de fichajes. Con esto, el enlace sólo sirve para ver y editar lo
-    suyo; los secretos no salen del servidor. El superadmin sí los recibe completos.
-    Se reusa el criterio de `comun/cifrado.py`: una sola definición de "esto es un secreto"."""
-    from comun import cifrado as CIF
-    if isinstance(obj, dict):
-        out = {}
-        for k, v in obj.items():
-            if raiz and k == "api_key":
-                out[k] = v                       # es el IDENTIFICADOR, no un secreto
-            elif isinstance(v, (dict, list)):
-                out[k] = _redactar(v, raiz=False)
-            elif isinstance(v, str) and v and CIF._es_sensible(k):
-                out[k] = _enmascarar(v)
-            else:
-                out[k] = v
-        return out
-    if isinstance(obj, list):
-        return [_redactar(x, raiz=False) for x in obj]
-    return obj
-
-
 @app.get("/api/cliente/{api_key}")
-def uno(api_key: str, request: Request):
+def uno(api_key: str):
     c = _cliente_por_key(api_key)
     if not c:
         return JSONResponse({"error": "no encontrado"}, status_code=404)
-    return c if AUTH.es_admin(request) else _redactar(c)
+    return c
 
 
 @app.get("/api/terminales/{api_key}")
@@ -617,10 +468,9 @@ def estado():
     return _ultimo_conectados            # transitorio -> mantené el último estado (evita el flapping)
 
 
-# ================= WhatsApp NO-OFICIAL: vincular por QR (panel + portal + alta) =================
-# El panel hace de intermediario con AUTH y resuelve api_key -> id de sesión; el trabajo real
-# (neonize + QR) corre en el CENTRAL. Autorización: SUPERADMIN (cookie), o el PROPIO CLIENTE (su
-# api_key es su credencial, igual que su portal/autoedición), o el ALTA (token temporal válido).
+# ================= WhatsApp NO-OFICIAL: vincular por QR =================
+# El panel (con la sesión del administrador) resuelve api_key -> id de sesión; el trabajo real
+# (neonize + QR) corre en el CENTRAL, que es donde vive WhatsApp.
 def _central_get(path):
     with urllib.request.urlopen(CENTRAL_URL + path, timeout=8) as r:
         return json.load(r)
@@ -634,28 +484,19 @@ def _central_post(path, payload):
         return json.load(r)
 
 
-def _resolver_sesion_wa(request, api_key, sesion, alta_token):
-    """(sesion, None) si autorizado; (None, JSONResponse) si no. api_key = credencial del cliente."""
+def _resolver_sesion_wa(api_key):
+    """(sesion, None) si la empresa existe; (None, JSONResponse) si no."""
     from comun import whatsapp_link as WL
-    api_key = (api_key or "").strip()
-    if api_key:
-        c = _cliente_por_key(api_key)
-        if not c:
-            return None, JSONResponse({"error": "cliente no encontrado"}, status_code=404)
-        return WL.sesion_de_cliente(c), None       # admin o el propio cliente (sabe su api_key)
-    sesion = (sesion or "").strip()
-    if sesion:                                      # flujo de ALTA (todavía no hay api_key)
-        if not (AUTH.es_admin(request) or AUTH.alta_valido(alta_token or "")):
-            return None, JSONResponse({"error": "no autorizado"}, status_code=401)
-        return sesion, None
-    return None, JSONResponse({"error": "falta api_key o sesión"}, status_code=400)
+    c = _cliente_por_key((api_key or "").strip())
+    if not c:
+        return None, JSONResponse({"error": "empresa no encontrada"}, status_code=404)
+    return WL.sesion_de_cliente(c), None
 
 
 @app.post("/api/whatsapp/vincular")
 async def wa_vincular_panel(request: Request):
     b = await request.json()
-    sesion, err = _resolver_sesion_wa(request, b.get("api_key"), b.get("sesion"),
-                                      b.get("_alta_token"))
+    sesion, err = _resolver_sesion_wa(b.get("api_key"))
     if err:
         return err
     try:
@@ -665,8 +506,8 @@ async def wa_vincular_panel(request: Request):
 
 
 @app.get("/api/whatsapp/estado")
-async def wa_estado_panel(request: Request, api_key: str = "", sesion: str = "", t: str = ""):
-    s, err = _resolver_sesion_wa(request, api_key, sesion, t)
+async def wa_estado_panel(api_key: str = ""):
+    s, err = _resolver_sesion_wa(api_key)
     if err:
         return err
     try:
@@ -678,8 +519,7 @@ async def wa_estado_panel(request: Request, api_key: str = "", sesion: str = "",
 @app.post("/api/whatsapp/desvincular")
 async def wa_desvincular_panel(request: Request):
     b = await request.json()
-    sesion, err = _resolver_sesion_wa(request, b.get("api_key"), b.get("sesion"),
-                                      b.get("_alta_token"))
+    sesion, err = _resolver_sesion_wa(b.get("api_key"))
     if err:
         return err
     try:
@@ -690,35 +530,12 @@ async def wa_desvincular_panel(request: Request):
 
 @app.get("/api/resumen")
 def resumen():
-    data = _cargar().get("clientes", [])
-    activos = sum(1 for c in data if c.get("activo"))
-    por_integ, uso_total = {}, {}
-    for c in data:
-        t = _tipo_integrador(c)
-        por_integ[t] = por_integ.get(t, 0) + 1
-        u = M.resumen(c.get("nombre", "")).get("uso", {})
-        for k, v in u.items():
-            uso_total[k] = uso_total.get(k, 0) + v
-    return {"total": len(data), "activos": activos, "inactivos": len(data) - activos,
-            "por_integrador": por_integ, "uso_total": uso_total}
-
-
-@app.post("/api/generar_key")
-async def generar_key(request: Request):
-    body = await request.json()
-    nombre = (body.get("nombre") or "CLI").strip()
-    slug = "".join(ch for ch in nombre.upper() if ch.isalnum())[:10] or "CLI"
-    return {"api_key": f"{slug}-{secrets.token_hex(6)}"}
-
-
-@app.get("/api/metricas/{api_key}")
-def ver_metricas(api_key: str):
-    c = _cliente_por_key(api_key)
-    if not c:
-        return JSONResponse({"error": "cliente no encontrado"}, status_code=404)
-    return M.resumen(c["nombre"])
-
-
+    """Actividad del mes (tickets gestionados, avisos, consultas) para el panel general."""
+    uso = {}
+    for c in _cargar().get("clientes", []):
+        for k, v in M.resumen(c.get("nombre", "")).get("uso", {}).items():
+            uso[k] = uso.get(k, 0) + v
+    return {"uso_total": uso}
 
 
 @app.get("/api/sla/{api_key}")
@@ -732,47 +549,6 @@ def ver_sla(api_key: str):
     try:
         rep, _ = R.generar(gl, int(gl.get("entity_id", 0)))   # SIN límite -> total REAL (no 200)
         return rep
-    except Exception as e:  # noqa: BLE001
-        return JSONResponse({"error": str(e)[:120]}, status_code=200)
-
-
-@app.get("/api/config_agente/{api_key}")
-def config_agente(api_key: str):
-    c = _cliente_por_key(api_key)
-    if not c:
-        return JSONResponse({"error": "cliente no encontrado"}, status_code=404)
-    tipo = _tipo_integrador(c)
-    integ_cfg = c.get("integrador_config") or {}
-    ia = c.get("ia") or {}
-    return {
-        "central_url": "wss://TU-DOMINIO/ws",
-        "api_key": c.get("api_key"),
-        "velocidad": c.get("velocidad", 1.25),
-        "integrador": {"tipo": tipo, **integ_cfg} if tipo else None,
-        "ia": {"voz": {"proveedor": "gemini", "voz": "Charon",
-                       "gemini_api_key": ia.get("gemini_api_key", ""),
-                       "modelo_voz": IA_VOZ.modelo_voz(ia),
-                       "idioma": c.get("idioma", "es-AR")}},
-    }
-
-
-# --------------------------------------------------------------- alta/edición
-
-
-
-
-@app.get("/api/reporte_ahora/{api_key}")
-def reporte_ahora(api_key: str):
-    """Genera y devuelve el texto del reporte del cliente (para probar/enviar ya)."""
-    c = _cliente_por_key(api_key)
-    if not c:
-        return JSONResponse({"error": "cliente no encontrado"}, status_code=404)
-    gl = c.get("integrador_glpi") or {}
-    if not gl.get("glpi_url"):
-        return JSONResponse({"error": "sin GLPI"}, status_code=200)
-    try:
-        import reportes_programados as RP
-        return {"reporte": RP.texto_reporte(gl, int(gl.get("entity_id", 0)))}
     except Exception as e:  # noqa: BLE001
         return JSONResponse({"error": str(e)[:120]}, status_code=200)
 
@@ -890,70 +666,27 @@ def kb_generar(api_key: str):
         return JSONResponse({"error": str(e)[:160]}, status_code=200)
 
 
-@app.post("/api/alta")
-async def alta_completa(request: Request):
-    """Alta COMPLETA (el cliente carga todo): incrusta la config en el sistema.
-
-    Requiere un token de alta de un solo uso (el enlace temporal que le dio INTELLIHELP).
-    """
-    b = await request.json()
-    nombre = (b.get("nombre") or "").strip()
-    if not nombre:
-        return JSONResponse({"error": "falta el nombre de la empresa"}, status_code=400)
-    # ONE-TIME: se consume el enlace AL ENVIAR el formulario (atómico). Desde acá ya NO se puede
-    # reusar aunque falle algo después: el enlace temporal caducó en el acto.
-    if not AUTH.consumir_si_valido(b.get("_alta_token", "")):
-        return JSONResponse({"error": "enlace de alta inválido, ya usado o vencido"}, status_code=403)
-    data = _cargar()
-    data.setdefault("clientes", [])
-    if any(c.get("nombre", "").lower() == nombre.lower() for c in data["clientes"]):
-        return JSONResponse({"error": "ya existe una empresa con ese nombre (pedí un enlace nuevo)"},
-                            status_code=409)
-    slug = "".join(ch for ch in nombre.upper() if ch.isalnum())[:8] or "CLI"
-    api_key = f"{slug}-{secrets.token_hex(6)}"
-    cli = _armar_cliente(b, api_key)
-    data["clientes"].append(cli)
-    _guardar(data)
-    return {"ok": True, "api_key": api_key, "nombre": nombre, "activo": cli["activo"],
-            "portal": f"/panel/{api_key}"}
-
-
 @app.post("/api/clientes")
 async def upsert(request: Request):
-    """Alta/edición desde el panel (superadmin) o autoedición (portal cliente).
-
-    Seguridad: el SUPERADMIN (cookie) puede crear/editar cualquiera. El CLIENTE, sin
-    cookie, SOLO puede editar su propia empresa (debe mandar su api_key existente); no
-    puede crear empresas nuevas (eso va por el enlace de alta o por el superadmin).
-    """
+    """Guarda la configuración de la empresa (o crea una si no hay api_key)."""
     b = await request.json()
     if not (b.get("nombre") or "").strip():
         return JSONResponse({"error": "falta el nombre de la empresa"}, status_code=400)
+    try:
+        data = _cargar(estricto=True)
+    except ConfigIlegible as e:
+        return JSONResponse({"error": "no se pudo leer la configuración guardada; no se guardó nada "
+                                      f"para no pisarla ({str(e)[:80]})"}, status_code=500)
     api_key = b.get("api_key") or None
-    data = _cargar()
-    es_admin = AUTH.es_admin(request)
-    existe = bool(api_key) and any(c.get("api_key") == api_key
-                                   for c in data.get("clientes", []))
-    if not es_admin and not existe:
-        return JSONResponse({"error": "no autorizado — acceso solo de INTELLIHELP"},
-                            status_code=401)
     if not api_key:
         slug = "".join(ch for ch in b["nombre"].upper() if ch.isalnum())[:8] or "CLI"
         api_key = f"{slug}-{secrets.token_hex(6)}"
     previo = next((c for c in data.get("clientes", []) if c.get("api_key") == api_key), None)
     # Se FUSIONA sobre lo guardado: el formulario no tiene todos los campos y pisarlo entero
     # borraba la configuración que se hace por fuera de esa pantalla (ver `_fusionar_cliente`).
-    cli = _fusionar_cliente(previo, _armar_cliente(b, api_key)) if previo         else _armar_cliente(b, api_key)
+    cli = (_fusionar_cliente(previo, _armar_cliente(b, api_key)) if previo
+           else _nuevo_cliente(b, api_key))
     data["clientes"] = [c for c in data.get("clientes", []) if c.get("api_key") != api_key]
     data["clientes"].append(cli)
     _guardar(data)
-    return {"ok": True, "api_key": api_key, "total": len(data["clientes"]),
-            "portal": f"/panel/{api_key}"}
-
-
-@app.delete("/api/clientes/{api_key}")
-def borrar(api_key: str):
-    data = _cargar()
-    data["clientes"] = [c for c in data.get("clientes", []) if c.get("api_key") != api_key]
-    _guardar(data)
-    return {"ok": True}
+    return {"ok": True, "api_key": api_key}

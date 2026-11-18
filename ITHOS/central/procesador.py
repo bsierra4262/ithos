@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Cerebro del Central: convierte un EVENTO de un agente en una lista de COMANDOS.
+Portero por voz: convierte un EVENTO del agente (fichaje, padrón) en una lista de COMANDOS.
 
-Fase 1 (esqueleto): arma las frases de forma determinista (sin IA todavía).
-Fase 2: acá se enchufa Gemini (voz/triage) y el resto de la lógica que ya tenemos.
-El Central NO reproduce audio: solo decide qué debe decir/hacer el agente.
+Las frases del saludo se arman de forma determinista (sin IA): hora del día, tipo de terminal,
+variedad por día y sin repetir el saludo a la misma persona en la jornada. El Gestor NO
+reproduce audio: sólo decide qué tiene que decir el agente, que lo sintetiza con Charon.
 """
 
 import os
@@ -13,7 +13,7 @@ import json
 import random
 from datetime import datetime
 
-from protocolo import EV_ACCESO, EV_TICKET, EV_PRECACHE, AC_DECIR, comando
+from protocolo import EV_ACCESO, EV_PRECACHE, AC_DECIR, comando
 
 ALERTAS = [
     "Acceso denegado.",
@@ -295,7 +295,7 @@ def procesar(cliente, evento, datos):
                 vistos.add(texto)
                 cmds.append(comando(AC_DECIR, texto=texto, cachear=True, solo_cachear=True))
 
-        # ORDEN pensado para CUOTA limitada (Charon gratis = 10/día): COBERTURA primero, VARIEDAD después.
+        # ORDEN pensado para la CUOTA limitada de Charon: COBERTURA primero, VARIEDAD después.
         # PASE 1 (cobertura): cada persona con su saludo ESENCIAL -> entrada var 0 + salida var 0 + sala +
         #   personalizados. Así, con poca cuota, TODOS tienen ya su saludo uniforme (entrada y sala).
         for n in nombres:
@@ -316,9 +316,4 @@ def procesar(cliente, evento, datos):
                     for texto in _textos_precache(n, tipo, empresa, abrev, i):
                         _agregar(texto)
         return cmds
-    if evento == EV_TICKET:
-        asunto = str(datos.get("asunto", "")).strip()
-        return [comando(AC_DECIR,
-                        texto=f"Atención. Ticket nuevo. {asunto}.",
-                        cachear=False)]
     return []

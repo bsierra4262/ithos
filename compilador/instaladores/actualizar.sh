@@ -43,8 +43,8 @@ else
   say "  (ITHOS/.env y ITHOS/central/clientes.json NO se pisan: no viajan en el paquete)"
 fi
 
-# 2.5) AVISO DE MANTENIMIENTO: le avisamos al cliente por SUS canales (WhatsApp/email/Telegram/...)
-#      ANTES de tocar nada; al reconectar su agente se le avisa que ITHOS ya está disponible.
+# 2.5) AVISO DE MANTENIMIENTO: se avisa por WhatsApp (grupo de sistema) ANTES de tocar nada; al
+#      reconectar el agente se avisa que ITHOS ya está disponible.
 #      Best-effort y OPCIONAL: con ITHOS_SIN_AVISO=1 se saltea (deploys cortos, sin ruido al grupo).
 if [ -z "$ITHOS_SIN_AVISO" ]; then
   say "Avisando 'mantenimiento' a los clientes conectados (antes de tocar nada)..."
@@ -56,8 +56,8 @@ if [ -z "$ITHOS_SIN_AVISO" ]; then
   fi
 fi
 
-# 2.6) VERSIÓN del GESTOR: sube sola (control de versiones) en cada deploy.
-python3 compilador/build/bump_version.py gestor patch 2>/dev/null && ok "Versión del Gestor actualizada" || true
+# (La VERSIÓN del Gestor se sube en el repo antes de armar el paquete, no acá: subirla en el
+#  servidor la pisaba el paquete siguiente y volvía siempre al mismo número.)
 
 # 2.7) DEJAR ASENTADO QUÉ QUEDA CORRIENDO. El servidor no es un checkout de git (el paquete se
 # descomprime sobre la carpeta), así que no hay a quién preguntarle "¿qué commit estás corriendo?".
@@ -79,7 +79,7 @@ say "Reconstruyendo y recreando contenedores..."
 
 # 4) VERIFICAR SALUD (breve). Si algo no quedó "Up", avisar cómo revertir.
 sleep 6
-if [ "$("${COMPOSE[@]}" ps --status running -q | wc -l)" -ge 2 ]; then
+if [ "$("${COMPOSE[@]}" ps --status running -q | wc -l)" -ge 4 ]; then   # central, panel, ollama, caddy
   ok "Contenedores arriba. Verificá el login del Gestor y que un agente conecte (Conectadas >= 1)."
   echo "   Revisión en línea:  curl -s http://localhost:8080/ | grep revision"
   echo "   Logs:  docker compose -p $PROYECTO logs -f central panel"

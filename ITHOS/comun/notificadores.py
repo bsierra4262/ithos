@@ -80,15 +80,15 @@ class Notificadores:
                 pass
         return ok
 
-    def enviar_documento(self, nombre, datos, mime="application/pdf", caption=""):
-        """Manda un archivo (PDF/CSV) por los canales que lo soporten (los que no, ignoran)."""
+    def enviar_documento(self, nombre, datos, mime="application/pdf", caption="", tipo=None):
+        """Manda un archivo (PDF/CSV) por los canales que lo soporten, al grupo de su TIPO."""
         ok = False
         for c in self.canales:
             fn = getattr(c, "enviar_documento", None)
             if not fn:
                 continue
             try:
-                ok = fn(nombre, datos, mime, caption) or ok
+                ok = self._con_tipo(fn, (nombre, datos, mime, caption), tipo) or ok
             except Exception:  # noqa: BLE001
                 pass
         return ok
@@ -97,21 +97,13 @@ class Notificadores:
 def crear_notificadores(cfg_cliente):
     """Arma el notificador con el WhatsApp que el cliente configuró."""
     canales = []
-    # WhatsApp (compat: bloque 'whatsapp' suelto).
-    wa_cfg = cfg_cliente.get("whatsapp")
-    if wa_cfg and wa_cfg.get("enabled"):
-        from comun import whatsapp
-        wa = whatsapp.crear_whatsapp(wa_cfg)
-        if wa:
-            canales.append(wa)
-    # Lista de canales que configuró el cliente (hoy, WhatsApp).
     for n in cfg_cliente.get("notificaciones", []):
         if not n.get("enabled", True):
             continue
         tipo = (n.get("tipo") or "").lower()
         if tipo in ("whatsapp", "whatsapp_no_oficial"):
             from comun import whatsapp
-            wa = whatsapp.crear_whatsapp({**n, "enabled": True, "tipo": "no_oficial"})
+            wa = whatsapp.crear_whatsapp({**n, "enabled": True})
             if wa:
                 canales.append(wa)
     return Notificadores(canales)

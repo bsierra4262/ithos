@@ -1,10 +1,10 @@
 # -*- coding: utf-8 -*-
-"""Interfaz web (HUD estilo Iron Man / ITHOS). Superadmin + Alta + Portal cliente.
-Todo elegible por cliente: sistema de tickets, canales de aviso y control de acceso."""
+"""Interfaz web del panel (HUD estilo Iron Man / ITHOS). Herramienta interna de INTELLIHELP:
+panel general, estado en vivo, métricas, reportes ITIL, base de conocimiento y configuración."""
 
 from comun.estilo_ithos import ESTILO as _ESTILO  # noqa: E402  (diseño compartido con el agente)
 
-# --- Constructor de formulario COMPLETO (compartido: admin, alta, portal) ---
+# --- Formulario de configuración de ITHOS ---
 _FORM_JS = r"""
 let CATS={integradores:{},tickets:{},canales:{},ia:{}};
 const $=s=>document.querySelector(s);
@@ -73,17 +73,9 @@ function optList(cat,sel){return Object.entries(CATS[cat]).map(([k,v])=>`<option
 function formHTML(c,admin){
  c=c||{}; let ia=c.ia||{}, gl=c.integrador_glpi||{}, t=tipoInteg(c), tkt=tipoTicket(c),
  icfg=c.integrador_config||(typeof c.integrador==='object'?c.integrador:{})||{};
- let idis=['es-AR','es-ES','en','pt-BR','fr','it'].map(x=>`<option ${x===(c.idioma||'es-AR')?'selected':''}>${x}</option>`).join('');
- // Zonas horarias del MUNDO por región (IANA). El horario del cliente rige la hora de sus reportes y
- // los reinicios de cuota, sin importar dónde esté alojado el servidor. Se agregan por optgroup.
- let ZONAS={
-  'Argentina y Sudamérica':['America/Argentina/Buenos_Aires','America/Argentina/Cordoba','America/Argentina/Mendoza','America/Montevideo','America/Santiago','America/Asuncion','America/Sao_Paulo','America/La_Paz','America/Bogota','America/Lima','America/Caracas','America/Guayaquil'],
-  'Norteamérica y Centroamérica':['America/Mexico_City','America/Tijuana','America/New_York','America/Chicago','America/Denver','America/Phoenix','America/Los_Angeles','America/Toronto','America/Guatemala','America/Costa_Rica','America/Panama','America/Santo_Domingo'],
-  'Europa':['Europe/Madrid','Europe/Lisbon','Europe/London','Europe/Paris','Europe/Berlin','Europe/Rome','Europe/Amsterdam','Europe/Athens','Europe/Moscow'],
-  'Asia y Oriente Medio':['Asia/Jerusalem','Asia/Dubai','Asia/Karachi','Asia/Kolkata','Asia/Bangkok','Asia/Shanghai','Asia/Singapore','Asia/Tokyo','Asia/Seoul','Asia/Manila'],
-  'África':['Africa/Casablanca','Africa/Lagos','Africa/Cairo','Africa/Johannesburg','Africa/Nairobi'],
-  'Oceanía':['Australia/Perth','Australia/Sydney','Pacific/Auckland'],
-  'Otros':['UTC']};
+ let idis=['es-AR','es-ES'].map(x=>`<option ${x===(c.idioma||'es-AR')?'selected':''}>${x}</option>`).join('');
+ // Zona horaria: rige la hora de los reportes y los reinicios de cuota (el servidor está en UTC).
+ let ZONAS={'Argentina':['America/Argentina/Buenos_Aires'],'Otros':['UTC']};
  let _zactual=(c.zona_horaria||'America/Argentina/Buenos_Aires');
  let zsel=Object.entries(ZONAS).map(([g,zs])=>`<optgroup label="${g}">`+
    zs.map(z=>`<option ${z===_zactual?'selected':''}>${z}</option>`).join('')+'</optgroup>').join('');
@@ -91,20 +83,18 @@ function formHTML(c,admin){
  let sec2=Object.entries(CATS.ia).map(([k,v])=>`<option value="${k}" ${k===secProv?'selected':''}>${v.label}</option>`).join('');
  let terProv=(ia.terciario&&ia.terciario.proveedor)||'';
  let sec3=Object.entries(CATS.ia).map(([k,v])=>`<option value="${k}" ${k===terProv?'selected':''}>${v.label}</option>`).join('');
- let vm=ia.voz_motor||'charon'; let rp=c.reportes||{};
+ let rp=c.reportes||{};
  let pr=c.proactivo||{};
  return `<div class=form id=jform>
    <div class="f full"><label>Nombre de la empresa</label><input id=f_nombre value="${esc(c.nombre)}" placeholder="INTELLIHELP S.A."></div>
-   <div class=f><label>Email de contacto (también se usa para la facturación)</label><input id=f_email type=email value="${esc(c.email)}" placeholder="soporte@empresa.com"></div>
    <div class=f><label>Idioma de la voz</label><select id=f_idioma>${idis}</select></div>
    <div class=f><label>Zona horaria (tu región · rige la hora de tus reportes)</label><select id=f_zona onchange="if($('#f_rep_zona'))$('#f_rep_zona').value=this.value">${zsel}</select></div>
-   <div class="f full"><label>API key del agente</label><div class=withbtn>
-     <input id=f_key value="${esc(c.api_key)}" placeholder="se genera sola" ${c.api_key?'readonly':''}>
-     <button class="btn sm" type=button onclick="genKey()">Generar</button></div></div>
-   ${c.api_key?`<div class="f full"><label>Contraseña de agente (para instalar el agente en la PC del cliente)</label>
+   <div class="f full"><label>API key del agente</label>
+     <input id=f_key value="${esc(c.api_key)}" placeholder="se genera sola al guardar" readonly></div>
+   ${c.api_key?`<div class="f full"><label>Contraseña de agente (para instalar el agente en la PC de la oficina)</label>
      <div class=withbtn><input id=f_atok value="${esc(c.agente_token||'')}" placeholder="se genera sola con la empresa" readonly>
      <button class="btn sm" type=button onclick="navigator.clipboard.writeText(document.getElementById('f_atok').value);toast('Contraseña copiada')">Copiar</button></div>
-     <div class=hint>El agente entra con la <b>api_key + esta contraseña</b>. Pasásela al cliente para instalar el agente.</div></div>`:''}
+     <div class=hint>El agente entra con la <b>api_key + esta contraseña</b>: se cargan al instalarlo.</div></div>`:''}
    <div class=f><div class=chk style="margin-top:22px"><input type=checkbox id=f_activo ${c.activo!==false?'checked':''}><span>Empresa activa</span></div></div>
 
    <div class=sec><span>Inteligencia artificial · el cerebro de ITHOS</span></div>
@@ -119,13 +109,8 @@ function formHTML(c,admin){
    <div class="f full" id=iatHost></div>
    <div class="f full"><label>API key de Gemini — para la VOZ Charon</label>
      <input id=f_gem value="${esc(ia.gemini_api_key)}" placeholder="AIza... (la voz ITHOS es Charon/Gemini)"></div>
-   <div class="f full"><label>Motor de voz</label><select id=f_vozmotor>
-     <option value="charon" ${vm==='charon'?'selected':''}>Charon (Gemini) — si se agota, pasa a ITHOS gratis (edge-tts)</option>
-     <option value="edge" ${vm==='edge'?'selected':''}>ITHOS gratis (edge-tts, neural) — siempre, sin cuota</option>
-     <option value="windows" ${vm==='windows'?'selected':''}>Windows local (offline, básica) — siempre</option></select></div>
    <div class=f><label>Límite diario (cuota gratis Gemini)</label><input id=f_lim type=number value="${ia.limite_diario||200}"></div>
    <div class=f><label>Avisar al quedar</label><input id=f_av type=number value="${ia.avisar_en||15}"></div>
-   <div class="f full"><div class=chk><input type=checkbox id=f_ilim ${ia.ilimitada?'checked':''}><span>Forzar plan PAGO (opcional — normalmente ITHOS detecta solo si la API es paga o gratis y elige el mejor modelo)</span></div></div>
 
    <div class=sec><span>Sistema de tickets · tu mesa de ayuda</span></div>
    <div class="f full hint">ITHOS lee y gestiona tus tickets: los clasifica, asigna, responde al cliente y cierra. Sistema compatible: GLPI.</div>
@@ -133,7 +118,7 @@ function formHTML(c,admin){
    <div class="f full" id=tkHost></div>
 
    <div class=sec><span>Canales · dónde te habla y le hablás</span><button class="btn sm" type=button onclick="addCanal()">＋ Agregar canal</button></div>
-   <div class="f full hint">Por dónde ITHOS te avisa y vos le escribís o le mandás un audio. Hoy el canal disponible es <b>WhatsApp</b>, con un grupo por tema: ahí mismo podés <b>pedirle acciones</b> (leer, cerrar, asignar o posponer un ticket) por texto o por audio.</div>
+   <div class="f full hint">Por dónde ITHOS te avisa y vos le escribís o le mandás un audio: <b>WhatsApp</b>, con un grupo por tema: ahí mismo podés <b>pedirle acciones</b> (leer, cerrar, asignar o posponer un ticket) por texto o por audio.</div>
    <div class="f full" id=canalesHost></div>
 
    <div class=sec><span>Control de acceso · portero por voz</span></div>
@@ -143,7 +128,7 @@ function formHTML(c,admin){
 
    <div id=depTerminales style="display:contents">
    <div class=sec style="border:0;margin:8px 0 4px"><span style="font-size:12px;color:var(--muted)">Terminales · qué dice en cada lector/puerta</span><button class="btn sm" type=button onclick="addTerminal()">＋ Agregar terminal</button></div>
-   <div class="f full hint">Asigná a cada terminal si es de <b>entrada</b>, <b>salida</b> o <b>sala</b>, con qué frecuencia saluda y (opcional) un saludo propio. ITHOS reconoce la terminal por su nombre: escribí una parte del nombre del lector (en IVMS es el <i>device</i> de la base; en las demás marcas, el nombre o IP del lector). Si no configurás nada, entrada saluda 1 vez por día y "sala técnica" siempre.</div>
+   <div class="f full hint">Asigná a cada terminal si es de <b>entrada</b>, <b>salida</b> o <b>sala</b>, con qué frecuencia saluda y (opcional) un saludo propio. ITHOS reconoce la terminal por su nombre: escribí una parte del nombre del lector (en IVMS es el <i>device</i> de la base). Si no configurás nada, entrada saluda 1 vez por día y "sala técnica" siempre.</div>
    <div class="f full" id=termDescubiertas></div>
    <div class="f full" id=termHost></div>
    </div>
@@ -169,15 +154,15 @@ function formHTML(c,admin){
    <div class=f><div class=chk style="margin-top:22px"><input type=checkbox id=f_pro_sla ${pr.sla_enabled?'checked':''}><span>Avisarme antes de que venza un SLA</span></div></div>
    <div class=f><label>Avisar cuando falten (horas)</label><input id=f_pro_horas type=number value="${pr.aviso_horas!=null?pr.aviso_horas:4}"></div>
    <div class=f><label>Revisar cada (min)</label><input id=f_pro_min type=number value="${pr.revisar_min!=null?pr.revisar_min:15}"></div>
-   <div class="f full hint">La base de conocimiento se arma sola, por empresa, y es privada.</div>
-   <div class="f full"><button class="btn sm" type=button onclick="regenKB()" ${c.api_key?'':'disabled'}>Regenerar base de conocimiento ahora</button></div>
+   <div class="f full hint">La base de conocimiento se arma sola con los tickets resueltos y la wiki.</div>
+   <div class="f full"><button class="btn sm" type=button onclick="regenKBForm()" ${c.api_key?'':'disabled'}>Regenerar base de conocimiento ahora</button></div>
    </div>
  </div>`;
 }
 function camposInteg(){renderCampos('#integCampos','integradores',$('#f_integ').value,'ic_',window._icfg||{})}
 function camposTickets(){
  let tkt=$('#f_tkt').value, vals=window._tkv||{};
- if(tkt==='glpi'){let gl=window._gl||{};vals={glpi_url:gl.glpi_url,glpi_app_token:gl.glpi_app_token,glpi_user_token:gl.glpi_user_token,glpi_ithos_token:gl.glpi_ithos_token,glpi_bsierra_token:gl.glpi_bsierra_token,glpi_test_token:gl.glpi_test_token,entity_id:gl.entity_id};}
+ if(tkt==='glpi'){let gl=window._gl||{};vals={glpi_url:gl.glpi_url,glpi_app_token:gl.glpi_app_token,glpi_user_token:gl.glpi_user_token,glpi_ithos_token:gl.glpi_ithos_token,entity_id:gl.entity_id};}
  renderCampos('#tkHost','tickets',tkt,'tk_',vals);
 }
 // --- Canales múltiples ---
@@ -187,7 +172,7 @@ function syncCanales(){(window._canales||[]).forEach((cn,i)=>{let s=$('#cn_tipo_
   let vals=readCampos('canales',cn.tipo,'cn_'+i+'_');Object.assign(cn,vals);})}
 function renderCanales(){
  let host=$('#canalesHost');if(!host)return;let arr=window._canales||[];
- if(!arr.length){host.innerHTML='<div style="color:var(--muted);font-size:13px">Todavía no agregaste ningún canal. Tocá <b>＋ Agregar canal</b> y elegí WhatsApp, Telegram, Email, Teams, Slack o Matrix/Element.</div>';return}
+ if(!arr.length){host.innerHTML='<div style="color:var(--muted);font-size:13px">Todavía no agregaste ningún canal. Tocá <b>＋ Agregar canal</b> para sumar el WhatsApp.</div>';return}
  host.innerHTML=arr.map((cn,i)=>`<div class=canal>
    <div class=chd><select id="cn_tipo_${i}" onchange="onCanalTipo(${i})">${optList('canales',cn.tipo)}</select>
      <label class=chk><input type=checkbox id="cn_en_${i}" ${cn.enabled!==false?'checked':''}><span>activo</span></label>
@@ -198,18 +183,11 @@ function renderCanales(){
    if(cn.tipo==='whatsapp_no_oficial')waRender(i);});
 }
 function onCanalTipo(i){syncCanales();window._canales[i].tipo=$('#cn_tipo_'+i).value;renderCanales()}
-// ---- Vinculación de WhatsApp NO-OFICIAL por QR (compartido: alta, panel admin y portal) ----
-// Contexto: si hay api_key (cliente ya creado) se usa como credencial; en el ALTA (sin api_key aún)
-// se genera una sesión propia y se manda el token de alta. El wa_session se persiste al guardar.
-function _waCtx(){
- let k=window._apiKey||(($('#f_key')||{}).value||'').trim();
- if(k) return {api_key:k};
- window._waSesion=window._waSesion||('alta-'+Math.random().toString(36).slice(2,14));
- return {sesion:window._waSesion,_alta_token:(new URLSearchParams(location.search).get('t')||'')};
-}
+// ---- Vinculación de WhatsApp NO-OFICIAL por QR (la empresa ya guardada: su api_key) ----
+function _waCtx(){return {api_key:window._apiKey||(($('#f_key')||{}).value||'').trim()}}
 async function waEstado(){
- let c=_waCtx();
- let q=new URLSearchParams(c.api_key?{api_key:c.api_key}:{sesion:c.sesion,t:c._alta_token||''});
+ let c=_waCtx(); if(!c.api_key) return {estado:'sin_vincular'};
+ let q=new URLSearchParams({api_key:c.api_key});
  try{return await (await fetch('/api/whatsapp/estado?'+q)).json()}catch(e){return {estado:'desconocido'}}
 }
 function waBadge(st){return ({vinculado:['✓ WhatsApp vinculado','ok'],qr:['Escaneá el QR','gold'],
@@ -328,8 +306,7 @@ function camposIAs(){let t=$('#f_prov2').value; if(!t){$('#iasHost').innerHTML='
 function camposIAt(){let t=$('#f_prov3').value; if(!t){$('#iatHost').innerHTML='';return} renderCampos('#iatHost','ia',t,'iat_',window._iaTer||{})}
 
 function initForm(c){
- window._apiKey=(c&&c.api_key)||'';       // credencial para vincular WhatsApp (reset por cliente)
- window._waSesion=(c&&c.wa_session)||'';  // sesión de WhatsApp persistida (reset por cliente)
+ window._apiKey=(c&&c.api_key)||'';       // identifica a la empresa para vincular WhatsApp
  window._icfg=(c&&(c.integrador_config||(typeof c.integrador==='object'?c.integrador:{})))||{};
  window._gl=(c&&c.integrador_glpi)||{}; window._tkv=(c&&c.tickets)||{};
  window._iaVals=(c&&c.ia)||{}; window._iaSec=(c&&c.ia&&c.ia.secundario)||{}; window._iaTer=(c&&c.ia&&c.ia.terciario)||{};
@@ -345,29 +322,23 @@ function repFrec(){let f=(($('#f_rep_frec')||{}).value)||'diario';
  if(s) s.style.display=(f==='semanal')?'flex':'none';
  if(m) m.style.display=(f==='mensual')?'flex':'none';
 }
-async function genKey(){
- let n=$('#f_nombre').value||'CLI';
- let r=await (await fetch('/api/generar_key',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({nombre:n})})).json();
- let k=$('#f_key');k.value=r.api_key;k.removeAttribute('readonly');
-}
 function collectForm(){
  let tkt=$('#f_tkt').value, tickets={tipo:tkt,...readCampos('tickets',tkt,'tk_')};
  syncCanales();syncTerminales();
  let notis=(window._canales||[]).map(cn=>({tipo:cn.tipo,enabled:cn.enabled!==false,...canalVals(cn)}));
  let terms=(window._terminales||[]).filter(t=>(t.match||'').trim()).map(t=>({match:t.match.trim(),tipo:t.tipo||'entrada',frecuencia:t.frecuencia||'1_por_dia',saludo:(t.saludo||'').trim()}));
  return {api_key:$('#f_key').value.trim(), agente_token:($('#f_atok')?$('#f_atok').value.trim():''),
-   nombre:$('#f_nombre').value.trim(), email:$('#f_email').value.trim(),
+   nombre:$('#f_nombre').value.trim(),
    activo:$('#f_activo').checked, idioma:$('#f_idioma').value, zona_horaria:$('#f_zona').value,
    proveedor:$('#f_prov').value, proveedor_secundario:$('#f_prov2').value, proveedor_terciario:$('#f_prov3').value,
-   voz_motor:$('#f_vozmotor').value, gemini_api_key:$('#f_gem').value.trim(),
+   gemini_api_key:$('#f_gem').value.trim(),
    ia_config:readCampos('ia',$('#f_prov').value,'iap_'),
    ia_config_2:$('#f_prov2').value?readCampos('ia',$('#f_prov2').value,'ias_'):{},
    ia_config_3:$('#f_prov3').value?readCampos('ia',$('#f_prov3').value,'iat_'):{},
-   limite_diario:+$('#f_lim').value||200, avisar_en:+$('#f_av').value||15, ilimitada:$('#f_ilim').checked,
+   limite_diario:+$('#f_lim').value||200, avisar_en:+$('#f_av').value||15,
    integrador:$('#f_integ').value, integrador_config:readCampos('integradores',$('#f_integ').value,'ic_'),
    tickets:tickets, notificaciones:notis, terminales:terms,
    kb_outline:{url:(($('#kb_ol_url')||{}).value||'').trim(), token:(($('#kb_ol_tok')||{}).value||'').trim()},
-   wa_session:window._waSesion||'',   // sesión de WhatsApp vinculada (se preserva; no perder el QR)
    reportes:colReportes(), proactivo:colProactivo()};
 }
 function colReportes(){
@@ -380,7 +351,9 @@ function colReportes(){
 }
 function colProactivo(){return {sla_enabled:($('#f_pro_sla')||{}).checked||false,
  aviso_horas:+($('#f_pro_horas')||{}).value||4, revisar_min:+($('#f_pro_min')||{}).value||15}}
-function regenKB(){let k=($('#f_key')||{}).value;if(!k){toast('Guardá la empresa primero');return;}
+// Botón del formulario de configuración: regenera la KB de la empresa QUE SE ESTÁ EDITANDO (su
+// api_key del formulario). El del bloque de Métricas es `regenKB`, con la empresa de esa vista.
+function regenKBForm(){let k=($('#f_key')||{}).value;if(!k){toast('Guardá la empresa primero');return;}
  toast('Regenerando base de conocimiento…');
  fetch('/api/kb_generar/'+encodeURIComponent(k)).then(r=>r.json()).then(d=>{
   toast(d.ok?('Base lista: '+d.casos+' casos resueltos'):('Error: '+(d.error||'')));}).catch(e=>toast('Error KB'));}
@@ -412,7 +385,7 @@ function canalesResumen(c){let n=(c&&c.notificaciones)||[];let act=n.filter(x=>x
  if(!act.length)return 'Sin canales de aviso';
  return act.map(x=>catLabel('canales',x.tipo).split(' ')[0]).join(' · ');
 }
-// ---- Reportes ITIL (compartido por el panel superadmin y el PORTAL del cliente) ----
+// ---- Reportes ITIL ----
 // UI: selector de período + botones. Cualquiera puede sacar el reporte diario/semanal/mensual
 // a mano y descargar PDF/CSV, aunque NO tenga configurado el envío automático.
 function itilBloque(){return `<div class=sec style="border:0;margin-top:16px"><span>Reportes ITIL 4</span></div>
@@ -451,7 +424,7 @@ function itilTablas(k){function T(tit,o){let e=Object.entries(o||{}).filter(x=>x
  return T('Por prioridad',k.por_prioridad)+T('Por categoría',k.por_categoria)+T('Por técnico',k.por_tecnico)+T('Por estado',k.por_estado)+T('Backlog por antigüedad',k.aging);}
 // ---- Base de conocimiento (subir MUCHOS archivos juntos + regenerar de tickets) ----
 function kbBloque(){return `<div class=sec style="border:0;margin-top:16px"><span>Base de conocimiento</span></div>
-   <div style="color:var(--muted);font-size:12.5px;margin-bottom:10px;line-height:1.5">ITHOS aprende <b>solo</b> de tus tickets ya resueltos (problema → solución) y usa eso para resolver casos parecidos. Podés <b>sumarle</b> tus instructivos/manuales, o traer tu wiki de <b>Outline</b>, para que responda con más precisión. Es privada y exclusiva de tu empresa.</div>
+   <div style="color:var(--muted);font-size:12.5px;margin-bottom:10px;line-height:1.5">ITHOS aprende <b>solo</b> de tus tickets ya resueltos (problema → solución) y usa eso para resolver casos parecidos. Podés <b>sumarle</b> tus instructivos/manuales, o traer tu wiki de <b>Outline</b>, para que responda con más precisión. Es privada: no sale del servidor.</div>
    <div class=f style="gap:8px;align-items:end;flex-wrap:wrap">
      <div style="flex:1;min-width:min(240px,100%)"><label>Subí instructivos o manuales (PDF, Word, texto — podés elegir varios a la vez)</label>
        <input type=file id=kb_files multiple accept=".pdf,.txt,.md,.csv,.docx"></div>
@@ -466,7 +439,7 @@ function kbBloque(){return `<div class=sec style="border:0;margin-top:16px"><spa
      <button class="btn sm ghost" onclick="importarOutline()">📚 Traer docs de Outline</button>
    </div>
    <div id=kb_msg style="margin-top:8px;color:var(--muted);font-size:12px"></div>`;}
-async function importarOutline(){if(!window._RKEY){toast('Primero creá la empresa (botón Crear empresa)');return;}
+async function importarOutline(){if(!window._RKEY){toast('Guardá la empresa primero');return;}
  let url=((document.getElementById('kb_ol_url')||{}).value||'').trim();
  let tok=((document.getElementById('kb_ol_tok')||{}).value||'').trim();
  if(!url||!tok){toast('Poné la dirección de Outline y el API token');return;}
@@ -476,7 +449,7 @@ async function importarOutline(){if(!window._RKEY){toast('Primero creá la empre
    if(d.error){msg.textContent='Error: '+d.error;return;}
    msg.textContent='✅ '+d.traidos+' de '+d.total+' documentos importados de Outline y sumados a la base.';
    toast('Outline importado');}catch(e){msg.textContent='No se pudo importar de Outline';}}
-async function subirKB(){if(!window._RKEY){toast('Primero creá la empresa (botón Crear empresa)');return;}
+async function subirKB(){if(!window._RKEY){toast('Guardá la empresa primero');return;}
  let inp=document.getElementById('kb_files');
  if(!inp||!inp.files.length){toast('Elegí uno o varios archivos');return;}
  let fd=new FormData(); for(let f of inp.files) fd.append('archivos',f);
@@ -485,7 +458,7 @@ async function subirKB(){if(!window._RKEY){toast('Primero creá la empresa (bot�
    if(d.error){msg.textContent='Error: '+d.error;return;}
    msg.textContent='✅ '+d.cargados+' de '+d.total+' aprendidos.'+((d.instructivos&&d.instructivos.length)?' Instructivos: '+d.instructivos.join(', '):'');
    toast('KB actualizada');}catch(e){msg.textContent='Error subiendo';}}
-async function regenKB(){if(!window._RKEY){toast('Primero creá la empresa (botón Crear empresa)');return;}
+async function regenKB(){if(!window._RKEY){toast('Guardá la empresa primero');return;}
  let msg=document.getElementById('kb_msg'); msg.textContent='Regenerando desde los tickets resueltos…';
  try{let d=await (await fetch('/api/kb_generar/'+encodeURIComponent(window._RKEY))).json();
    msg.textContent = d.error?('Error: '+d.error):('✅ '+d.casos+' casos resueltos aprendidos');}catch(e){msg.textContent='Error';}}
@@ -495,110 +468,75 @@ _ADMIN_JS = r"""
 let CLIENTES=[], VIVOS=[], VISTA='dash';
 function el(t,c,h){let e=document.createElement(t);if(c)e.className=c;if(h!=null)e.innerHTML=h;return e}
 // Sesión vencida: si el servidor responde 401 (cookie caducada), volvemos al login (no dejar el
-// panel roto en silencio). Solo en el panel superadmin ('/'), no en el portal del cliente.
+// panel roto en silencio).
 {const _f=window.fetch;window.fetch=async(...a)=>{let r=await _f(...a);
- if(r.status===401&&location.pathname==='/'){location.href='/login';}return r;};}
+ if(r.status===401){location.href='/login';}return r;};}
 async function boot(){await loadCats();nav('dash');poll();setInterval(poll,4000);
  // El panel general se refresca solo cada 6s (métricas EN VIVO), salvo que haya un modal abierto.
  setInterval(()=>{if(VISTA==='dash'&&!document.getElementById('ov').classList.contains('show'))vistaDash();},6000)}
 async function poll(){try{VIVOS=(await (await fetch('/api/estado')).json()).conectados||VIVOS}catch(e){/* hipo de red: MANTENER el ultimo valor, no blanquear (evita el "microcorte" visual) */}
  document.querySelectorAll('[data-live]').forEach(x=>{let on=VIVOS.includes(x.dataset.live);
    x.className='pill '+(on?'live':(x.dataset.act==='1'?'on':'off'));x.textContent=on?'● EN VIVO':(x.dataset.act==='1'?'● activa':'○ inactiva')});
- let cb=document.querySelector('[data-stat="Conectadas"] b'); if(cb&&cb.textContent!=String(VIVOS.length))cb.textContent=VIVOS.length;}
+ let cb=document.querySelector('[data-stat="Agente"] b'), av=VIVOS.length?'EN LÍNEA':'DESCONECTADO';
+ if(cb&&cb.textContent!=av)cb.textContent=av;}
 function nav(v){VISTA=v;document.querySelectorAll('.nav a').forEach(a=>a.classList.toggle('on',a.dataset.v===v));if(v==='dash')vistaDash();else vistaEmp()}
 async function vistaDash(){
  let r=await (await fetch('/api/resumen')).json();let u=r.uso_total||{};
- let vals={'Empresas':r.total,'Activas':r.activos,'Conectadas':VIVOS.length,
+ let vals={'Agente':VIVOS.length?'EN LÍNEA':'DESCONECTADO',
            'Tickets IA':u.ticket||0,'Anuncios':u.anuncio||0,'Consultas':u.consulta_voz||0};
- // Si el dashboard YA está pintado, actualizamos SOLO los números EN EL LUGAR (sin reemplazar el
- // HTML) -> no parpadea. La primera vez (nav a dash) sí se pinta entero.
+ // Si el panel YA está pintado, actualizamos SOLO los números EN EL LUGAR (sin reemplazar el
+ // HTML) -> no parpadea. La primera vez sí se pinta entero.
  if(document.querySelector('#view .grid.stats')){
    for(let k in vals){let b=document.querySelector('[data-stat="'+k+'"] b'); if(b&&b.textContent!=String(vals[k]))b.textContent=vals[k];}
    return poll();
  }
- let integs=Object.entries(r.por_integrador||{}).map(([k,v])=>`<span class=badge>${integName(k)} · ${v}</span>`).join(' ')||'—';
  $('#view').innerHTML=`<div class="grid stats">
-   ${sc('Empresas',vals['Empresas'],'','Total de empresas dadas de alta en la central')}
-   ${sc('Activas',vals['Activas'],'gold','Empresas con el servicio activo (encendido)')}
-   ${sc('Conectadas',vals['Conectadas'],'','Agentes conectados AHORA mismo, en tiempo real')}
+   ${sc('Agente',vals['Agente'],'gold','El agente de la oficina (voz y control de acceso), en tiempo real')}
    ${sc('Tickets IA',vals['Tickets IA'],'','Tickets que la IA gestionó este mes (clasificó, asignó o respondió)')}
-   ${sc('Anuncios',vals['Anuncios'],'','Avisos proactivos que ITHOS envió este mes por los canales')}
+   ${sc('Anuncios',vals['Anuncios'],'','Avisos proactivos que ITHOS envió este mes por WhatsApp')}
    ${sc('Consultas',vals['Consultas'],'','Preguntas que ITHOS respondió este mes por voz o chat')}</div>
-  <div class="hint" style="margin:-6px 0 16px">Las tres primeras tarjetas son el estado actual; las tres últimas, la actividad del mes en curso. Pasá el mouse por cada una para ver qué mide.</div>
-  <div class=panel><h3 class=ttl style="color:var(--cyan);font-size:13px;margin:0 0 12px">Sistemas de acceso desplegados</h3><div class=row>${integs}</div></div>`;
+  <div class="hint" style="margin:-6px 0 16px">La primera tarjeta es el estado actual; las otras, la actividad del mes en curso. Pasá el mouse por cada una para ver qué mide.</div>`;
  poll();
 }
 function sc(t,v,g,ti){return `<div class="panel stat ${g||''}" data-stat="${esc(t)}"${ti?' title="'+esc(ti)+'"':''}><b>${v}</b><span>${t}</span></div>`}
 async function vistaEmp(){
  CLIENTES=(await (await fetch('/api/clientes')).json()).clientes||[];
- if(!CLIENTES.length){$('#view').innerHTML='<div class="panel empty">Todavía no cargaste ninguna empresa.<br><br>Tocá <b>＋ Nueva empresa</b> arriba para dar de alta la primera y ITHOS empieza a trabajar.</div>';return}
+ if(!CLIENTES.length){$('#view').innerHTML='<div class="panel empty">Todavía no hay configuración cargada.<br><br><button class="btn" onclick="openForm()">Cargar la configuración</button></div>';return}
  let g=el('div','grid cards');
  CLIENTES.forEach(c=>{
-  let prov=(c.ia&&c.ia.proveedor)||'gemini',portal=location.origin+'/panel/'+encodeURIComponent(c.api_key);
+  let prov=(c.ia&&c.ia.proveedor)||'gemini';
   let card=el('div','panel cc');
   card.innerHTML=`<div class=hd><div class=nm>${esc(c.nombre)}</div>
      <span class=pill data-live="${esc(c.nombre)}" data-act="${c.activo?1:0}">…</span></div>
    <div class=row><span class="badge tk">TICKETS: ${catLabel('tickets',tipoTicket(c))}</span>
-     <span class=badge>ACCESO: ${integName(tipoInteg(c))}</span><span class=badge>IA: ${prov}${c.ia&&c.ia.secundario&&c.ia.secundario.proveedor?' → '+c.ia.secundario.proveedor:''}${c.ia&&c.ia.terciario&&c.ia.terciario.proveedor?' → '+c.ia.terciario.proveedor:''}${c.ia&&c.ia.ilimitada?' ∞':''}</span></div>
+     <span class=badge>ACCESO: ${integName(tipoInteg(c))}</span><span class=badge>IA: ${prov}${c.ia&&c.ia.secundario&&c.ia.secundario.proveedor?' → '+c.ia.secundario.proveedor:''}${c.ia&&c.ia.terciario&&c.ia.terciario.proveedor?' → '+c.ia.terciario.proveedor:''}</span></div>
    <div class=row><span class="badge wa">AVISO: ${canalesResumen(c)}</span></div>
    <div id="salud_${esc(c.api_key)}" style="margin:4px 0"></div>
    <div class=kv><span>API key</span><b class=key title="Copiar">${mask(c.api_key)}</b></div>
    <div class=kv><span>Contraseña agente</span><b class="${c.agente_token?'key atok':''}" title="Copiar">${c.agente_token?mask(c.agente_token):'—'}</b></div>
    <div class=kv><span>Gemini</span><b>${c.ia&&c.ia.gemini_api_key?mask(c.ia.gemini_api_key):'—'}</b></div>
-   <div class=kv><span>Portal cliente</span><b class=link title="Abrir">/panel/…${esc(c.api_key.slice(-6))}</b></div>
    <div class=row style="margin-top:8px">
      <button class="btn sm" data-a=met>Métricas / SLA</button>
-     <button class="btn sm ghost" data-a=cfg>Config agente</button>
-     <button class="btn sm gold" data-a=edit>Editar</button>
-     <button class="btn sm danger" data-a=del>Borrar</button></div>`;
+     <button class="btn sm gold" data-a=edit>Editar</button></div>`;
   card.querySelector('.key').onclick=()=>{navigator.clipboard.writeText(c.api_key);toast('API key copiada')};
   {let a=card.querySelector('.atok');if(a)a.onclick=()=>{navigator.clipboard.writeText(c.agente_token);toast('Contraseña de agente copiada')};}
-  card.querySelector('.link').onclick=()=>{navigator.clipboard.writeText(portal);window.open(portal,'_blank');toast('URL del portal copiada')};
   card.querySelector('[data-a=met]').onclick=()=>verMetricas(c);
-  card.querySelector('[data-a=cfg]').onclick=()=>verConfigAgente(c);
   card.querySelector('[data-a=edit]').onclick=()=>openForm(c);
-  card.querySelector('[data-a=del]').onclick=()=>delCliente(c);
   g.appendChild(card);
  });
  $('#view').innerHTML='';$('#view').appendChild(g);poll();
- CLIENTES.forEach(c=>renderSalud('salud_'+c.api_key,c.api_key));   // salud por empresa (agente/canales)
+ CLIENTES.forEach(c=>renderSalud('salud_'+c.api_key,c.api_key));   // salud: agente, WhatsApp, micrófono
 }
 function openForm(c){
- $('#modal').innerHTML=`<h2>${c&&c.api_key?'Editar empresa':'Nueva empresa'}</h2>${formHTML(c,true)}
-   <div class=acts><button class="btn ghost" onclick="cerrar()">Cancelar</button><button class="btn" onclick="saveForm()">Guardar empresa</button></div>`;
+ $('#modal').innerHTML=`<h2>Configuración de ITHOS</h2>${formHTML(c,true)}
+   <div class=acts><button class="btn ghost" onclick="cerrar()">Cancelar</button><button class="btn" onclick="saveForm()">Guardar</button></div>`;
  openModal();initForm(c);
 }
 async function saveForm(){
  let cli=collectForm(); if(!cli.nombre){toast('Falta el nombre');return}
  let r=await fetch('/api/clientes',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(cli)});
- if(r.ok){cerrar();toast('Empresa guardada');nav('emp')}else{let e=await r.json();toast(e.error||'Error')}
+ if(r.ok){cerrar();toast('Guardado. ITHOS se reinicia unos segundos para aplicarlo.');nav('emp')}else{let e=await r.json();toast(e.error||'Error')}
 }
-// Genera un ENLACE DE ALTA TEMPORAL de un solo uso para pasarle a un cliente (se lo mandás y él
-// carga su empresa la 1ª vez). Caduca y sirve una sola vez.
-async function generarAlta(){
- let nombre=prompt('Nombre de la empresa a dar de alta (opcional, ayuda a identificar el enlace):','')||'';
- let r=await fetch('/api/alta_link',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({nombre:nombre,horas:48})});
- if(!r.ok){let e=await r.json().catch(()=>({}));toast(e.error||'No se pudo generar el enlace');return}
- let d=await r.json(); let url=location.origin+d.url;
- $('#modal').innerHTML=`<h2>Enlace de alta temporal</h2>
-   <div class=panel><b>Pasale este enlace al cliente</b> (o usalo vos para cargar la empresa).
-   Sirve <b>una sola vez</b> y caduca en <b>${esc(d.horas)} h</b>.<br><br>
-   <div class=key style="word-break:break-all">${esc(url)}</div></div>
-   <div class=acts>
-     <button class="btn ghost" onclick="cerrar()">Cerrar</button>
-     <button class="btn danger" onclick="revocarAlta('${esc(d.token)}')">Revocar (lo generé sin querer)</button>
-     <button class="btn" onclick="navigator.clipboard.writeText('${url}');toast('Enlace copiado')">Copiar enlace</button>
-     <button class="btn gold" onclick="window.open('${url}','_blank')">Abrir</button></div>`;
- openModal();
-}
-// Revoca un enlace de alta recién generado (si lo creaste por error): deja de valer al instante.
-async function revocarAlta(token){
- if(!confirm('¿Revocar este enlace de alta? Ya no se va a poder usar.'))return;
- let r=await fetch('/api/alta_revocar',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:token})});
- let d=await r.json().catch(()=>({})); toast(d.ok?'Enlace revocado — ya no sirve':'No se pudo revocar'); if(d.ok)cerrar();
-}
-async function delCliente(c){if(!confirm('¿Borrar la empresa '+c.nombre+'?'))return;
- await fetch('/api/clientes/'+encodeURIComponent(c.api_key),{method:'DELETE'});toast('Empresa borrada');vistaEmp()}
 async function verMetricas(c){
  window._RKEY=c.api_key;
  $('#modal').innerHTML=`<h2>${esc(c.nombre)} — Métricas &amp; Reportes ITIL</h2><div id=met_body><div class=empty>Calculando… (leyendo tickets reales de GLPI)</div></div>
@@ -607,15 +545,6 @@ async function verMetricas(c){
    <div class=acts><button class="btn ghost" onclick="cerrar()">Cerrar</button></div>`;openModal();
  let s=await (await fetch('/api/sla/'+encodeURIComponent(c.api_key))).json();
  $('#met_body').innerHTML=realCards(s)+'<div class=sec style="border:0"><span>Cumplimiento de SLA</span></div>'+slaGauge(s);
-}
-async function verConfigAgente(c){
- let cfg=await (await fetch('/api/config_agente/'+encodeURIComponent(c.api_key))).json();
- let js=JSON.stringify(cfg,null,2);
- $('#modal').innerHTML=`<h2>${esc(c.nombre)} — Config del agente</h2>
-   <p style="color:var(--muted);font-size:13px">Pegá en <b>agente/config.json</b>. Acceso: <span class=badge>${integName(tipoInteg(c))}</span>. Cambiá <b>TU-DOMINIO</b>.</p>
-   <pre id=cfgpre>${esc(js)}</pre>
-   <div class=acts><button class="btn" onclick="navigator.clipboard.writeText(document.getElementById('cfgpre').innerText);toast('Copiado')">Copiar</button>
-   <button class="btn ghost" onclick="cerrar()">Cerrar</button></div>`;openModal();
 }
 // Cambiar la contraseña del Gestor: la fijás vos, nadie más la ve (se guarda hasheada). Al cambiarla,
 // la sesión actual deja de valer y hay que volver a entrar.
@@ -650,20 +579,17 @@ HTML = """<!doctype html><html lang=es><head><meta charset=utf-8>
 <style>__ESTILO__</style></head><body>
 <div class=app>
  <aside class=side>
-   <div class=brand><div class=reactor></div><div><b>ITHOS</b><span>CONTROL DECK · SUPERADMIN</span></div></div>
+   <div class=brand><div class=reactor></div><div><b>ITHOS</b><span>CONTROL DECK · INTELLIHELP</span></div></div>
    <nav class=nav>
      <a class=on data-v=dash onclick="nav('dash')"><span class=ic>◎</span> Panel general</a>
-     <a data-v=emp onclick="nav('emp')"><span class=ic>▤</span> Empresas</a>
-     <a onclick="openForm()"><span class=ic>＋</span> Nueva empresa</a>
-     <a onclick="generarAlta()"><span class=ic>⇲</span> Enlace de alta</a>
+     <a data-v=emp onclick="nav('emp')"><span class=ic>▤</span> ITHOS</a>
      <a onclick="cambiarPass()"><span class=ic>🔑</span> Cambiar contraseña</a>
      <a onclick="location.href='/logout'"><span class=ic>⎋</span> Cerrar sesión</a>
    </nav>
-   <div class=foot><span class=pulse></span> Núcleo en línea<br>v0.6 · Iron HUD<br>INTELLIHELP · ITHOS SaaS</div>
+   <div class=foot><span class=pulse></span> Núcleo en línea<br>Iron HUD<br>INTELLIHELP · ITHOS</div>
  </aside>
  <main class=main>
-   <div class=top><div><h1>Centro de mando</h1><div class=sub>EMPRESAS · IA · TICKETS · AVISOS · ACCESO · SLA · TIEMPO REAL</div></div>
-     <button class="btn gold" onclick="openForm()">＋ Nueva empresa</button></div>
+   <div class=top><div><h1>Centro de mando</h1><div class=sub>IA · TICKETS · AVISOS · ACCESO · SLA · TIEMPO REAL</div></div></div>
    <div id=view></div>
  </main>
 </div>
@@ -671,102 +597,4 @@ HTML = """<!doctype html><html lang=es><head><meta charset=utf-8>
 <div class=toast id=toast></div>
 <script>__FORM_JS__</script><script>__ADMIN_JS__</script></body></html>"""
 
-HTML_ALTA = """<!doctype html><html lang=es><head><meta charset=utf-8>
-<meta name=viewport content="width=device-width,initial-scale=1"><title>ITHOS · Alta de empresa</title>
-<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Rajdhani:wght@500;600;700&display=swap" rel=stylesheet>
-<style>__ESTILO__ .wrap{max-width:860px;margin:0 auto;padding:34px 20px}</style></head><body>
-<div class=wrap>
- <div class=brand style="justify-content:center;margin-bottom:8px"><div class=reactor></div>
-   <div><b style="font-family:Orbitron;font-size:22px;color:#eafcff">ITHOS</b>
-   <span style="color:var(--muted);font-size:10px;letter-spacing:3px">ALTA DE EMPRESA</span></div></div>
- <p class=sub style="text-align:center;max-width:620px;margin:6px auto 22px">Completá los datos de tu empresa y elegí qué querés que haga ITHOS: gestionar tus tickets, avisarte por tus canales y atender el control de acceso. Al crearla te damos tu <b style="color:var(--txt)">API key</b> y el enlace a tu <b style="color:var(--txt)">portal privado</b>, donde después podés ver métricas y cambiar todo cuando quieras.</p>
- <div class=panel><div id=formhost></div>
-   <div class=acts><button class="btn" onclick="enviarAlta()">Crear empresa</button></div>
-   <div id=res style="margin-top:16px"></div></div>
-</div>
-<div class=toast id=toast></div>
-<script>__FORM_JS__</script>
-<script>
-window._RKEY="";   // se setea al crear la empresa -> ahí funcionan Subir/Importar/Regenerar KB
-(async function(){await loadCats();
- // El alta también muestra la BASE DE CONOCIMIENTO (subir instructivos + traer tu wiki de Outline),
- // igual que el portal. Los botones se habilitan al crear la empresa (necesitan su API key).
- document.getElementById('formhost').innerHTML=formHTML({},false)+kbBloque();initForm({})})();
-async function enviarAlta(){
- let cli=collectForm(); if(!cli.nombre){toast('Poné el nombre de la empresa');return}
- cli._alta_token=new URLSearchParams(location.search).get('t')||'';   // enlace de un solo uso
- let r=await fetch('/api/alta',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(cli)});
- let d=await r.json(); if(!r.ok){toast(d.error||'Error');return}
- window._RKEY=d.api_key;                         // ya podés subir instructivos / importar Outline
- let portal=location.origin+d.portal;
- document.getElementById('res').innerHTML=`<div class=panel style="border-color:var(--ok)">
-   <b style="color:var(--ok)">¡Empresa creada: ${esc(d.nombre)}!</b><br><br>
-   API key del agente:<br><div class=key style="margin-top:6px">${esc(d.api_key)}</div><br>
-   Portal de la empresa:<br><a class=link href="${portal}" target=_blank>${portal}</a><br><br>
-   <span style="color:var(--muted);font-size:12.5px">Ya podés <b>subir tus instructivos</b> o
-   <b>traer tu wiki de Outline</b> desde la sección Base de conocimiento de arriba.</span></div>`;
- toast('Empresa creada · ya podés sumar conocimiento');
-}
-</script></body></html>"""
-
-
-def portal_html(api_key, nombre):
-    tpl = """<!doctype html><html lang=es><head><meta charset=utf-8>
-<meta name=viewport content="width=device-width,initial-scale=1"><title>ITHOS · __NOMBRE__</title>
-<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Rajdhani:wght@500;600;700&display=swap" rel=stylesheet>
-<style>__ESTILO__ .wrap{max-width:960px;margin:0 auto;padding:28px 20px}</style></head><body>
-<div class=wrap>
- <div class=top><div class=brand><div class=reactor></div>
-   <div><b style="font-family:Orbitron;font-size:20px;color:#eafcff">ITHOS</b>
-   <span style="color:var(--muted);font-size:10px;letter-spacing:3px">PORTAL · __NOMBRE__</span></div></div>
-   <button class="btn gold" onclick="toggleEdit()" id=btnEdit>Editar mi configuración</button></div>
- <p class=sub style="margin:2px 0 16px">Este es el portal privado de tu empresa. Acá ves en vivo el estado de tus tickets y el cumplimiento de SLA, descargás tus reportes y le sumás conocimiento a ITHOS. Con <b style="color:var(--txt)">Editar mi configuración</b> cambiás la IA, los canales y todo lo demás.</p>
- <div id=dash></div>
- <div id=editbox style="display:none;margin-top:18px"><div class=panel><div id=formhost></div>
-   <div class=acts><button class="btn ghost" onclick="toggleEdit()">Cancelar</button>
-   <button class="btn" onclick="guardar()">Guardar cambios</button></div></div></div>
-</div>
-<div class=toast id=toast></div>
-<script>__FORM_JS__</script>
-<script>
-const KEY="__KEY__"; let C=null;
-async function cargar(){
- await loadCats(); C=await (await fetch('/api/cliente/'+encodeURIComponent(KEY))).json();
- window._apiKey=KEY; window._waSesion=C.wa_session||'';   // contexto para vincular WhatsApp
- let hayWA=(C.notificaciones||[]).some(n=>n.tipo==='whatsapp_no_oficial'&&n.enabled!==false);
- document.getElementById('dash').innerHTML=`
-  <div class=row style="margin-bottom:14px">
-   <span class="pill ${C.activo?'on':'off'}">${C.activo?'● activa':'○ inactiva'}</span>
-   <span class="badge tk">TICKETS: ${catLabel('tickets',tipoTicket(C))}</span>
-   <span class=badge>ACCESO: ${integName(tipoInteg(C))}</span>
-   <span class=badge>IA: ${(C.ia&&C.ia.proveedor)||'gemini'}</span>
-   <span class="badge wa">AVISO: ${canalesResumen(C)}</span></div>
-  <div class=panel style="margin-bottom:14px"><div class=sec style="border:0;margin:0 0 8px"><span>Estado del sistema · todo debe estar activo</span></div><div id=saludHost><div class=hint>Consultando estado…</div></div></div>
-  ${hayWA?`<div class=panel style="margin-bottom:14px"><div class=sec style="border:0;margin:0 0 8px"><span>WhatsApp de tu empresa</span></div><div class=walink id=walink_p></div></div>`:''}
-  <div id=cards><div class=empty>Calculando… (leyendo tus tickets reales de GLPI)</div></div>
-  <div class=panel><div class=sec style="border:0;margin:0 0 8px"><span>Cumplimiento de SLA</span></div><div id=slabox><div class=empty>Calculando…</div></div></div>
-  <div class=panel style="margin-top:14px">${itilBloque()}</div>
-  <div class=panel style="margin-top:14px">${kbBloque()}</div>`;
- if(hayWA)waRender('p');                            // estado de WhatsApp en el dashboard (vinculado/caducada)
- renderSalud('saludHost',KEY);                      // salud del sistema (agente/canales/micrófono)
- clearInterval(window._saludTimer);
- window._saludTimer=setInterval(()=>renderSalud('saludHost',KEY),10000);   // refresco cada 10s
- window._RKEY=KEY;                                  // para descargar/ver reportes ITIL + subir KB
- let s=await (await fetch('/api/sla/'+encodeURIComponent(KEY))).json();
- document.getElementById('cards').innerHTML=realCards(s);
- document.getElementById('slabox').innerHTML=slaGauge(s);
-}
-function toggleEdit(){let e=document.getElementById('editbox');let on=e.style.display==='none';
- e.style.display=on?'block':'none';document.getElementById('btnEdit').textContent=on?'Cerrar editor':'Editar mi configuración';
- if(on){document.getElementById('formhost').innerHTML=formHTML(C,false);initForm(C);}}
-async function guardar(){let cli=collectForm();cli.api_key=KEY;
- let r=await fetch('/api/clientes',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(cli)});
- if(r.ok){toast('Configuración guardada');toggleEdit();cargar()}else{toast('Error al guardar')}}
-cargar();
-</script></body></html>"""
-    return (tpl.replace("__ESTILO__", _ESTILO).replace("__FORM_JS__", _FORM_JS)
-            .replace("__NOMBRE__", nombre).replace("__KEY__", api_key))
-
-
 HTML = HTML.replace("__ESTILO__", _ESTILO).replace("__FORM_JS__", _FORM_JS).replace("__ADMIN_JS__", _ADMIN_JS)
-HTML_ALTA = HTML_ALTA.replace("__ESTILO__", _ESTILO).replace("__FORM_JS__", _FORM_JS)

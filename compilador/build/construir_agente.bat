@@ -1,8 +1,8 @@
 @echo off
 REM ============================================================================
 REM  Construye el AGENTE ITHOS: APP con interfaz grafica (.exe) + INSTALADOR.
-REM  Correr desde la RAIZ del proyecto:   build\construir_agente.bat
-REM  Requisitos: pip install pyinstaller pywebview pillow  +  pip install -r requirements.txt
+REM  Correr desde la RAIZ del proyecto:   compilador\build\construir_agente.bat
+REM  Requisitos: pip install pyinstaller  +  pip install -r ITHOS\agente\requirements.txt
 REM              + Inno Setup 7 (ISCC.exe).
 REM  Deja SOLO el instalador en dist\  ->  dist\ITHOS-Agente-Setup.exe
 REM ============================================================================
@@ -16,11 +16,10 @@ python build\bump_version.py agente patch || goto :err
 echo  [1/6] Icono + imagenes del instalador...
 python build\hacer_icono.py || goto :err
 
-echo  [2/5] Limpiando lo VIEJO (dist + build temporales + logs)...
+echo  [2/6] Limpiando lo VIEJO (dist + build temporales + logs)...
 if exist dist rmdir /s /q dist
 if exist build\exe rmdir /s /q build\exe
 if exist build\work rmdir /s /q build\work
-del /q agente\*.log 2>nul
 del /q *.log 2>nul
 
 echo  [3/6] Construyendo la app (ithos-agente.exe) a build\exe ...

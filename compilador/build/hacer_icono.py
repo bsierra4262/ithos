@@ -96,10 +96,6 @@ def main():
     tam = [16, 24, 32, 48, 64, 128, 256]
     base.save(os.path.join(BASE, "ithos.ico"), sizes=[(s, s) for s in tam])
     base.save(os.path.join(BASE, "ithos.png"))
-    try:
-        base.save(os.path.join(BASE, "ithos.icns"))   # macOS (best-effort)
-    except Exception:  # noqa: BLE001
-        pass
     _wizard(164, 314, grande=True).save(os.path.join(BASE, "ithos_wizard.bmp"))
     _wizard(55, 58, grande=False).save(os.path.join(BASE, "ithos_wizard_small.bmp"))
     print("Logo ITHOS (icono + wizard) generado en", BASE)

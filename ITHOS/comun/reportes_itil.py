@@ -10,8 +10,8 @@ tickets (GLPI hoy; el resto por el adaptador) y los entrega en 3 formatos:
 KPIs (ITIL 4 — solo se reporta lo que se puede medir con EXACTITUD; nada inventado):
   Volumen del período: creados, resueltos, cerrados.  Backlog actual + AGING.
   Cumplimiento de SLA de RESOLUCIÓN (TTR) y de PRIMERA RESPUESTA (TTO).
-  MTTR (tiempo medio de resolución).  MTTA/1ª respuesta (si se piden detalles).
-  Reapertura.  Desglose por PRIORIDAD, CATEGORÍA, ESTADO, TÉCNICO y SECTOR (entidad).
+  MTTR (tiempo medio de resolución).  Desglose por PRIORIDAD, CATEGORÍA, ESTADO y TÉCNICO.
+  La 1ª respuesta es la que registra GLPI (cuándo se tomó en cuenta el ticket) contra su TTO.
 
 Períodos: 'diario' (hoy), 'semanal' (esta semana), 'mensual' (este mes), 'total'.
 """
@@ -308,7 +308,6 @@ def _calcular_con(cfg_glpi, c_ithos, c_lect, entidad, periodo, zona, n, con_tecn
 
     creados = resueltos = cerrados = 0
     ttr_med = ttr_ok = tto_med = tto_ok = 0
-    reaperturas = 0
     horas_resol = []
     por_prio, por_cat, por_estado, por_tec = {}, {}, {}, {}
     backlog, aging = [], {"< 1 día": 0, "1-3 días": 0, "3-7 días": 0, "> 7 días": 0}
@@ -339,10 +338,16 @@ def _calcular_con(cfg_glpi, c_ithos, c_lect, entidad, periodo, zona, n, con_tecn
         if _en_rango(solve, desde, hasta) and ttr:
             ttr_med += 1
             ttr_ok += 1 if solve <= ttr else 0
-        if _en_rango(solve, desde, hasta) and tto and creada:
-            # aproximación de 1ª respuesta: se atendió a tiempo si se resolvió antes del TTO
+        # 1ª RESPUESTA: GLPI registra cuántos segundos tardó el ticket en ser TOMADO EN CUENTA
+        # (takeintoaccount_delay_stat). Se mide sobre los creados en el período que tienen TTO y ya
+        # fueron tomados. (Antes se usaba la RESOLUCIÓN como si fuera la 1ª respuesta.)
+        try:
+            demora = int(t.get("takeintoaccount_delay_stat") or 0)
+        except (TypeError, ValueError):
+            demora = 0
+        if _en_rango(creada, desde, hasta) and tto and creada and demora > 0:
             tto_med += 1
-            tto_ok += 1 if solve <= tto else 0
+            tto_ok += 1 if creada + timedelta(seconds=demora) <= tto else 0
 
         # Backlog ACTUAL (foto de hoy) + aging
         if st in ABIERTOS:
@@ -389,7 +394,7 @@ def _calcular_con(cfg_glpi, c_ithos, c_lect, entidad, periodo, zona, n, con_tecn
         "sla_ttr_ok": ttr_ok, "sla_ttr_total": ttr_med,
         "sla_tto_pct": round(100 * tto_ok / tto_med, 1) if tto_med else None,
         "sla_tto_ok": tto_ok, "sla_tto_total": tto_med,
-        "mttr_horas": mttr, "reaperturas": reaperturas,
+        "mttr_horas": mttr,
         "por_prioridad": por_prio, "por_categoria": por_cat,
         "por_estado": por_estado, "por_tecnico": por_tec, "aging": aging,
     }
@@ -522,8 +527,7 @@ def pdf_bytes(k, empresa=""):
                            ("Cerrados", k["cerrados"]), ("Backlog", k["backlog"])]))
     story.append(Spacer(1, 6))
     story.append(tarjetas([("SLA resolución", sla_ttr), ("SLA 1ª respuesta", sla_tto),
-                           ("MTTR", _mttr_txt(k["mttr_horas"])),
-                           ("Reaperturas", k["reaperturas"])]))
+                           ("MTTR", _mttr_txt(k["mttr_horas"]))]))
 
     def tabla(titulo, d, c1="Concepto"):
         if not d or not any(d.values()):

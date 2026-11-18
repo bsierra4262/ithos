@@ -20,7 +20,6 @@ COMANDO = "comando"    # {"tipo": COMANDO, "accion": <AC_*>, ...}
 # --- Eventos (agente -> central) ---
 EV_ACCESO = "acceso"   # fichaje: {"nombre","device","es_fallo"[,"tipo" compat]}. El CENTRAL clasifica
 #   la terminal (entrada/salida/sala) por 'device' según la config del cliente (thin agent).
-EV_TICKET = "ticket"   # ticket nuevo detectado por el agente (opcional)
 EV_TERMINALES = "terminales_descubiertos"  # el agente DESCUBRE las terminales del cliente y las lista
 #   para que las mapee desde el panel: {"terminales": ["Puerta Principal", "Sala Tecnica", ...]}
 EV_ESTADO = "estado_agente"   # el agente reporta su salud para el dashboard: {"microfono":bool,

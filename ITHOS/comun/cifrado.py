@@ -4,12 +4,12 @@
 ITHOS — cifrado EN REPOSO de los datos sensibles del cliente (grado militar).
 
 Los secretos de cada empresa (claves de IA, tokens de GLPI, contraseñas de la base de fichajes,
-token de MercadoPago, contraseña de agente, tokens de canales, etc.) NO se guardan en claro en
+contraseña de agente, contraseña de la base de fichajes, etc.) NO se guardan en claro en
 `clientes.json`: se cifran con **AES-256-GCM** (cifrado autenticado, el mismo estándar que se usa
 para datos clasificados) usando una **clave maestra separada de los datos**.
 
 Modelo de amenaza (honesto): esto es **cifrado en reposo**, no "zero-access" estilo ProtonMail. El
-Gestor DEBE poder usar los secretos 24/7 (llamar a Gemini, entrar a GLPI, leer la DB, cobrar), así
+Gestor DEBE poder usar los secretos 24/7 (llamar a Gemini, entrar a GLPI, leer la DB), así
 que el proceso en ejecución los descifra en memoria. Lo que garantiza es que si te roban el archivo
 `clientes.json` o un backup **sin la clave maestra**, no pueden descifrar nada (AES-256-GCM sin la
 clave es computacionalmente inviable).

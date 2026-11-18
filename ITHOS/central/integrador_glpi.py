@@ -1,12 +1,10 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Integrador GLPI (pluggable). Vigila tickets nuevos de un cliente, los TRIAGEA
-(clasifica/asigna/responde vía ITHOS) y empuja los anuncios de voz al agente.
-Maneja el seguimiento (respuesta del cliente -> en curso; recordatorio diario).
-
-Corre en el CENTRAL (GLPI nube, ej. ITH) o en el AGENTE (GLPI privado): mismo
-código, cambia dónde se instancia. enviar_comando(cmd) y wa (WhatsApp) son callbacks.
+Integrador GLPI. Vigila los tickets nuevos, los TRIAGEA (clasifica/asigna/responde vía ITHOS)
+y empuja los anuncios de voz al agente. Maneja el seguimiento (respuesta del cliente -> en
+curso; recordatorio diario). Corre en el Gestor. enviar_comando(cmd) y wa (WhatsApp) son
+callbacks.
 """
 
 import os

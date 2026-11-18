@@ -17,18 +17,17 @@ Se configura por cliente, en el canal de WhatsApp:
       {"grupo": "ITHOS",         "ambito": "consultas"},
       {"grupo": "ITHOS_SOPORTE", "ambito": "soporte"},
       {"grupo": "ITHOS_TRELLO",  "ambito": "tareas"},
-      {"grupo": "ITHOS_DEMO",    "ambito": "sistema"}
+      {"grupo": "ITHOS_SISTEMA", "ambito": "sistema"}
     ]
 
-Un cliente que quiera todo junto no configura nada: con un `"grupo"` suelto se usa el ámbito
-`todo` y se comporta como antes.
+Para todo junto en un solo grupo: un `"grupo"` suelto usa el ámbito `todo`.
 """
 
 # Tipos de aviso que produce el sistema. Cada aviso nace con el suyo y va SÓLO a donde corresponde.
 TICKETS = "tickets"          # triage, ciclo de vida, respuestas del cliente, cambios de estado
 SLA = "sla"                  # SLA en riesgo/vencido y reportes ITIL
 PLANKA = "planka"            # tablero del equipo: resumen, seguimiento, movimientos
-SISTEMA = "sistema"          # el Gestor o el agente arrancan/se reinician, cuotas de IA, cobranza
+SISTEMA = "sistema"          # el Gestor o el agente arrancan/se reinician, cuotas de IA, wiki
 VOZ = "voz"                  # entrenamiento de la voz del dueño
 AVISOS = (TICKETS, SLA, PLANKA, SISTEMA, VOZ)
 

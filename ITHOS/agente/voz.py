@@ -46,12 +46,11 @@ _LETRAS_POR_SEG = 8.3
 
 class VozAgente:
     def __init__(self, cfg_voz, cache_dir=None, velocidad=1.25, salt="v1", streaming=True):
-        self.ia = IA.crear_voz(cfg_voz)          # Charon (identidad ITHOS) o voz local si se exige
-        # ¿Hay voz de MARCA disponible? Charon = Gemini y NECESITA una key de Gemini. Si el cliente
-        # NO usa Gemini (ni hay key), no hay identidad Charon -> usamos edge SIEMPRE (sin intentar
-        # Charon y fallar en cada frase, que agrega latencia). La voz local cuenta como identidad propia.
-        self._voz_marca = bool(getattr(self.ia, "api_key", "")) or \
-            isinstance(self.ia, getattr(IA, "LocalVoz", ()))
+        self.ia = IA.crear_voz(cfg_voz)          # Charon (identidad ITHOS)
+        # ¿Hay voz de MARCA disponible? Charon = Gemini y NECESITA una key de Gemini. Sin key no hay
+        # identidad Charon -> edge SIEMPRE (sin intentar Charon y fallar en cada frase, que agrega
+        # latencia).
+        self._voz_marca = bool(getattr(self.ia, "api_key", ""))
         if not self._voz_marca:
             log.info("Sin key de Gemini: la voz usa edge-tts siempre (sin identidad Charon de marca).")
         self.velocidad = float(velocidad or 1.0)

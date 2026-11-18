@@ -6,33 +6,22 @@
 # build funciona igual se lo llame desde la raíz o desde compilador/.
 #
 # Notas:
-#  - Los integradores de acceso se importan por NOMBRE en runtime -> hiddenimports. pyodbc idem (IVMS).
+#  - El integrador de acceso (IVMS) se importa por NOMBRE en runtime -> hiddenimports. pyodbc idem.
 #  - La GUI usa pywebview (WebView2/WinForms en Windows) -> hiddenimports 'gui','webview','clr' + data
 #    de webview (DLLs WebBrowserInterop en webview/lib). Doc: pywebview.flowrl.com/guide/freezing.html
 #  - console=False: es una APP con ventana (no consola). El servicio 24/7 corre con --run.
-#  - Para VENDER conviene FIRMA de código + Nuitka (menos falsos positivos de antivirus) — ver el doc.
+#  - Se construye en Windows: el agente corre en la PC de la oficina.
 import os
-import sys as _sys
 from PyInstaller.utils.hooks import collect_submodules, collect_data_files, collect_dynamic_libs
 
 BUILD = os.path.abspath(SPECPATH)                           # compilador/build (SPECPATH ya es el DIRECTORIO del .spec)
 RAIZ = os.path.dirname(os.path.dirname(BUILD))              # raíz del proyecto (compilador/build/../..)
 APP = os.path.join(RAIZ, "ITHOS")                           # el software (comun/ + agente/)
 
-# Icono POR SO (PyInstaller no cross-compila: se corre en cada SO). Windows: .ico; macOS: .icns;
-# Linux: sin icono embebido (se usa el .png del .desktop).
-if _sys.platform.startswith("win"):
-    _ICONO = os.path.join(BUILD, "ithos.ico")
-elif _sys.platform == "darwin":
-    _icns = os.path.join(BUILD, "ithos.icns")
-    _ICONO = _icns if os.path.exists(_icns) else None
-else:
-    _ICONO = None
+_ICONO = os.path.join(BUILD, "ithos.ico")
 
-hidden = (["integrador_ivms", "integrador_hikcentral", "integrador_biostar2",
-           "integrador_zkteco", "integrador_honeywell", "escucha", "voz", "pyodbc",
-           "audiotsm", "audiotsm.io.array",              # velocidad en STREAMING (WSOLA)
-           "pydub", "pydub.effects", "audioop",          # velocidad en CACHEADO (portero) -> si falta, LENTO
+hidden = (["integrador_ivms", "escucha", "voz", "pyodbc",
+           "audiotsm", "audiotsm.io.array",              # velocidad de la voz (WSOLA)
            "gui", "webview", "clr",                       # GUI (pywebview) + backend .NET (pythonnet)
            "webview.platforms.winforms", "webview.platforms.edgechromium",
            "bandeja", "pystray", "PIL.Image",             # icono de BANDEJA (system tray)
@@ -41,7 +30,7 @@ hidden = (["integrador_ivms", "integrador_hikcentral", "integrador_biostar2",
            # explícitos para que entren al paquete sí o sí: si faltara alguno, el agente arrancaría igual
            # pero perdería esa función (p. ej. sin comun.wake el micrófono no reconoce "Hey ITHOS").
            "comun", "comun.wake", "comun.audio", "comun.despierto", "comun.version",
-           "comun.estilo_ithos", "comun.locucion", "comun.voz_tts", "comun.vozid", "comun.ia"]
+           "comun.estilo_ithos", "comun.locucion", "comun.ia"]
           + collect_submodules("pystray")                 # backends de bandeja por SO
           + collect_submodules("edge_tts")
           + collect_submodules("onnxruntime") + collect_submodules("google"))
@@ -64,7 +53,7 @@ a = Analysis(
     hookspath=[],
     # webrtcvad = VAD de respaldo (perezoso, solo sin onnx; acá va Silero/onnx) -> su hook falla, se
     # excluye. QT/GTK: pywebview usa WebView2 en Windows, no hacen falta. El resto son del gestor.
-    excludes=["reportlab", "pypdf", "PyMySQL", "fastapi", "uvicorn", "webrtcvad",
+    excludes=["reportlab", "pypdf", "fastapi", "uvicorn", "webrtcvad", "neonize",
               "matplotlib", "IPython", "tkinter", "pandas", "pytest",
               "PyQt5", "PyQt6", "PySide2", "PySide6", "gi"],   # backends de webview que no usamos + peso muerto
     noarchive=False,
@@ -79,8 +68,3 @@ exe = EXE(
     upx=False,
 )
 
-# En macOS, empaquetar como .app (bundle) para que sea una aplicación de verdad.
-if _sys.platform == "darwin":
-    app = BUNDLE(exe, name="ITHOS Agente.app",
-                 icon=_ICONO, bundle_identifier="tech.intellihelp.ithos.agente",
-                 info_plist={"NSHighResolutionCapable": True, "LSUIElement": False})

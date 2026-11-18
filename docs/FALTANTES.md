@@ -1,42 +1,47 @@
-# ITHOS — FALTANTES (Fase 2, para el despliegue en la VPS)
+# ITHOS — FALTANTES
 
-> **Cuándo aplicar:** cuando pasemos de la prueba local a poner el **Gestor en la VPS de Hostinger (KVM 2)** —
-> primer cliente **INTELLIHELP S.A.**. Estos ítems rinden y se hacen bien recién con un despliegue real (flota,
-> firma de código, instalación en clientes). Detalle y fuentes en [ARQUITECTURA_GESTOR_AGENTE.md](ARQUITECTURA_GESTOR_AGENTE.md).
+> **Qué es esto:** lo que queda pendiente o tiene un límite conocido, con ITHOS ya en producción como
+> **herramienta interna de INTELLIHELP S.A.**: un Gestor en el VPS Hostinger KVM 2 y un agente en la PC de la
+> oficina. Actualizado el 18-nov-2026. Lo que era de la etapa de producto a la venta (MSI, auto-update por red,
+> métricas de flota, firma de CA pública, Nuitka, alta de clientes, facturación) salió del alcance y no se sigue.
 
-## Pendientes de Fase 2
+## Pendientes
 
-- [ ] **Gemini PAGO para la voz Charon** (voz-id del cliente): (1) **generar una API key nueva** en AI Studio
-      (la actual `AQ...` es válida y paga pero tiene el **saldo de prepago en 0** → 429 "prepayment credits
-      depleted"); (2) **cargar créditos** (prepago, mínimo US$10 — alcanza para AÑOS: cachear el padrón cuesta
-      ~US$0,35–1,40, una vez, y los saludos se reusan); (3) recomendado **auto-recarga con tope mensual bajo**.
-      Con saldo, se guarda la key (cifrada) y se **regenera todo el padrón con Charon a 1.20 uniforme al instante**
-      (sin el tope free de 10 TTS/día). Hasta entonces, sigue la key free (10/día) — no se toca. Ver
-      [[voz-velocidad-variedad]] / billing: ai.google.dev/gemini-api/docs/billing.
-- [ ] **Empaquetar el agente con Nuitka** (en vez de PyInstaller): menos falsos positivos de antivirus, más rápido.
-      Requiere toolchain C. Se hace al distribuir a clientes reales.
-- [ ] **Firma de código de CA pública (OV/EV pago o Azure Trusted Signing ~US$10/mes)** para que el instalador NO
-      lo marque SmartScreen **en cualquier PC** (fuera de la flota). Hoy está la firma **self-signed gratis** (ok en
-      las PCs de la flota que confían el cert — ver INSTALACION_AGENTE.md §1). No hay cert gratis de CA pública para
-      software propietario (SignPath Foundation = solo open-source).
-- [ ] **Auto‑update del agente por red** (estilo Chrome/Steam): el Gestor publica versión + manifiesto firmado; el
-      agente **avisa** y **el usuario decide** (ahora/después); descarga, **verifica la firma**, se reemplaza y
-      reinicia. **Nunca se manda un archivo a mano.** ⚠️ **Necesita firma de código + rollback + pruebas de campo**
-      (es lo más delicado: un update malo rompe agentes). Herramienta: PyUpdater o updater propio servido por el Gestor.
-- [ ] **Métricas de flota** en el Gestor: qué agentes están conectados y con qué versión (para desplegar updates
-      de a poco / staged rollout).
+- [ ] **Derivación con balanceo a los técnicos** más allá de la mesa por carga (hoy: instalaciones,
+      escalamiento y la mesa repartida por la cantidad de tickets abiertos, todo desde `reparto`). Se diseña con
+      el equipo.
 
-## Hecho (Fase 1) — referencia
-- [x] Versionado SemVer (Gestor + Agente) + handshake de versión en el `auth` (compat hacia atrás). (H26)
-- [x] Jitter en la reconexión del agente (backoff + jitter, tope 30s).
-- [x] Vocabulario **Gestor + Agente** (app, logs, demo, docs).
-- [x] **Agente = APP con interfaz gráfica ITHOS** (pywebview, multiplataforma, no consola) + **un solo instalador**
-      Inno personalizado (`dist\ITHOS-Agente-Setup.exe`), con arranque al iniciar sesión, datos en `%LOCALAPPDATA%\ITHOS`
-      y desinstalado **sin rastro** (solo lo del agente). Build: `compilador/build/construir_agente.bat`. (H47)
-- [x] **Firma de código GRATIS (self-signed INTELLIHELP + timestamp)** para la flota controlada: `compilador/build/firmar.ps1`
-      + `compilador/build/confiar_en_cliente.ps1` (Trusted Root/Publishers, admin o GPO). (H47)
-- [x] Test de **comunicación entre redes** Gestor(VPS) ↔ Agente(cliente, otra IP) — agente sale hacia afuera, NAT ok. (H27)
-- [x] **Seguridad de acceso** (Fase 1.5): login del Gestor (solo INTELLIHELP) + enlace de alta temporal de un solo
-      uso, con la demo adaptada. (ver más abajo / H28)
+## Límites conocidos (se aceptan como están)
+
+- **Voz Charon con la cuota gratuita de Gemini.** Se decidió no pagar. El TTS tiene tope diario: el padrón de
+  saludos se cachea de a poco y, mientras tanto, lo que no está en caché suena con edge-tts. Las notas de voz de
+  WhatsApp usan siempre edge-tts para no gastar esa cuota.
+- **IA local lenta.** En el VPS sin GPU, `qwen3:4b` tarda unos 100 segundos por triage: es el último respaldo de
+  la cadena, no la primaria. Cuando salga un modelo nuevo o cambie el VPS, se vuelve a medir con
+  `tests/medir_ia_local.py`.
+- **IVMS no tiene API.** Se lee su base de fichajes (SQL Server), por eso ese integrador corre en el agente y la
+  PC necesita el driver ODBC.
+- **WhatsApp no oficial (neonize).** Depende de una sesión vinculada por QR; si WhatsApp la cierra, hay que volver
+  a vincular desde el panel.
+- **SmartScreen en una PC nueva.** El agente se firma con el certificado propio de INTELLIHELP; el instalador lo
+  deja como confiable, pero la primera ejecución del instalador en una PC nueva puede mostrar una vez el aviso de
+  "editor desconocido".
+
+## Hecho — referencia
+- [x] Versionado SemVer (Gestor + Agente) + handshake de versión en el `auth` (compatible hacia atrás). La versión
+      del Gestor se sube en el repositorio antes de armar el paquete.
+- [x] Jitter en la reconexión del agente (backoff + jitter ±30 %, tope 30 s).
+- [x] Vocabulario **Gestor + Agente** (app, logs, docs).
+- [x] **Agente = APP con interfaz gráfica ITHOS** (pywebview + bandeja) y **un solo instalador** Inno
+      (`compilador\dist\ITHOS-Agente-Setup.exe`), con arranque al iniciar sesión (`--run`), datos en
+      `%LOCALAPPDATA%\ITHOS` y desinstalado **sin rastro**. Build: `compilador/build/construir_agente.bat`.
+- [x] **Firma de código propia de INTELLIHELP** (`compilador/build/firmar.ps1`); el instalador confía el
+      certificado en la PC.
+- [x] Comunicación entre redes Gestor (VPS) ↔ Agente (oficina): el agente sale hacia afuera, NAT ok.
+- [x] **Seguridad de acceso**: todo el panel con login del administrador (denegar por defecto), secretos cifrados
+      en reposo, sin rutas que devuelvan la configuración con claves.
+- [x] **Gestor en producción** en el VPS Hostinger KVM 2 (central, panel, ollama, caddy), con la cadena
+      Gemini → Groq → IA local.
+- [x] **Wiki Outline conectada** en los dos sentidos (lee para la KB y publica el paso a paso de los cerrados).
 
 *Actualizar este archivo a medida que se completen los pendientes.*

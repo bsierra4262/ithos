@@ -1,6 +1,6 @@
 """Vinculación de WhatsApp NO-OFICIAL por QR (server-side: corre en el GESTOR).
 
-El cliente vincula SU WhatsApp escaneando un QR desde el panel o el alta, sin tocar la terminal:
+Se vincula el WhatsApp de ITHOS escaneando un QR desde el panel, sin tocar la terminal:
 
     1) POST vincular(sesion)  -> arranca neonize para ESA sesión y captura el QR (imagen)
     2) GET  estado(sesion)    -> {estado, qr(dataURI PNG), expira_en, numero}
@@ -14,7 +14,7 @@ Al vincularse, el cliente de vinculación SE SUELTA (disconnect) para que el run
 la sesión sin pelearse por el mismo archivo (dos clientes de whatsmeow sobre el mismo sqlite se
 expulsan). El emparejamiento (device + llaves) ya quedó persistido en el sqlite al escanear.
 
-Seguridad: este módulo NO expone nada por sí solo; el panel (con auth de admin o token de alta)
+Seguridad: este módulo NO expone nada por sí solo; el panel (con el login del administrador)
 es el único que llama a estas funciones. El id de sesión es opaco y aleatorio por cliente.
 """
 from __future__ import annotations
@@ -36,8 +36,8 @@ _sesiones: dict[str, "_Vinculacion"] = {}
 
 
 def sesion_de_cliente(conf: dict) -> str:
-    """Id de sesión ESTABLE de un cliente (multi-tenant). Única fuente de verdad para el runtime
-    (comun/whatsapp.py, vía main.py) y para la vinculación por QR (panel/alta): si no coinciden, lo
+    """Id de sesión ESTABLE de la empresa. Única fuente de verdad para el runtime
+    (comun/whatsapp.py, vía main.py) y para la vinculación por QR (panel): si no coinciden, lo
     vinculado no sirve para enviar. Usa el `wa_session` del cliente (lo fija el frontend al vincular
     en el alta, antes de que exista la api_key); si no hay, lo deriva de la api_key/nombre."""
     sid = conf.get("wa_session")
@@ -271,7 +271,7 @@ def vincular(sesion_id: str) -> dict:
 
 
 def estado(sesion_id: str) -> dict:
-    """Estado actual de una sesión (para el poll del panel/alta)."""
+    """Estado actual de una sesión (para el poll del panel)."""
     sesion_id = (sesion_id or "").strip()
     if not sesion_id:
         return {"estado": "error", "error": "falta el id de sesión"}

@@ -290,9 +290,14 @@ class Rollover:
             if not mpid or mpid == anio_proj:
                 continue
             mens_id = self._boards.get((mpid, MENSUAL))
-            if mens_id:                                       # copiar el archivo del mes a AÑO/<Mes>
-                dest = self.asegurar_board(anio_proj, MESES[mes], mes * POS)
-                copiadas += self._copiar_cards(mens_id, self.asegurar_listas(dest))
+            if not mens_id:
+                # Sin archivo MENSUAL no hay qué consolidar: borrarlo perdería sus tarjetas. Se
+                # deja como está (el equipo lo ve en Planka) y se avisa en el log.
+                log.warning("Planka rollover: '%s' no tiene board %s; NO lo borro para no perder "
+                            "sus tarjetas.", nombre_mes(anio, mes), MENSUAL)
+                continue
+            dest = self.asegurar_board(anio_proj, MESES[mes], mes * POS)   # el mes en AÑO/<Mes>
+            copiadas += self._copiar_cards(mens_id, self.asegurar_listas(dest))
             try:
                 self.pk.borrar_proyecto(mpid)                 # borra boards y luego el proyecto
                 borrados += 1

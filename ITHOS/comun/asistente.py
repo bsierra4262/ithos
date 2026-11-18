@@ -765,7 +765,7 @@ class Asistente:
                         on_frase(buf[:corte].strip())
                         buf = buf[corte:]
                         umbral = 180                   # siguientes trozos más largos (fluido)
-        except Exception:  # noqa: BLE001
+        except Exception as e:  # noqa: BLE001
             if not completo:                          # fallback sin streaming
                 try:
                     completo = (self.ia.chat(sis, texto, json_out=False) or "").strip()

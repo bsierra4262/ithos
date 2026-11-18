@@ -31,7 +31,6 @@ _TMP = tempfile.mkdtemp(prefix="ithos_audit_")
 os.environ["ITHOS_DATA"] = _TMP
 os.environ["ITHOS_ADMIN_USER"] = "intellihelp"
 os.environ["ITHOS_ADMIN_TOKEN"] = "contrasena-de-prueba-larga-2026"
-os.environ["ITHOS_ALTA_FILE"] = os.path.join(_TMP, "alta.json")
 
 FALLAS = []
 
@@ -80,6 +79,8 @@ P._cache_cfg["mtime"] = None
 from fastapi.testclient import TestClient   # noqa: E402
 
 cli = TestClient(P.app, base_url="https://testserver", follow_redirects=False)
+# El administrador (cabecera X-Admin-Token, igual que una llamada programática con su sesión).
+ADMIN = {"X-Admin-Token": os.environ["ITHOS_ADMIN_TOKEN"]}
 
 # Todos los secretos del cliente, en claro: NINGUNO puede salir sin sesión de superadmin.
 SECRETOS = ["TOKENDEAGENTE-0123456789abcdef", "AQ.CLAVE-SECRETA-DE-GEMINI-123456",
@@ -88,21 +89,19 @@ SECRETOS = ["TOKENDEAGENTE-0123456789abcdef", "AQ.CLAVE-SECRETA-DE-GEMINI-123456
             "CLAVE-DE-PLANKA-0123456789"]
 
 
-seccion("S1 · el portal del cliente no entrega los secretos")
-r = cli.get(f"/api/cliente/{CLIENTE['api_key']}")
-ok(r.status_code == 200, "el cliente SÍ puede leer su configuración (su portal la necesita)",
+seccion("S1 · sin sesión no sale NADA de la configuración")
+for ruta in (f"/api/cliente/{CLIENTE['api_key']}", "/api/clientes",
+             f"/api/config_agente/{CLIENTE['api_key']}", f"/panel/{CLIENTE['api_key']}"):
+    r = cli.get(ruta)
+    filtrados = [s for s in SECRETOS if s in r.text]
+    ok(r.status_code == 401 and not filtrados, f"{ruta} sin sesión -> 401 y ningún secreto",
+       f"{r.status_code}, filtrados={len(filtrados)}")
+r = cli.get(f"/api/config_agente/{CLIENTE['api_key']}", headers=ADMIN)
+ok(r.status_code == 404, "config_agente (devolvía la clave de Gemini y la de la base) ya no existe",
    str(r.status_code))
-cuerpo = r.text
-filtrados = [s for s in SECRETOS if s in cuerpo]
-ok(not filtrados, "y NINGÚN secreto sale en claro",
-   f"se filtraron {len(filtrados)}: {filtrados[:2]}" if filtrados else "0 de 7")
-d = r.json()
-ok(d.get("api_key") == CLIENTE["api_key"], "la api_key sí viaja: es su identificador, no un secreto")
-_tok_glpi = (d.get("integrador_glpi") or {}).get("glpi_user_token", "")
-ok(P._OCULTO in _tok_glpi and _tok_glpi.startswith("TOKEN-"),
-   "los secretos van enmascarados: se ve que están y cuál es cuál, no su valor", _tok_glpi)
-ok("EMPRESA DE PRUEBA S.A." in cuerpo and "lzaltron" in cuerpo,
-   "y lo que NO es secreto se ve entero (puede editar su configuración)")
+r = cli.get(f"/api/cliente/{CLIENTE['api_key']}", headers=ADMIN)
+ok(r.status_code == 200 and "EMPRESA DE PRUEBA S.A." in r.text,
+   "el administrador sí ve la configuración completa", str(r.status_code))
 
 seccion("S5 · denegar por defecto")
 ok(P._requiere_admin("GET", "/api/una-ruta-nueva-que-nadie-declaro") is True,
@@ -110,7 +109,7 @@ ok(P._requiere_admin("GET", "/api/una-ruta-nueva-que-nadie-declaro") is True,
 ok(P._requiere_admin("DELETE", "/api/clientes/X") is True, "borrar una empresa exige superadmin")
 ok(cli.get("/api/clientes").status_code == 401, "listar TODAS las empresas sin sesión -> 401")
 ok(P._requiere_admin("GET", "/login") is False, "el login sigue siendo público")
-ok(P._requiere_admin("GET", "/panel/UNA-KEY") is False, "y el portal del cliente también")
+ok(P._requiere_admin("GET", "/panel/UNA-KEY") is True, "y no hay portal de cliente abierto")
 
 seccion("S3 · el anti fuerza-bruta no se saltea con X-Forwarded-For")
 class _Req:
@@ -153,32 +152,39 @@ _r2 = _Resp(); AUTH.set_cookie(_r2)
 ok(AUTH.cookie_ok(_ReqC({AUTH.COOKIE: _r2.c[AUTH.COOKIE]})),
    "y volver a entrar después del logout funciona")
 
-seccion("S10 · el enlace de alta vale UNA sola vez, incluso con dos envíos a la vez")
-tok = AUTH.nuevo_alta_token("X", 24)
-res = []
-import threading
-def _consumir():
-    res.append(AUTH.consumir_si_valido(tok))
-hilos = [threading.Thread(target=_consumir) for _ in range(8)]
-[h.start() for h in hilos]
-[h.join() for h in hilos]
-ok(sum(1 for x in res if x) == 1,
-   "ocho intentos simultáneos: lo consume UNO solo", f"{sum(1 for x in res if x)} pasaron")
-ok(os.path.getsize(os.environ["ITHOS_ALTA_FILE"]) > 0, "y el archivo de enlaces quedó entero")
+seccion("S10 · ya no hay enlaces de alta")
+ok(not hasattr(AUTH, "nuevo_alta_token") and not hasattr(AUTH, "consumir_si_valido"),
+   "el alta por enlace salió con la etapa de venta (no hay nada que reusar ni robar)")
 
 seccion("A6 · guardar desde el panel no borra lo que no está en el formulario")
-# El portal manda lo suyo, con los secretos ENMASCARADOS (es lo que recibió en S1).
-recibido = cli.get(f"/api/cliente/{CLIENTE['api_key']}").json()
-recibido["email"] = "nuevo@ejemplo.com"
+# El formulario manda lo que maneja; un secreto que viene VACÍO no tiene que pisar al guardado.
+recibido = cli.get(f"/api/cliente/{CLIENTE['api_key']}", headers=ADMIN).json()
+recibido["idioma"] = "es-ES"
+recibido["tickets"] = {"tipo": "glpi", "glpi_url": "https://ayuda.ejemplo/apirest.php",
+                       "glpi_ithos_token": "", "entity_id": 12}
 r = cli.post("/api/clientes", json=recibido)
-ok(r.status_code == 200, "el cliente puede editar lo suyo con su api_key", str(r.status_code))
+ok(r.status_code == 401, "sin sesión no se puede guardar", str(r.status_code))
+r = cli.post("/api/clientes", json=recibido, headers=ADMIN)
+ok(r.status_code == 200, "el administrador guarda", str(r.status_code))
 P._cache_cfg["mtime"] = None
 guardado = P._cliente_por_key(CLIENTE["api_key"])
-ok(guardado.get("email") == "nuevo@ejemplo.com", "el cambio se guardó")
+ok(guardado.get("idioma") == "es-ES", "el cambio se guardó")
 ok(guardado["integrador_glpi"].get("glpi_lzaltron_token") == "TOKEN-DE-LAURA-0123456789abcdef",
    "el token de GLPI de Laura SIGUE ahí (el formulario no lo trae)")
 ok(guardado["integrador_glpi"].get("glpi_ithos_token") == "TOKEN-DE-ITHOS-0123456789abcdef",
-   "y el de ITHOS no quedó pisado por su máscara")
+   "y el de ITHOS no quedó pisado por llegar vacío")
+ok(guardado["integrador_glpi"].get("poll_interval") == 60 and "velocidad" not in guardado,
+   "lo que el formulario no maneja (velocidad, intervalo de GLPI) no se pisa con un valor fijo")
+_ruta_mala = P.RUTA
+open(_ruta_mala + ".bak", "w").write(open(_ruta_mala, encoding="utf-8").read())
+open(_ruta_mala, "w").write("{ esto no es json")
+P._cache_cfg["mtime"] = None
+r = cli.post("/api/clientes", json=recibido, headers=ADMIN)
+_quedo = open(_ruta_mala, encoding="utf-8").read()
+ok(r.status_code == 500 and _quedo == "{ esto no es json",
+   "si la config guardada no se puede leer, guardar NO la pisa con un padrón vacío", str(r.status_code))
+open(_ruta_mala, "w").write(open(_ruta_mala + ".bak", encoding="utf-8").read())
+P._cache_cfg["mtime"] = None
 ok(guardado.get("agente_token") == CLIENTE["agente_token"], "la contraseña del agente intacta")
 ok((guardado.get("planka") or {}).get("api_key") == "CLAVE-DE-PLANKA-0123456789",
    "Planka sigue configurado")

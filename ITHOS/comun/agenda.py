@@ -276,6 +276,11 @@ def procesar(reactivar_fn, cliente=None, ahora=None):
         else:
             quedan.append(x)               # fallo pasajero -> reintentar después
     if hechos or descartados:
+        # Se quitan SÓLO los procesados, sobre lo que hay en disco AHORA: mientras se reactivaba
+        # (llamadas a GLPI, segundos) alguien pudo programar otro ticket, y guardar la lista
+        # leída al principio lo borraba sin avisar.
+        listos = {(x.get("cliente"), x.get("tid"), x.get("epoch")) for x in hechos + descartados}
         with _LOCK:
-            _guardar(quedan)
+            _guardar([x for x in _cargar()
+                      if (x.get("cliente"), x.get("tid"), x.get("epoch")) not in listos])
     return hechos

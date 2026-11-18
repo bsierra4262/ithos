@@ -1,64 +1,88 @@
 {
-  "_como_usar": "COPIÁ un bloque de 'clientes', pegalo, y cambiá SOLO los valores en MAYÚSCULAS. No hace falta tocar código.",
+  "_como_usar": "Plantilla de la configuración de ITHOS (clientes.json). Cambiá SOLO los valores en MAYÚSCULAS. Los secretos se cifran solos al guardar desde el panel.",
   "clientes": [
     {
-      "api_key": "CLAVE-UNICA-DEL-AGENTE-DE-ESTE-CLIENTE",
-      "nombre": "NOMBRE DEL CLIENTE",
+      "api_key": "INTELLIHELP-CLAVE-DEL-AGENTE",
+      "agente_token": "CONTRASEÑA-DEL-AGENTE",
+      "nombre": "INTELLIHELP S.A.",
       "activo": true,
       "voz": "Charon",
       "idioma": "es-AR",
-      "velocidad": 1.25,
+      "zona_horaria": "America/Argentina/Buenos_Aires",
+      "velocidad": 1.2,
+      "empresa_saludo": "INTELLIHELP S.A.",
+      "abreviatura": "ITH",
 
       "ia": {
         "proveedor": "gemini",
-        "gemini_api_key": "PEGA-AQUI-LA-API-KEY-DE-GEMINI",
-        "modelo_texto": "gemini-2.5-flash",
+        "gemini_api_key": "API-KEY-DE-GEMINI",
+        "modelo_texto": "auto",
         "limite_diario": 200,
         "avisar_en": 15,
-        "ilimitada": false,
-        "_nota": "Si el cliente compra su propia API key de Google: pega su key en gemini_api_key y pone ilimitada=true (deja de avisar por cuota)."
+        "secundario": {"proveedor": "groq", "groq_api_key": "API-KEY-DE-GROQ", "modelo_texto": "auto"},
+        "terciario": {"proveedor": "local", "modelo_texto": "qwen3:4b", "ollama_url": "http://ollama:11434"}
       },
 
+      "integrador": "ivms",
+      "integrador_config": {
+        "db_server": "IP-DEL-SQL-SERVER,1433",
+        "db_database": "ivms_db",
+        "db_uid": "USUARIO-DE-LECTURA",
+        "db_pwd": "CONTRASEÑA",
+        "max_rows": "50"
+      },
+
+      "tickets": {"tipo": "glpi"},
       "integrador_glpi": {
-        "ubicacion": "central",
-        "glpi_url": "https://EL-GLPI-DEL-CLIENTE/apirest.php",
-        "glpi_app_token": "APP-TOKEN-DEL-CLIENTE-API-EN-GLPI",
-        "glpi_user_token": "USER-TOKEN-DE-LECTURA",
+        "glpi_url": "https://EL-GLPI/apirest.php",
+        "glpi_app_token": "APP-TOKEN-DE-LA-API",
+        "glpi_user_token": "USER-TOKEN-DEL-ADMINISTRADOR",
         "glpi_ithos_token": "USER-TOKEN-DEL-USUARIO-ITHOS",
+        "ithos_user_id": 28,
         "entity_id": 12,
-        "poll_interval": 60,
-        "_nota": "ubicacion='central' si el GLPI está en la nube; 'agente' si está en la red interna del cliente (privado)."
+        "poll_interval": 60
       },
 
       "tecnicos": [
-        {"nombre": "Nombre Apellido", "glpi_id": 0, "glpi_login": "usuario", "telefonos": ["5491111111111"]},
-        {"_nota": "Técnicos asignables. glpi_id = users_id del usuario en GLPI (campo 'Asignado a' = Ticket_User type=2). telefonos = números de WhatsApp para reconocer 'mis tickets' y @mencionar al asignado. Solo los técnicos reales del cliente."}
+        {"nombre": "Nombre Apellido", "glpi_id": 0, "glpi_login": "usuario", "telefonos": ["5491111111111"]}
+      ],
+      "_nota_tecnicos": "glpi_id = users_id en GLPI (campo 'Asignado a'). telefonos = WhatsApp, para 'mis tickets' y las @menciones. 'responsable': 'login' hace que trabaje los mismos tickets que esa persona mientras se forma.",
+      "reparto": {"mesa": ["login1", "login2"], "instalaciones": "login3", "escalamiento": "login4"},
+      "_nota_reparto": "Quién cubre cada rol del triage: mesa (Baja/Media, repartido por carga), instalaciones (equipo caído en una sede) y escalamiento (Alta/Urgente).",
+
+      "notificaciones": [
+        {
+          "tipo": "whatsapp_no_oficial",
+          "enabled": true,
+          "respuesta": "ambos",
+          "grupos": [
+            {"grupo": "ITHOS", "ambito": "consultas"},
+            {"grupo": "ITHOS_SOPORTE", "ambito": "soporte"},
+            {"grupo": "ITHOS_TRELLO", "ambito": "tareas"},
+            {"grupo": "ITHOS_SISTEMA", "ambito": "sistema"}
+          ]
+        }
       ],
 
-      "whatsapp": {
-        "enabled": true,
-        "tipo": "oficial",
-        "phone_number_id": "ID-DEL-NUMERO-EN-META",
-        "access_token": "TOKEN-DE-META",
-        "destinatarios": ["5491111111111", "5492222222222"],
-        "_nota": "tipo='oficial' (WhatsApp Business API, manda a NÚMEROS). Para grupo interno: tipo='no_oficial', grupo='NOMBRE', session='wa_session_CLIENTE.sqlite3'."
-      },
+      "reportes": {"enabled": true, "frecuencia": "diario", "hora": "09:00", "dias_habiles": true, "formato": ["pdf"], "por_tecnico": true},
+      "proactivo": {"sla_enabled": true, "aviso_horas": 4, "revisar_min": 15},
 
       "planka": {
-        "url": "https://TU-PLANKA.ejemplo.com",
+        "url": "https://TU-PLANKA",
         "api_key": "API-KEY-DE-PLANKA-DEL-USUARIO-ITHOS",
         "ithos_user_id": "ID-DEL-USUARIO-ITHOS-EN-PLANKA",
-        "project_id": "ID-DEL-PROYECTO-DEL-MES-ACTUAL",
-        "board_id": "ID-DEL-BOARD-DEL-MES-ACTUAL",
-        "mes_legacy": "2026-07",
+        "project_id": "ID-DEL-PROYECTO-DEL-MES",
+        "board_id": "ID-DEL-BOARD-DEL-MES",
         "resumen_hora": "09:00",
         "seguimiento_desde": "10:00",
         "seguimiento_hasta": "18:00",
-        "usuarios": [
-          {"planka_id": "ID-EN-PLANKA", "nombre": "Nombre Apellido", "telefono": "5491111111111"}
-        ],
-        "_nota": "OPCIONAL. Tablero Kanban del equipo por WhatsApp (auth por header X-API-Key). Resumen 09:00 + seguimiento cada hora 10-18 (Lun-Vie) + alta/mover tareas diciendo 'ithos, ...'. Solo se activa si existe esta sección.",
-        "_nota_rollover": "mes_legacy='YYYY-MM': ese mes (y anteriores) usan el board mensual configurado; A PARTIR del mes siguiente ITHOS arma SOLO un proyecto por mes y un board por SEMANA, y ARRASTRA lo no terminado al cambiar de semana/mes. Poné acá el mes en curso al dar de alta."
+        "usuarios": [{"planka_id": "ID-EN-PLANKA", "nombre": "Nombre Apellido", "telefono": "5491111111111"}]
+      },
+
+      "kb_outline": {
+        "url": "https://LA-WIKI",
+        "token": "API-KEY-DE-OUTLINE",
+        "padre": "Documento bajo el que se publican los procedimientos"
       }
     }
   ]

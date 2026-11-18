@@ -6,6 +6,68 @@ y el versionado, [SemVer](https://semver.org/lang/es/).
 
 ## [Unreleased]
 
+**Auditoría del 18-nov-2026 — ITHOS queda como herramienta interna de INTELLIHELP.** Deja de ser un producto
+para vender: hay un Gestor (VPS Hostinger KVM 2) y un agente (PC de la oficina), y todo lo que no era de uso
+interno salió del código. Gestor **1.2.0**. Regresión de los bugs en `tests/probar_auditoria_18nov.py`.
+
+### Removed
+
+- **Todo lo de la etapa de venta.** El alta por enlace (`/alta`, los enlaces de un solo uso y su revocación), el
+  portal del cliente (`/panel/<api_key>`), generar key, borrar empresa, `/api/reporte_ahora`, `/api/metricas` y
+  los contadores «Empresas / Activas» del panel. También MercadoPago, la facturación, la suscripción y la
+  suspensión por impago (ya se habían sacado), y la ruta `/webhook` de Caddy.
+- **`/api/config_agente`**: devolvía la configuración del agente con las claves adentro.
+- **Proveedores de IA que no se usan**: Claude, OpenAI, Grok, DeepSeek, Mistral, OpenRouter, Cerebras, DeepSeek
+  local y la voz local. Quedan Gemini, Groq y la IA local (Ollama).
+- **Instaladores que no se usan**: los del agente para Linux y Mac y los del Gestor para Windows y Unix
+  (`central_windows.ps1`, `central_unix.sh`, `agente_linux.sh`, `agente_mac.sh`, `construir_agente.sh`,
+  `confiar_en_cliente.ps1`). Quedan el instalador Windows del agente y `compilador/instaladores/actualizar.sh`.
+- **Picovoice**: el micrófono escucha la llamada sólo con Vosk.
+- **El KPI de reaperturas**: daba siempre 0.
+- **Dependencias**: salen `pydub` y `pvporcupine`.
+
+### Changed
+
+- **Todo el panel exige el login del administrador.** Sólo `/login` y `/logout` quedan abiertos, y la regla es
+  denegar por defecto: una ruta nueva nace privada aunque nadie se acuerde de protegerla.
+- **Lo que se guarda desde el panel se aplica solo.** El Gestor revisa `clientes.json` cada 15 segundos y, si
+  cambió, se reinicia para tomarlo. Antes no se aplicaba hasta que alguien reiniciaba a mano.
+- **El equipo sale de la configuración, también el reparto.** `tecnicos`, `reparto`
+  (`{"mesa": [...], "instalaciones": "...", "escalamiento": "..."}`) e `integrador_glpi.ithos_user_id`; ya no
+  queda ningún técnico escrito en el código.
+- **El grupo de sistema se llama ITHOS_SISTEMA** (antes ITHOS_DEMO).
+- **Las notas de voz de WhatsApp usan siempre edge-tts**: Charon gasta la cuota de Gemini y queda para los
+  parlantes.
+- **Las métricas se guardan en `ITHOS_DATA`** (el volumen de datos), no en la carpeta del código: sobreviven a un
+  deploy.
+- **Dependencias**: entran `pywebview`, `pystray` y `Pillow` (el agente) y `PyYAML` (para los tests).
+
+### Fixed
+
+- **El PDF del reporte iba al grupo de consultas**, que no recibe alertas; ahora va al de soporte.
+- **WhatsApp quedaba «olvidado» al reconectarse el agente**: el estado del panel y el aviso de mantenimiento
+  dejaban de verlo.
+- **La voz-id del dueño dejaba pasar ante la duda** (audio sin voz utilizable, error al analizar, perfil sin
+  entrenar). Ahora, ante la duda, niega.
+- **La voz por micrófono fallaba con streaming** cuando la IA daba error a mitad de la respuesta.
+- **El detalle de un ticket se cortaba en 50 seguimientos**: ahora se piden todas las páginas.
+- **La asignación usaba una tabla fija de dos técnicos** en el código, que ignoraba la configuración.
+- **«la» coincidía con Laura** al buscar un técnico por nombre: ahora hace falta el nombre o un comienzo de tres
+  letras o más.
+- **La nota interna del triage decía «asignado a mesa»** en vez del nombre de la persona.
+- **El botón de regenerar la KB estaba duplicado** en el panel.
+- **Guardar desde el panel pisaba la velocidad de la voz y el intervalo de GLPI**, y ante una lectura fallida de
+  la configuración podía dejarla vacía. Ahora conserva lo que el formulario no muestra y, si no puede leer, no
+  guarda nada.
+- **Carrera en la agenda de pospuestos**: una reactivación programada mientras se procesaba otra se perdía.
+- **La KB semanal se regeneraba en hora UTC**; ahora en la de la zona configurada.
+- **El cierre de año de Planka podía borrar un mes sin haberlo archivado.**
+- **El aviso «ITHOS en línea» se repetía en cada reconexión del agente**; ahora sale una vez por arranque.
+- **La versión del Gestor nunca avanzaba**: se subía en el servidor y el paquete siguiente la pisaba. Ahora se
+  sube en el repositorio antes de armar el paquete.
+- **«SLA 1ª respuesta» medía la resolución**: ahora usa la demora de primera respuesta que registra GLPI contra el
+  TTO.
+
 ### Added
 - **La wiki publica el paso a paso real, con las capturas.** El artículo sale de TODO lo que escribió
   soporte en el ticket (seguimientos, tareas y solución, en orden), no de la solución corta que se carga
