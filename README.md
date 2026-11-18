@@ -597,9 +597,14 @@ cliente y se usa en las respuestas; el alta permite sumar instructivos.
 **La wiki del equipo (Outline) está conectada en los dos sentidos.** ITHOS la **lee** —cada documento entra
 en la base de conocimiento y se resincroniza cada seis horas— y la **escribe**: cuando un ticket se
 **cierra** y el técnico explicó cómo lo resolvió, redacta el procedimiento y lo publica en la colección que
-corresponde, dentro del documento del cliente. Al cierre y no al resolverse, para no dejar escrito un
+corresponde, dentro del documento del cliente. Es el **paso a paso literal** de lo que escribió soporte en el
+ticket —qué consulta corrió, qué pantalla y qué campo, qué encontró, qué cambió—, no la solución de dos líneas
+que se carga al cerrar, y **cada captura del técnico va debajo del paso que ilustra** (las fotos que manda el
+solicitante desde la terminal no se suben). Formato de wiki: síntoma y causa en un recuadro, herramientas,
+pasos numerados, cómo verificar, advertencias y la lista de casos. Al cierre y no al resolverse, para no dejar escrito un
 procedimiento que no funcionó. Si ya hay un artículo de ITHOS con el mismo procedimiento, **no lo duplica:
-le suma el caso**. Tres reglas: **nada sensible** (la colección de credenciales no se lee ni se escribe),
+le suma el caso**; y si el caso nuevo trae el procedimiento más completo, el artículo se reescribe con él y
+conserva sus casos. Tres reglas: **nada sensible** (la colección de credenciales no se lee ni se escribe),
 **nada inventado** y **nada personal** (ni el nombre ni el legajo del afectado).
 
 Los **reportes ITIL** cubren volumen, cumplimiento de SLA, MTTR, backlog y desglose por prioridad,

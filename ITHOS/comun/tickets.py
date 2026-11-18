@@ -16,7 +16,12 @@ Interfaz común (todos exponen lo que puedan; lo no soportado avisa):
   asignar(id, tecnico) -> str
   buscar(texto) -> [ {id, asunto} ]
   sla() -> dict
+  historial(id) -> {asunto, problema, categoria, soporte: [{tipo, fecha, texto}]}   (para la wiki)
+  imagen(doc_id) -> (bytes, tipo)
 """
+
+import html
+import re
 
 _TECNICOS = {"bsierra": 7, "brian": 7, "brian sierra": 7, "jayala": 8, "ayala": 8}
 _PRIO = {"baja": 2, "media": 3, "alta": 4, "urgente": 5}
@@ -150,6 +155,20 @@ def _sin_html(s):
     return _re.sub(r"[ \t]+", " ", t).strip()
 
 
+def _texto_con_capturas(s):
+    """Como `_sin_html`, pero cada imagen embebida queda como `[[img:<id>]]` en el lugar donde la
+    puso el técnico (GLPI las embebe como `document.send.php?docid=<id>`), y las listas y los
+    párrafos se respetan: el orden de pasos y capturas ES el procedimiento."""
+    t = html.unescape(html.unescape(str(s or "")))
+    t = re.sub(r"<a[^>]*>\s*(<img[^>]*>)\s*</a>", r"\1", t, flags=re.I)
+    t = re.sub(r"<img[^>]*docid=(\d+)[^>]*>", r"\n[[img:\1]]\n", t, flags=re.I)
+    t = re.sub(r"<\s*br\s*/?>|</\s*p\s*>|</\s*li\s*>|</\s*div\s*>", "\n", t, flags=re.I)
+    t = re.sub(r"<\s*li[^>]*>", "- ", t, flags=re.I)
+    t = re.sub(r"<[^>]+>", " ", t)
+    t = re.sub(r"[ \t]+", " ", t)
+    return re.sub(r"\n\s*\n+", "\n", t).strip()
+
+
 def _uid_tecnico(cli_cfg, quien):
     """El id de GLPI del técnico que nombraron, buscando en la CONFIG del cliente por nombre,
     nombre de pila, apellido, login, email o id. None si no está configurado."""
@@ -263,6 +282,75 @@ class _GLPI:
             if txt and not _cierre_administrativo(txt) and not _es_aviso_automatico(txt):
                 return txt
         return ""
+
+    def historial(self, tid):
+        """TODO lo que escribió SOPORTE en el ticket, en orden, con cada captura en su lugar.
+
+        Para la wiki no alcanza con "la solución": el técnico suele cargar al cerrar dos líneas
+        ("se corrigieron los parámetros de acceso") y el paso a paso con capturas lo deja en un
+        seguimiento —primero la consulta HikInOut.sql, después la pestaña Nivel de acceso, la
+        terminal…—. Eso es lo que necesita el próximo técnico.
+
+        Qué queda afuera: lo del SOLICITANTE y los observadores (es el problema, no la
+        resolución, y sus fotos muestran a la persona en la terminal) y lo de ITHOS (acompaña, no
+        resuelve). Las capturas embebidas quedan como `[[img:<id del documento>]]` donde estaban;
+        las adjuntas por soporte sin estar embebidas, al final de lo que escribió ese día."""
+        tid = _norm_id(tid)
+        c = self._c_admin()
+        try:
+            t = c.request(f"/Ticket/{tid}")
+            categoria = ""
+            if int(t.get("itilcategories_id") or 0):
+                try:
+                    categoria = c.request(f"/ITILCategory/{int(t['itilcategories_id'])}").get("name") or ""
+                except Exception:  # noqa: BLE001
+                    pass
+            cliente_ids = {int(t.get("users_id_recipient") or 0)}
+            try:
+                for tu in c.request(f"/Ticket/{tid}/Ticket_User") or []:
+                    if int(tu.get("type") or 0) in (1, 3):          # solicitante, observador
+                        cliente_ids.add(int(tu.get("users_id") or 0))
+            except Exception:  # noqa: BLE001
+                pass
+            cliente_ids.discard(0)
+            fuera = cliente_ids | {self.ithos_id}
+            from comun import glpi as G
+            entradas, embebidas = [], set()
+            for sub in ("ITILFollowup", "TicketTask", "ITILSolution"):
+                for x in G.pagina_todo(c, f"/Ticket/{tid}/{sub}"):
+                    if not isinstance(x, dict) or int(x.get("users_id") or 0) in fuera:
+                        continue
+                    txt = _texto_con_capturas(x.get("content"))
+                    if not txt or _es_aviso_automatico(txt):
+                        continue
+                    embebidas |= {int(n) for n in re.findall(r"\[\[img:(\d+)\]\]", txt)}
+                    entradas.append({"tipo": sub, "fecha": str(x.get("date_creation") or x.get("date") or ""),
+                                     "texto": txt})
+            sueltas = []
+            for di in c.request(f"/Ticket/{tid}/Document_Item?range=0-100") or []:
+                did = int(di.get("documents_id") or 0)
+                if not did or did in embebidas:
+                    continue
+                doc = c.request(f"/Document/{did}")
+                if str(doc.get("mime") or "").startswith("image/") and int(doc.get("users_id") or 0) not in fuera:
+                    sueltas.append(did)
+        finally:
+            c.cerrar()
+        entradas.sort(key=lambda e: e["fecha"])
+        if sueltas:
+            entradas.append({"tipo": "Adjuntos", "fecha": "", "texto": " ".join(f"[[img:{d}]]" for d in sueltas)})
+        cierre = str(t.get("closedate") or t.get("solvedate") or "")[:10]
+        return {"id": tid, "asunto": t.get("name", ""), "problema": _sin_html(t.get("content", "")),
+                "categoria": categoria, "estado": int(t.get("status", 0) or 0), "soporte": entradas,
+                "fecha_cierre": "/".join(reversed(cierre.split("-"))) if cierre else ""}
+
+    def imagen(self, doc_id):
+        """(bytes, tipo) de una captura adjunta al ticket."""
+        c = self._c_admin()
+        try:
+            return c.descargar(f"/Document/{int(doc_id)}")
+        finally:
+            c.cerrar()
 
     def estado(self, tid):
         tid = _norm_id(tid)

@@ -80,9 +80,16 @@ class _OutlineFalso(OL.Outline):
             self.escrito.append(("crear", datos))
             return {"data": nuevo}
         if metodo == "documents.update":
-            self.escrito.append(("agregar", datos))
+            self.escrito.append(("agregar" if datos.get("append") else "reemplazar", datos))
+            for d in self.docs:
+                if d["id"] == datos["id"]:
+                    d["text"] = d.get("text", "") + datos["text"] if datos.get("append") else datos["text"]
             return {"data": {"id": datos["id"], "url": "/doc/existente"}}
         raise AssertionError(metodo)
+
+    def subir_imagen(self, nombre, datos, tipo, doc_id):
+        self.escrito.append(("imagen", {"nombre": nombre, "doc": doc_id, "tipo": tipo}))
+        return f"/api/attachments.redirect?id={nombre}"
 
 
 print("\n=== 1 · Lo sensible no se lee ni se escribe ===")
@@ -128,8 +135,9 @@ class _IA:
     def __init__(self, respuesta):
         self.r, self.llamadas = respuesta, 0
 
-    def chat(self, sistema, texto, json_out=False):
+    def chat(self, sistema, texto, json_out=False, max_tokens=None):
         self.llamadas += 1
+        self.max_tokens = max_tokens
         if isinstance(self.r, Exception):
             raise self.r
         return json.dumps(self.r)
@@ -153,7 +161,7 @@ todo = d["title"] + d["text"]
 ok("13722" not in todo and "Berretta" not in todo and "Silvia" not in todo,
    "sin el nombre ni el legajo de la persona, aunque la IA los haya puesto")
 ok("Sarmiento" in todo, "la sede sí queda: no es un dato personal")
-ok("1. Quitar el PIN" in d["text"] and "## Casos" in d["text"] and "#849" in d["text"],
+ok("1. Quitar el PIN" in d["text"] and W.CASOS in d["text"] and "#849" in d["text"],
    "con el procedimiento numerado y el ticket de referencia")
 ok(url == "https://wiki.ejemplo/doc/nuevo", "devuelve el link completo")
 
@@ -229,6 +237,134 @@ fu = {849: [{"texto": "El inconveniente quedó solucionado; le quitamos el PIN."
              "autor": 28}]}
 ok("quitamos el PIN" in g._mejor_solucion(849, {"users_id_recipient": 26}, {}, fu),
    "toma el comentario del técnico, no la respuesta de ITHOS que vino después")
+
+print("\n=== 8 · El paso a paso es el del técnico, con sus capturas (Brian, 17-nov) ===")
+# Lo que reportó Brian: el artículo salía genérico ("se corrigieron los parámetros de acceso")
+# porque se tomaba la SOLUCIÓN de dos líneas que se carga al cerrar, y el paso a paso con capturas
+# que el técnico deja en un seguimiento (HikInOut.sql, Nivel de acceso, la terminal) se perdía.
+HTML_GLPI = ("&lt;p&gt;Empezamos revisando sus fichadas con la consulta HikINOut query.sql.&lt;br&gt;"
+             "&lt;a href=\"/front/document.send.php?docid=259&amp;itemtype=Ticket&amp;items_id=664\"&gt;"
+             "&lt;img alt=\"x\" src=\"/front/document.send.php?docid=259&amp;itemtype=Ticket&amp;items_id=664\" /&gt;"
+             "&lt;/a&gt;&lt;br&gt;Luego en HikCentral, pestaña Nivel de acceso: #1 Bluetooth #2 PIN.&lt;/p&gt;"
+             "&lt;p&gt;&lt;img src=\"/front/document.send.php?docid=250&amp;itemtype=Ticket\" /&gt;&lt;/p&gt;")
+txt = T._texto_con_capturas(HTML_GLPI)
+ok(txt.index("HikINOut") < txt.index("[[img:259]]") < txt.index("Nivel de acceso") < txt.index("[[img:250]]"),
+   "el HTML de GLPI queda en texto con cada captura en el lugar donde la puso el técnico")
+
+
+class _GLPIFalso:
+    """Un ticket como #822: el solicitante adjuntó fotos suyas en la terminal; el técnico, capturas."""
+    _pooled = True
+
+    def request(self, path):
+        if path == "/Ticket/822":
+            return {"name": "Agente Cabañas Martin", "content": "Legajo 16421. No funciona su fichaje",
+                    "users_id_recipient": 27, "status": 6, "closedate": "2026-11-16 14:00:00",
+                    "itilcategories_id": 13}
+        if path == "/ITILCategory/13":
+            return {"name": "TERMINALES"}
+        if path.startswith("/Ticket/822/Ticket_User"):
+            return [{"type": 1, "users_id": 27}, {"type": 2, "users_id": 30}]
+        if path.startswith("/Ticket/822/ITILFollowup"):
+            if "range=0-" in path and not path.endswith("range=0-499"):
+                return []
+            return [{"users_id": 28, "content": "Hola Pablo, recibimos el ticket.", "date_creation": "2026-11-16 12:25"},
+                    {"users_id": 27, "content": "Sigue igual", "date_creation": "2026-11-16 12:30"},
+                    {"users_id": 30, "content": HTML_GLPI, "date_creation": "2026-11-16 13:59"}]
+        if "/TicketTask" in path or "/ITILSolution" in path:
+            return [{"users_id": 30, "content": "Se corrigieron los parámetros de acceso.",
+                     "date_creation": "2026-11-16 14:00"}] if "/ITILSolution" in path and path.endswith("499") else []
+        if path.startswith("/Ticket/822/Document_Item"):
+            return [{"documents_id": 457}, {"documents_id": 259}, {"documents_id": 600}]
+        if path == "/Document/457":
+            return {"mime": "image/jpeg", "users_id": 27}          # foto del solicitante: no va
+        if path == "/Document/600":
+            return {"mime": "image/png", "users_id": 30}           # captura suelta del técnico: va
+        raise AssertionError(path)
+
+    def descargar(self, path):
+        return b"\x89PNG", "image/png"
+
+    def cerrar(self):
+        pass
+
+
+g = T._GLPI.__new__(T._GLPI)
+g.ithos_id = 28
+g._c_admin = lambda: _GLPIFalso()
+h = g.historial(822)
+todo_h = " ".join(e["texto"] for e in h["soporte"])
+ok("recibimos el ticket" not in todo_h and "Sigue igual" not in todo_h,
+   "afuera lo de ITHOS y lo del solicitante")
+ok("HikINOut" in todo_h and "Se corrigieron" in todo_h, "adentro el seguimiento del técnico y la solución")
+ok("[[img:457]]" not in todo_h, "la foto que mandó el solicitante (su cara en la terminal) no entra")
+ok("[[img:600]]" in todo_h and h["soporte"][-1]["tipo"] == "Adjuntos",
+   "la captura que el técnico adjuntó sin embeber entra al final")
+ok(h["categoria"] == "TERMINALES" and h["fecha_cierre"] == "16/11/2026", "trae la categoría y la fecha de cierre")
+
+ticket_rico = {**TICKET, "id": 664, "categoria": "TERMINALES", "asunto": "Legajo 08609 Bufacchi Fernando",
+               "problema": "Legajo: 08609 - Bufacchi, Fernando. Al fichar aparece otro nombre",
+               "soporte": [{"tipo": "ITILFollowup", "fecha": "2026-08-10",
+                            "texto": "Corrimos HikInOut.sql [[img:259]] y en Nivel de acceso había PIN [[img:250]] "
+                                     "y lo borramos [[img:251]]"}]}
+entrada, mapa = W._entrada_soporte(ticket_rico)
+ok(mapa == {1: 259, 2: 250, 3: 251} and "[CAPTURA 1]" in entrada and "[[img" not in entrada,
+   "la IA recibe las capturas numeradas en su lugar")
+PASOS_RICOS = {**BUENA, "titulo": "Agente no puede fichar: PIN y Bluetooth en HikCentral",
+               "sintoma": "Al fichar aparece el nombre de otro agente (Fernando Bufacchi, legajo 08609).",
+               "herramientas": ["SQL Server (base ITH)", "HikCentral"],
+               "pasos": [{"titulo": "Revisar las fichadas (HikInOut.sql)",
+                          "detalle": "Ejecutar HikInOut.sql con el legajo 08609: última fichada el 5/8.", "capturas": [1]},
+                         {"titulo": "Quitar PIN y Bluetooth",
+                          "detalle": "En HikCentral > Nivel de acceso, borrar el Código PIN y Guardar.", "capturas": [2]}],
+               "atencion": "Revisar también al otro agente que aparece en la terminal."}
+
+
+class _Fuente:
+    def __init__(self):
+        self.bajadas = []
+
+    def imagen(self, did):
+        self.bajadas.append(did)
+        return b"\x89PNG", "image/png"
+
+
+o, fu_ = _OutlineFalso(), _Fuente()
+ia8 = _IA(PASOS_RICOS)
+estado, _ = W.publicar_ticket(o, ia8, ticket_rico, padre_cfg=PADRE, fuente=fu_)
+texto = o.docs[-1]["text"]
+ok(estado == "publicado", "publica el artículo")
+ok((ia8.max_tokens or 0) >= 4000, "pide lugar para el paso a paso entero (el tope corto lo cortaba a la mitad)")
+ok("HikInOut.sql" in texto and "Nivel de acceso" in texto and "Código PIN" in texto,
+   "el paso a paso es el literal: consulta, pantalla y campo")
+ok(texto.index("### 1.") < texto.index("captura1") < texto.index("### 2.") < texto.index("captura2"),
+   "cada captura queda debajo del paso que ilustra")
+ok("captura3" in texto, "la captura que la IA no asignó a ningún paso no se pierde")
+imgs = [e[1] for e in o.escrito if e[0] == "imagen"]
+ok(len(imgs) == 3 and all(i["doc"] == o.docs[-1]["id"] for i in imgs),
+   "las capturas se suben ASOCIADAS al artículo (sueltas, el equipo no las vería)")
+ok(fu_.bajadas == [259, 250, 251], "se bajan de GLPI las del técnico, en orden")
+ok(":::info" in texto and "🛠️ Procedimiento paso a paso" in texto and ":::warning" in texto
+   and "🏷️ Categoría en GLPI:** TERMINALES" in texto, "formato de wiki: recuadros, secciones, categoría")
+ok("08609" not in texto and "Bufacchi" not in texto and "Fernando" not in texto,
+   "ni el legajo ni el nombre, tampoco los que vienen en la descripción ('Legajo: 08609 - Bufacchi, Fernando')")
+
+print("\n=== 9 · Un caso mejor documentado mejora el artículo y conserva los casos ===")
+o = _OutlineFalso()
+pobre = {**BUENA, "pasos": ["Corregir los parámetros de acceso", "Sincronizar al usuario"],
+         "titulo": "Agente no puede fichar: parámetros de acceso", "sintoma": "El agente no puede fichar"}
+W.publicar_ticket(o, _IA(pobre), dict(TICKET, id=823))
+art = o.docs[-1]
+rico = {**PASOS_RICOS, "mismo_doc": art["id"]}
+estado, _ = W.publicar_ticket(o, _IA(rico), ticket_rico, fuente=_Fuente())
+ok(estado == "mejorado" and o.escrito[-1][0] == "reemplazar",
+   "el caso con el paso a paso completo reescribe el artículo de ITHOS")
+ok("#823" in art["text"] and "#664" in art["text"] and "HikInOut.sql" in art["text"],
+   "conserva el caso anterior, suma el nuevo y queda el procedimiento completo")
+ok(art["text"].count(W.CASOS) == 1, "una sola lista de casos")
+estado, _ = W.publicar_ticket(o, _IA({**pobre, "mismo_doc": art["id"]}), dict(TICKET, id=824))
+ok(estado == "agregado" and "HikInOut.sql" in art["text"] and "#824" in art["text"],
+   "un caso más pobre después NO pisa el procedimiento completo: sólo suma el caso")
 
 print()
 if FALLAS:

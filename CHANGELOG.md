@@ -7,6 +7,13 @@ y el versionado, [SemVer](https://semver.org/lang/es/).
 ## [Unreleased]
 
 ### Added
+- **La wiki publica el paso a paso real, con las capturas.** El artículo sale de TODO lo que escribió
+  soporte en el ticket (seguimientos, tareas y solución, en orden), no de la solución corta que se carga
+  al cerrar: cada consulta, pantalla y campo que nombró el técnico, y cada captura suya debajo del paso
+  que ilustra, subida a la wiki asociada al artículo. Las fotos del solicitante no se suben. Si un caso
+  posterior trae el procedimiento más completo, el artículo se reescribe con él y conserva sus casos.
+  Formato de wiki con recuadros, herramientas, categoría de GLPI y advertencias. Regresión en
+  `tests/probar_wiki.py` (secciones 8 y 9).
 - **La wiki del equipo (Outline) conectada en los dos sentidos.** ITHOS la lee (entra en la base de
   conocimiento, resincronizada cada 6 h) y la escribe: cada ticket **cerrado** cuyo técnico explicó cómo
   lo resolvió deja su procedimiento publicado en la colección que corresponde, dentro del documento del
@@ -179,6 +186,13 @@ y el versionado, [SemVer](https://semver.org/lang/es/).
 
 ### Fixed
 
+- **El artículo de la wiki salía genérico** ("se corrigieron los parámetros de acceso"): se redactaba con
+  la solución de dos líneas y se perdía el paso a paso con capturas que el técnico deja en un seguimiento.
+- **Un JSON largo de la IA salía cortado** en Cerebras (2.000 tokens), Groq (1.500), Claude (1.024) y la
+  IA local (700): el tope fijo del modo JSON ignoraba el `max_tokens` de quien llama. Ahora lo respeta en
+  todos (los topes de siempre quedan como valor por omisión).
+- **Outline corta por minuto la subida de imágenes** (429): el cliente espera y reintenta en vez de dejar
+  el artículo a medio armar.
 - **El importador de Outline podía meter credenciales en la base de conocimiento** y no se usaba bien:
   traía sólo los primeros 100 documentos, sin User-Agent de navegador (Cloudflare lo rechaza), sin
   excluir la colección de credenciales y sin sacar lo que se borraba de la wiki. Reemplazado por el

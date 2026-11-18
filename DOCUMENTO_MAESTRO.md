@@ -692,11 +692,16 @@ sigue funcionando igual que antes.
 - **La wiki del equipo (Outline) está conectada en los dos sentidos.** ITHOS la **lee**: cada documento
   entra en la base de conocimiento y se resincroniza cada seis horas (lo que se borra en la wiki, sale).
   Y la **escribe**: cuando un ticket se **cierra** y el técnico explicó cómo lo resolvió, redacta el
-  procedimiento (síntoma, causa, pasos, cómo verificar) y lo publica en la colección que corresponde por
-  el tema, dentro del documento del cliente (para INTELLIHELP, el de SRT). Al **cierre** y no al
+  procedimiento y lo publica en la colección que corresponde por el tema, dentro del documento del
+  cliente (para INTELLIHELP, el de SRT). Es el **paso a paso literal** de lo que escribió soporte en el
+  ticket —qué consulta corrió, qué pantalla y qué campo, qué encontró, qué cambió—, no la solución de dos
+  líneas que se carga al cerrar, y **cada captura del técnico va debajo del paso que ilustra** (las fotos
+  que manda el solicitante desde la terminal no se suben). Formato de wiki: síntoma y causa en un
+  recuadro, herramientas, pasos numerados, cómo verificar, advertencias y la lista de casos. Al **cierre** y no al
   resolverse: si el cliente después dice que sigue fallando, ese procedimiento no sirve y no puede quedar
   escrito. Si ya hay un artículo **de ITHOS** con el mismo procedimiento, **no lo duplica: le suma el
-  caso** (se compara el contenido, no sólo lo que opina la IA). Así la wiki crece con cada ticket y la
+  caso** (se compara el contenido, no sólo lo que opina la IA); y si el caso nuevo trae el procedimiento
+  **más completo** (más pasos o capturas), el artículo se reescribe con él y conserva sus casos. Así la wiki crece con cada ticket y la
   base de conocimiento con ella.
 - Tres reglas de la wiki: **nada sensible** —la colección de credenciales («Core IT - Sensitive &
   Credentials», los Vault) no se lee ni se escribe nunca, porque lo que ITHOS lee puede terminar en una

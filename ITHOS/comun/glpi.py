@@ -132,6 +132,16 @@ class GLPIClient:
         self.cerrar()
         return False
 
+    def descargar(self, path, timeout=60):
+        """Los BYTES de un archivo (un documento adjunto) y su tipo. GLPI devuelve el archivo en
+        vez de la ficha cuando se le pide `application/octet-stream`."""
+        self.abrir()
+        req = urllib.request.Request(self.base + path, headers={
+            "App-Token": self.app_token, "Session-Token": self.session,
+            "Accept": "application/octet-stream"})
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            return r.read(), (r.headers.get("Content-Type") or "").split(";")[0].strip()
+
     def tickets_recientes(self, n=30):
         return self.request(f"/Ticket?range=0-{n - 1}&sort=id&order=DESC")
 

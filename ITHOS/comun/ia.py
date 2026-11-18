@@ -501,7 +501,7 @@ class LocalIA(ProveedorIA):
         import urllib.request
         payload = {"model": self.modelo_texto, "stream": False,
                    "options": {"temperature": 0.2 if json_out else 0.1, "num_ctx": 8192,
-                               "num_predict": 700 if json_out else (max_tokens or 1600)},
+                               "num_predict": (max_tokens or 700) if json_out else (max_tokens or 1600)},
                    "messages": [{"role": "system", "content": system},
                                 {"role": "user", "content": prompt}]}
         if json_out:
@@ -584,7 +584,7 @@ class ClaudeIA(ProveedorIA):
             prompt = prompt + "\n\nRespondé SOLO con JSON válido, sin texto extra."
         body = {"model": self.modelo, "system": system,
                 "temperature": 0.2 if json_out else 0.1,    # texto: menos confabulación
-                "max_tokens": 1024 if json_out else (max_tokens or 1600),   # cap dinámico
+                "max_tokens": (max_tokens or 1024) if json_out else (max_tokens or 1600),   # cap dinámico
                 "messages": [{"role": "user", "content": prompt}]}
         req = urllib.request.Request(
             "https://api.anthropic.com/v1/messages", data=json.dumps(body).encode(),
@@ -708,7 +708,7 @@ class _OpenAICompat(ProveedorIA):
         if json_out:
             payload["temperature"] = 0.2
             payload["response_format"] = {"type": "json_object"}
-            payload[self.MAX_KEY] = 2000       # el JSON del agente es corto -> no pasar el TPM
+            payload[self.MAX_KEY] = max_tokens or 2000   # el JSON del agente es corto -> no pasar el TPM
         else:
             # Texto conversacional: temperatura MÁS baja (menos confabulación de datos/versiones) y
             # un tope de tokens acotado para no volcar documentación de más ante algo puntual (igual
@@ -891,7 +891,7 @@ class GroqCloudIA(ProveedorIA):
             # Cap de completion: el JSON del agente es corto. Sin esto, Groq reserva un
             # completion enorme y 'entrada + completion' supera el TPM del free -> 413
             # 'request too large' (y el agente no respondía nada).
-            payload["max_tokens"] = 1500
+            payload["max_tokens"] = max_tokens or 1500
         else:
             payload["temperature"] = 0.1          # texto: menos confabulación de datos/versiones
             payload["max_tokens"] = max_tokens or 1600   # detalle sin volcar de más; cap dinámico
