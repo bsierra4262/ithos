@@ -9,8 +9,8 @@
 
 ## 0) Requisitos (completar cuando los tengas)
 - [ ] **Dominio / subdominio** (ej. `ithos.intellihelp.tech`).
-- [ ] **VPS KVM** de Hostinger — recomendado **KVM 2** (2 vCPU / 8 GB), alcanza para muchas empresas. Precios en
-      [INFORME_NICOLAS.md](INFORME_NICOLAS.md) §5. (La VPS es **NUESTRO** costo, compartido por la flota.)
+- [ ] **VPS KVM** de Hostinger — recomendado **KVM 2** (2 vCPU / 8 GB), alcanza de sobra para ITHOS. Precios en
+      [INFORME_OPERACIONAL.md](INFORME_OPERACIONAL.md) §4.
 - [ ] **SO del VPS: Ubuntu 24.04 LTS** (elegilo en el instalador de Hostinger). *Evitá Alpine* (rompe wheels
       nativas de Python). Debian 12 es alternativa válida.
 - [ ] **Clave del Gestor**: `ITHOS_ADMIN_USER` (default `intellihelp`) + `ITHOS_ADMIN_TOKEN` (clave fuerte).

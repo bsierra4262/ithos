@@ -7,22 +7,19 @@ a las dos partes con el detalle. El informe está dividido en **dos partes**, pe
 
 ## Resumen ejecutivo (una carilla)
 
-**Qué es.** Una plataforma multiempresa en la nube: un **Gestor** (el cerebro, que hosteamos nosotros) y un
-**agente** liviano por cliente. Ofrece portero por voz sobre el control de acceso, mesa de ayuda con IA que lee,
-clasifica, responde y cierra tickets, avisos y conversación por WhatsApp, Telegram, Email, Teams, Slack y Matrix,
-reportes ITIL, y cobro de suscripciones con MercadoPago. Corre en Windows, Linux y Mac, y ya funciona y está
-probada a nivel de producción.
+**Qué es.** Una herramienta interna de INTELLIHELP, no un producto a la venta. Tiene un **Gestor** (el cerebro),
+que corre en nuestro servidor, y un **agente** en una PC de la oficina. Atiende la mesa de ayuda GLPI con IA
+—clasifica, responde, pide datos y evidencia, recuerda las esperas y avisa los SLA por vencer—, publica en la wiki
+de Outline el paso a paso de cada ticket cerrado, se integra con las tareas de Planka, saluda por voz al personal
+que ficha en el control de acceso IVMS, y conversa y avisa por WhatsApp. Funciona en producción.
 
-**Cuánto cuesta operarla.** Centavos por empresa al mes. La IA Gemini Flash‑Lite ronda entre US$1 y US$2
-mensuales; WhatsApp no oficial es gratuito, y el oficial cuesta cerca de US$3 por mes; un VPS chico se reparte
-entre varias empresas. Todo verificable con las cuentas y los precios oficiales de la Parte 1.
+**Cuánto cuesta operarla.** Entre US$9 y US$15 por mes: solo el servidor VPS. La IA corre en planes gratuitos
+(Gemini, Cerebras y Groq en cadena), WhatsApp usa un número propio sin costo por mensaje y el agente corre en una
+PC que ya tenemos. Todo verificable con las cuentas y los precios oficiales de la Parte 1.
 
 **Valor del desarrollo.** Es lo que a INTELLIHELP le habría costado contratarlo afuera a tarifa de mercado, entre
-US$23.360 y US$35.040, por unas 584 horas de ingeniería. La empresa paga la infraestructura (IA y hosting); yo
-aporto el código, del que soy propietario, más el desarrollo y el mantenimiento.
-
-**Está probado de verdad.** La demo completa funciona en voz, tickets y WhatsApp, y el cobro con MercadoPago quedó
-autorizado en el ambiente de prueba, con el gross‑up de comisión neteando el precio.
+US$23.360 y US$35.040, por unas 584 horas de ingeniería. La empresa paga la infraestructura; yo aporto el código,
+del que soy propietario, más el desarrollo y el mantenimiento.
 
 **Formación técnica (referencia).** Cursando la Tecnicatura en Redes Informáticas en Teclab; Programador Web
 Front‑End en la UTN‑BA; Desarrollo Web del Gobierno de la Ciudad; y cursos de Ciencia de Datos e IA de Santander
@@ -32,13 +29,11 @@ con IE University y Google.
 
 ## Las dos partes (con el detalle)
 
-1. **Parte 1 — Alcance y costos operativos.** Qué hace ITHOS y cuánto cuesta operarlo: IA, infraestructura,
-   WhatsApp y el cobro con MercadoPago, con las cuentas y las fuentes oficiales, más la evidencia del test de
-   facturación. **Es la que se envía primero,** para evaluar e implementar ITHOS en INTELLIHELP.
+1. **Parte 1 — Alcance y costos operativos.** Qué hace ITHOS y cuánto cuesta operarlo, con las cuentas y las
+   fuentes oficiales. **Es la que se envía primero.**
 
 2. **Parte 2 — Valor del desarrollo y propuesta de compensación.** El valor del desarrollo, la propuesta de
-   compensación, la contingencia por cliente, el mantenimiento y las opciones de propiedad. **Se comparte
-   después,** una vez definida la implementación de la Parte 1.
+   compensación, el mantenimiento y las opciones de propiedad. **Se comparte después.**
 
 ---
 
@@ -46,26 +41,16 @@ con IE University y Google.
 
 Hoy mi compensación es de alrededor de $1.000.000 mensuales entre el neto de $830.904 y la tarjeta recargable de
 aproximadamente $160.000, y vengo sin ajuste desde hace tiempo. INTELLIHELP es una PyME, así que propongo algo
-realista y que crece con el negocio:
+realista:
 
-1. **Recomposición salarial,** acorde al desarrollo y el sostenimiento del producto.
-2. **Comisión variable,** un revenue‑share de entre 10 y 20% del ingreso mensual de ITHOS. Si la empresa gana más,
-   yo gano más.
-3. **Puesta en marcha por cliente y mantenimiento recurrente** del sistema.
-
-| Clientes con ITHOS | Ingreso ITHOS por mes | Mi comisión, 15% | En pesos, aproximado |
-|---:|---:|---:|---:|
-| 10 | US$200 | US$30 | ~$45.000 |
-| 50 | US$1.000 | US$150 | ~$226.000 |
-| 100 | US$2.000 | US$300 | ~$453.000 |
-
-La primera implementación, de uso interno, es sin costo; para los clientes que pagan, aplica la comisión.
+1. **Recomposición salarial,** acorde al desarrollo y el sostenimiento de ITHOS.
+2. **Mantenimiento recurrente,** un reconocimiento mensual por mantener y evolucionar el sistema, de entre 6 y 12
+   horas por mes.
 
 **Opción de compra.** Si INTELLIHELP prefiere ser dueña del código, con la propiedad intelectual completa y mi
 desvinculación, es un activo que se valúa a precio de mercado, sin descuento por ser PyME: desde alrededor de
-US$150.000, con un rango de US$120.000 a US$250.000 según la proyección de ingresos. Si además quieren que lo
-mantenga, se acuerda un abono aparte de entre US$400 y US$800 por mes. El detalle está en la sección 7.9 de la
-Parte 2.
+US$150.000, con un rango de US$70.000 a US$210.000. Si además quieren que lo mantenga, se acuerda un abono aparte
+de entre US$400 y US$800 por mes. El detalle está en la sección 4 de la Parte 2.
 
 ---
 *Al actualizar algo, mantener la parte que corresponda: costos/alcance en la Parte 1; compensación/propiedad en la
