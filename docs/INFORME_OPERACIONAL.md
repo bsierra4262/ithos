@@ -45,7 +45,8 @@ micrófono y el control de acceso. Se instala en Windows, Linux o Mac.
 - **Asistente conversacional.** Se le habla por micrófono o se le manda un audio por WhatsApp, y responde por voz
   y por texto. Hay que llamarlo —«Hey ITHOS…»—: si solo se lo nombra no interviene. Las órdenes de administración
   por micrófono exigen la voz del dueño y una frase clave.
-- **Multi‑IA con respaldo automático.** Hoy usa la cadena Gemini → Cerebras → Groq, las tres en su plan gratuito.
+- **Multi‑IA con respaldo automático.** Hoy usa la cadena Gemini → Groq → IA local: las dos primeras en su plan gratuito y la tercera, un modelo
+  abierto (Qwen) que corre en nuestro propio servidor con Ollama.
   Usa una sola IA por consulta y salta a la siguiente solo cuando se agota la cuota de la anterior. Soporta además
   Claude, ChatGPT, Grok, DeepSeek, Mistral, OpenRouter y una IA local con Ollama, por si alguna vez conviene.
 - **Panel web.** Estado en vivo de los canales, el micrófono y el control de acceso, métricas, SLA y reportes.
@@ -68,7 +69,7 @@ el plan gratuito no alcanzara: US$0,10 por millón de tokens de entrada y US$0,4
 | **1 fichada del portero** | El saludo se genera con Charon una sola vez por persona y se guarda; después se reproduce el audio guardado, sin costo y al instante. | ~US$0,0005 la 1ª vez | **US$0** |
 
 > **Por qué alcanza el plan gratuito.** La cuota gratuita de Gemini es por modelo y por día; cuando se agota, la
-> consulta pasa a Cerebras y después a Groq, que también son gratuitas. Para el volumen de nuestra mesa de ayuda y
+> consulta pasa a Groq, también gratuita, y si Groq se agota, a la IA local del servidor, que no tiene cuota. Para el volumen de nuestra mesa de ayuda y
 > una oficina de siete personas, la cadena no se queda sin cuota. Si alguna vez pasara, con el plan pago un mes
 > entero de nuestro uso costaría menos de US$1.
 
@@ -85,14 +86,15 @@ salida— con el precio oficial de cada proveedor.
 | IA | Precio API, US$/1M entrada / salida | Costo por ticket | Fuente oficial |
 |---|---|---|---|
 | **Gemini 2.5 Flash‑Lite** ✅ | Plan gratuito · pago 0,10 / 0,40 | **US$0** · pago US$0,0014 | [ai.google.dev/pricing](https://ai.google.dev/gemini-api/docs/pricing) |
-| **Cerebras y Groq** ✅ | Plan gratuito | **US$0** | [cerebras.ai](https://www.cerebras.ai/) · [groq.com](https://groq.com/pricing) |
+| **Groq** ✅ | Plan gratuito | **US$0** | [groq.com](https://groq.com/pricing) |
+| **IA local, Qwen con Ollama** ✅ | Sin costo de API, corre en el VPS | **US$0** | — |
+| Cerebras | Plan gratuito | US$0 | [cerebras.ai](https://www.cerebras.ai/) |
 | Gemini 2.5 Flash | 0,30 / 2,50 | US$0,005 | [ai.google.dev/pricing](https://ai.google.dev/gemini-api/docs/pricing) |
 | DeepSeek chat | ~0,27 / ~1,10 | ~US$0,004 | [api-docs.deepseek.com](https://api-docs.deepseek.com/quick_start/pricing) |
 | ChatGPT GPT‑4o | ~2,50 / ~10 | ~US$0,035 | [openai.com/api/pricing](https://openai.com/api/pricing) |
 | Claude Sonnet 4.5 | ~3 / ~15 | ~US$0,044 | [claude.com/pricing](https://claude.com/pricing) |
-| IA local con Ollama | Sin costo de API | **US$0**, requiere PC o GPU propia | — |
 
-> **Recomendación.** Seguir con la cadena gratuita Gemini → Cerebras → Groq. Los precios marcados con "~"
+> **Recomendación.** Seguir con la cadena gratuita Gemini → Groq → IA local. Los precios marcados con "~"
 > conviene reconfirmarlos en el link antes de usarlos.
 
 ---
@@ -131,7 +133,7 @@ DigiCert (fuentes en la sección 6.3). Hoy no hace falta.
 
 | Concepto | Costo por mes |
 |---|---:|
-| IA (Gemini, Cerebras y Groq en plan gratuito) | US$0 |
+| IA (Gemini y Groq en plan gratuito, más la IA local del servidor) | US$0 |
 | WhatsApp (número propio) | US$0 |
 | Voz del portero (Charon guardado) y notas de voz (edge‑tts) | US$0 |
 | Agente (PC que ya tiene la oficina) | US$0 |

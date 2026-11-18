@@ -14,7 +14,7 @@ de Outline el paso a paso de cada ticket cerrado, se integra con las tareas de P
 que ficha en el control de acceso IVMS, y conversa y avisa por WhatsApp. Funciona en producción.
 
 **Cuánto cuesta operarla.** Entre US$9 y US$15 por mes: solo el servidor VPS. La IA corre en planes gratuitos
-(Gemini, Cerebras y Groq en cadena), WhatsApp usa un número propio sin costo por mensaje y el agente corre en una
+(Gemini y Groq en cadena, con una IA local en el propio servidor como último respaldo), WhatsApp usa un número propio sin costo por mensaje y el agente corre en una
 PC que ya tenemos. Todo verificable con las cuentas y los precios oficiales de la Parte 1.
 
 **Valor del desarrollo.** Es lo que a INTELLIHELP le habría costado contratarlo afuera a tarifa de mercado, entre
