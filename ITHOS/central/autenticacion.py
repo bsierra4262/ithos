@@ -6,6 +6,10 @@ ITHOS Gestor — autenticación del administrador.
 MODELO DE ACCESO: ITHOS es una herramienta INTERNA de INTELLIHELP S.A. Al panel entra sólo el
 administrador, con usuario y contraseña (cookie de sesión firmada, vence a las 8 horas).
 
+Con ITHub configurado (ITHUB_CLIENT_ID + ITHUB_CLIENT_SECRET en el .env, ver ithub.py) se entra con
+la sesión única de INTELLIHELP: entra quien tenga ITHOS habilitado en ITHub con el rol `admin`. El
+usuario y la contraseña de acá quedan como acceso de emergencia (/login?manual=1).
+
 El token de admin se toma de `ITHOS_ADMIN_TOKEN` (env). Si no está, se genera uno y se
 persiste en `_gestor_admin.token` (y conviene fijar uno propio en producción).
 """
@@ -186,8 +190,10 @@ def header_ok(request) -> bool:
 
 
 def es_admin(request) -> bool:
-    """Admin por cookie de sesión (navegador) o por cabecera (llamadas programáticas)."""
-    return cookie_ok(request) or header_ok(request)
+    """Admin por cookie de sesión (navegador: la del administrador o la abierta con ITHub, ver
+    ithub.py) o por cabecera (llamadas programáticas)."""
+    import ithub as ITHUB
+    return cookie_ok(request) or ITHUB.sesion_ok(request) or header_ok(request)
 
 
 def set_cookie(response) -> None:
@@ -233,4 +239,37 @@ button:hover{background:#2b7bf5}.err{color:#ff8a8a;font-size:12.5px;margin-top:1
 <input type=password name=k placeholder="Contraseña" autocomplete=current-password>
 <button type=submit>Entrar</button>
 <div class=err>%ERR%</div></form></html>"""
+
+# Con ITHub configurado (ithub.py) la pantalla sólo se ve cuando hay algo que explicar (un error que
+# volvió del ingreso, o ?manual=1). Se entra con el botón de ITHub; el usuario y la contraseña del
+# administrador quedan plegados como acceso de emergencia, por si ITHub no responde.
+LOGIN_ITHUB_HTML = LOGIN_HTML.replace(
+    "button:hover{background:#2b7bf5}",
+    "button:hover{background:#2b7bf5}a.ith{display:block;text-align:center;text-decoration:none;"
+    "padding:11px;border-radius:9px;background:#1f6feb;color:#fff;font-size:14px;font-weight:600}"
+    "a.ith:hover{background:#2b7bf5}.nota{font-size:12px;color:#7fa8cf;margin:10px 0 0}"
+    "details{margin-top:18px;border-top:1px solid #1d3a5f;padding-top:12px}"
+    "summary{cursor:pointer;font-size:12.5px;color:#7fa8cf;margin-bottom:10px}",
+).replace(
+    """<h1>ITHOS Gestor</h1><p>Acceso exclusivo de INTELLIHELP S.A.</p>
+<input type=text name=usuario placeholder="Usuario" autofocus autocomplete=username>
+<input type=password name=k placeholder="Contraseña" autocomplete=current-password>
+<button type=submit>Entrar</button>
+<div class=err>%ERR%</div></form>""",
+    """<h1>ITHOS Gestor</h1><p>Acceso exclusivo de INTELLIHELP S.A.</p>
+<div class=err>%ERR%</div>
+<a class=ith href="/ithub-login">Ingresar con ITHub</a>
+<p class=nota>Sesión única de Intellihelp: si ya entraste a ITHub, no te pide nada más.</p>
+<details><summary>Acceso de emergencia del administrador</summary>
+<input type=text name=usuario placeholder="Usuario" autocomplete=username>
+<input type=password name=k placeholder="Contraseña" autocomplete=current-password>
+<button type=submit>Entrar</button></details></form>""",
+)
+
+
+def login_html(err: str = "") -> str:
+    """Pantalla de ingreso: con ITHub configurado, la del botón de ITHub; si no, la de siempre.
+    `err` es siempre un texto fijo del Gestor (nunca algo que venga en el pedido)."""
+    import ithub as ITHUB
+    return (LOGIN_ITHUB_HTML if ITHUB.habilitado() else LOGIN_HTML).replace("%ERR%", err)
 

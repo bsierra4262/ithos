@@ -67,6 +67,7 @@ from comun import ia as IA_VOZ    # noqa: E402  (sólo para el modelo de voz vig
 from comun.ambitos import AMBITOS  # noqa: E402
 import reportes as R              # noqa: E402
 import autenticacion as AUTH      # noqa: E402
+import ithub as ITHUB             # noqa: E402  (ingreso con la sesión única de ITHub)
 from panel_ui import HTML        # noqa: E402
 
 
@@ -74,7 +75,21 @@ from panel_ui import HTML        # noqa: E402
 # ITHOS es una herramienta INTERNA: todo el panel exige la sesión del administrador. Lo único
 # abierto es la puerta de entrada (login/logout). Es una lista de EXCEPCIONES, y el resto queda
 # cerrado: así una ruta nueva nace PRIVADA aunque nadie se acuerde de protegerla.
-_PUBLICAS_EXACTAS = {"/login", "/logout"}
+# Las tres de ITHub son la ida, la vuelta y el aviso de cierre del ingreso único (ithub.py): no
+# pueden pedir sesión porque son las que la abren o la cierran. Cada una se valida sola (state +
+# nonce + PKCE, o la firma del logout_token) y sin ITHub configurado no hacen nada.
+_PUBLICAS_EXACTAS = {"/login", "/logout", "/ithub-login", "/ithub-callback", "/ithub-logout"}
+
+# Avisos de la pantalla de ingreso que vienen del ingreso con ITHub (?aviso=<clave>). Se muestra
+# el texto FIJO de acá: nada de lo que venga en la URL llega a la página.
+_AVISOS_LOGIN = {
+    "state": "La validación de seguridad con ITHub falló. Volvé a intentar.",
+    "denegado": "Tu usuario de ITHub no tiene acceso a ITHOS. Si lo necesitás, pedíselo a un "
+                "administrador de ITHub.",
+    "error": "No se pudo completar el ingreso con ITHub. Volvé a intentar.",
+    "token": "No se pudo validar el ingreso con ITHub. Volvé a intentar.",
+    "rol": "Tu rol en ITHub no corresponde a ninguno de ITHOS. Avisale al administrador.",
+}
 
 
 def _requiere_admin(method: str, path: str) -> bool:
@@ -92,24 +107,36 @@ async def _auth_mw(request: Request, call_next):
     if path == "/login":                       # el form de login siempre pasa
         return await call_next(request)
     if _requiere_admin(method, path) and not AUTH.es_admin(request):
-        if path == "/":                        # HTML → mostrar login
-            return HTMLResponse(AUTH.LOGIN_HTML.replace("%ERR%", ""))
+        if path == "/":                        # HTML → mostrar login (con ITHub: ir a ITHub)
+            if ITHUB.habilitado():
+                return RedirectResponse("/login", status_code=302)
+            return HTMLResponse(AUTH.login_html())
         return JSONResponse({"error": "no autorizado — acceso solo de INTELLIHELP"},
                             status_code=401)
     return await call_next(request)
 
 
 @app.get("/login", response_class=HTMLResponse)
-def login_form():
-    return AUTH.LOGIN_HTML.replace("%ERR%", "")
+def login_form(request: Request):
+    # Con ITHub el login no tiene pantalla: se va directo a la sesión única y, si ya estaba abierta,
+    # se entra sin ver nada. Se muestra sólo con algo que explicar (un aviso que volvió del ingreso)
+    # o con ?manual=1, que es donde queda el acceso de emergencia del administrador.
+    if ITHUB.habilitado():
+        if AUTH.es_admin(request):
+            return RedirectResponse("/", status_code=302)
+        aviso = request.query_params.get("aviso", "")
+        if not aviso and "manual" not in request.query_params:
+            return RedirectResponse("/ithub-login", status_code=302)
+        return HTMLResponse(AUTH.login_html(_AVISOS_LOGIN.get(aviso, "")))
+    return AUTH.login_html()
 
 
 @app.post("/login")
 async def login(request: Request):
     ip = _ip_cliente(request)
     if _login_bloqueado(ip):
-        return HTMLResponse(AUTH.LOGIN_HTML.replace(
-            "%ERR%", "Demasiados intentos. Esperá unos minutos."), status_code=429)
+        return HTMLResponse(AUTH.login_html("Demasiados intentos. Esperá unos minutos."),
+                            status_code=429)
     form = await request.form()
     if AUTH.credenciales_ok(form.get("usuario", ""), form.get("k", "")):
         _LOGIN_FALLOS.pop(ip, None)                 # login OK -> limpia el contador
@@ -117,16 +144,100 @@ async def login(request: Request):
         AUTH.set_cookie(resp)
         return resp
     _login_fallo(ip)
-    return HTMLResponse(AUTH.LOGIN_HTML.replace("%ERR%", "Usuario o contraseña incorrectos"),
-                        status_code=401)
+    return HTMLResponse(AUTH.login_html("Usuario o contraseña incorrectos"), status_code=401)
 
 
 @app.get("/logout")
-def logout():
-    """Cierra la sesión del superadmin (borra la cookie) y vuelve al login."""
-    resp = RedirectResponse("/login", status_code=303)
+def logout(request: Request):
+    """Cierra la sesión y vuelve al login.
+
+    Con una sesión abierta con ITHub: anota su sid como cerrado (una copia de la cookie deja de
+    entrar), borra la cookie y manda a /oauth/logout de ITHub, que cierra la sesión única en todas
+    las apps y vuelve al login. Con la del administrador (acceso de emergencia): como siempre, todo
+    lo emitido hasta ahora deja de valer."""
+    s = ITHUB.sesion(request)
+    if s is not None:
+        ITHUB.cerrar(sid=s.get("sid", ""), sub="" if s.get("sid") else s.get("sub", ""))
+        resp = RedirectResponse(ITHUB.url_salida(s.get("idt", "")), status_code=303)
+        resp.delete_cookie(ITHUB.COOKIE)
+        return resp
+    resp = RedirectResponse("/login?manual=1" if ITHUB.habilitado() else "/login", status_code=303)
     AUTH.borrar_cookie(resp)
+    resp.delete_cookie(ITHUB.COOKIE)
     return resp
+
+
+# ============================ INGRESO CON ITHUB (OpenID Connect) ==============
+# Ver ithub.py. Las tres rutas son públicas (ver _PUBLICAS_EXACTAS) y no hacen nada sin la config.
+@app.get("/ithub-login")
+def ithub_login(request: Request):
+    """Manda a ITHub a identificarse (código + PKCE). Si ya hay sesión, va directo al panel."""
+    if not ITHUB.habilitado():
+        return RedirectResponse("/login", status_code=302)
+    if AUTH.es_admin(request):
+        return RedirectResponse("/", status_code=302)
+    url, tx = ITHUB.nueva_transaccion()
+    resp = RedirectResponse(url, status_code=302)
+    ITHUB.set_cookie_tx(resp, tx)
+    return resp
+
+
+@app.get("/ithub-callback")
+def ithub_callback(request: Request):
+    """Vuelta de ITHub: valida el state, canjea el código (servidor a servidor, con el secreto),
+    valida el id_token y abre la sesión con el rol que manda ITHub. Si ITHub contesta
+    access_denied, la persona no tiene ITHOS habilitado en ITHub."""
+    if not ITHUB.habilitado():
+        return RedirectResponse("/login", status_code=302)
+
+    def _volver(aviso):
+        r = RedirectResponse(f"/login?manual=1&aviso={aviso}", status_code=302)
+        r.delete_cookie(ITHUB.COOKIE_TX)
+        return r
+
+    q = request.query_params
+    tx = ITHUB.leer_transaccion(request.cookies.get(ITHUB.COOKIE_TX, ""))
+    state = q.get("state", "")
+    if not tx or not state or not secrets.compare_digest(str(tx.get("s", "")), state):
+        return _volver("state")
+    if q.get("error"):
+        return _volver("denegado" if q.get("error") == "access_denied" else "error")
+    tok = ITHUB.canjear_codigo(q.get("code", ""), tx.get("v", ""))
+    try:
+        claims = ITHUB.validar_jwt(tok.get("id_token", ""), nonce=tx.get("n", ""))
+    except ITHUB.ErrorITHub as e:
+        print(f"[ithub] id_token rechazado: {e}" + (f" ({tok.get('error')})" if tok.get("error") else ""),
+              flush=True)
+        return _volver("token")
+    if not ITHUB.rol_gestor(claims):
+        print(f"[ithub] rol que el Gestor no conoce: {str(claims.get('rol'))[:40]}", flush=True)
+        return _volver("rol")
+    print(f"[ithub] ingreso: {str(claims.get('email'))[:120]}", flush=True)
+    resp = RedirectResponse("/", status_code=303)
+    resp.delete_cookie(ITHUB.COOKIE_TX)
+    ITHUB.set_cookie_sesion(resp, ITHUB.valor_sesion(claims, tok.get("id_token", "")))
+    return resp
+
+
+@app.post("/ithub-logout")
+async def ithub_logout(request: Request):
+    """Aviso de cierre de ITHub (back-channel logout). Lo llama el servidor de ITHub, no un
+    navegador: no hay cookie y lo que se valida es la firma del logout_token. Anota el sid (o el
+    sub) y toda cookie con él deja de valer. 200 si se procesó, 400 si el token no es válido."""
+    cab = {"Cache-Control": "no-store"}
+    if not ITHUB.habilitado():
+        return Response(status_code=400, headers=cab)
+    try:
+        form = await request.form()
+        c = ITHUB.validar_jwt(str(form.get("logout_token", "")), es_logout=True)
+    except ITHUB.ErrorITHub as e:
+        print(f"[ithub] logout_token rechazado: {e}", flush=True)
+        return Response(status_code=400, headers=cab)
+    except Exception:  # noqa: BLE001  (cuerpo que no es un formulario)
+        return Response(status_code=400, headers=cab)
+    ITHUB.cerrar(sid=str(c.get("sid") or ""), sub=str(c.get("sub") or ""))
+    print("[ithub] ITHub avisó el cierre de una sesión única", flush=True)
+    return Response(status_code=200, headers=cab)
 
 
 @app.post("/api/cambiar_password")

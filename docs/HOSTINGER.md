@@ -102,6 +102,31 @@ y, si cambió, se reinicia para tomarlo.
   Para rotarlo: cambiá `ITHOS_ADMIN_TOKEN` en `ITHOS/.env` y recreá los contenedores.
 - **Agente**: `api_key` + contraseña de agente, comparadas en tiempo constante.
 
+### Ingreso con ITHub (sesión única)
+Con dos variables en `ITHOS/.env` el panel entra con ITHub (OpenID Connect, código + PKCE): `/login` manda a
+ITHub y entra quien tenga **ITHOS** habilitado ahí con el rol `admin`. El usuario y la contraseña del
+administrador quedan como **acceso de emergencia** en `https://ithos.intellihelp.tech/login?manual=1` (ITHub vive
+en otro servidor: si no responde, el Gestor no queda sin nadie que entre).
+
+En ITHub (Aplicaciones → `ithos`) tienen que estar registradas, exactas:
+- vuelta: `https://ithos.intellihelp.tech/ithub-callback`
+- después de salir: `https://ithos.intellihelp.tech/login`
+- aviso de cierre: `https://ithos.intellihelp.tech/ithub-logout`
+
+Activarlo (el secreto está en `~/ithub_config/ithub-secreto-ithos.txt` del hosting compartido y en el repo
+`ithos-claves`; nunca en este repo):
+```bash
+cd /root/jarvis-cloud
+cp -p ITHOS/.env ITHOS/.env.antes-ithub-$(date +%Y%m%d)
+read -rsp 'Secreto de ITHub (ith_...): ' S; echo
+printf 'ITHUB_CLIENT_ID=ithos\nITHUB_CLIENT_SECRET=%s\n' "$S" >> ITHOS/.env; unset S
+chmod 600 ITHOS/.env
+ITHOS_SIN_AVISO=1 bash compilador/instaladores/actualizar.sh      # trae el código y recrea con el .env nuevo
+curl -sI https://ithos.intellihelp.tech/login | grep -i '^location'          # -> /ithub-login
+```
+Volver atrás: borrar las dos líneas `ITHUB_*` del `.env` y `docker compose -p jarvis-cloud -f ITHOS/docker-compose.yml up -d`
+(el login de siempre vuelve tal cual).
+
 ## 🔐 Cifrado en reposo de los secretos
 Las claves de IA, los tokens de GLPI, la contraseña de la base de fichajes y la del agente se guardan **cifradas
 con AES-256-GCM** en `clientes.json`. La **clave maestra** va en `ITHOS/.env` (`ITHOS_MASTER_KEY`), **aparte de

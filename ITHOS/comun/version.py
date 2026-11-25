@@ -9,7 +9,7 @@ SemVer MAJOR.MINOR.PATCH: MAJOR = cambio incompatible, MINOR = feature compatibl
 Ver ARQUITECTURA_GESTOR_AGENTE.md.
 """
 
-GESTOR_VERSION = "1.2.1"        # el cerebro, en el servidor de INTELLIHELP
+GESTOR_VERSION = "1.2.2"        # el cerebro, en el servidor de INTELLIHELP
 AGENTE_VERSION = "1.1.31"        # la app liviana del cliente (data-plane / executor)
 PROTOCOL_VERSION = 1            # contrato de mensajes agente <-> gestor (entero; +1 si rompe compat)
 AGENTE_MIN_VERSION = "1.0.0"    # agente MÍNIMO que el gestor soporta (para el aviso de auto-update)

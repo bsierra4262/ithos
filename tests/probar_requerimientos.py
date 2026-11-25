@@ -13,7 +13,8 @@ que cumplir siempre (no sólo el camino feliz de una función):
     notas internas privadas, sin recordatorios falsos, y la voz nunca lee emojis.
   · Portero y voz: saludo coherente con la hora, una vez por día por persona, velocidad uniforme,
     variedad diaria, pre-cacheo completo y manejo de la cuota de voz.
-  · Seguridad: cifrado en reposo, login del Gestor, altas de un solo uso, autenticación del agente.
+  · Seguridad: cifrado en reposo, login del Gestor (y el ingreso con ITHub), altas de un solo uso,
+    autenticación del agente.
   · Latencia: nada de N+1 en el camino caliente (lecturas masivas, cero consultas por ítem).
   · Deploy: scripts y configuración de la VPS en LF y con rebuild (regresión del deploy roto).
 
@@ -1164,6 +1165,48 @@ try:
              f" login={rl.status_code} cookie={con_cookie}")
 except Exception as e:  # noqa: BLE001
     fail("no se pudo verificar el modelo de acceso", repr(e))
+
+
+# H89) INGRESO CON ITHUB (sesión única, OpenID Connect): sólo con la config; código + PKCE S256; el
+#   id_token se valida ENTERO (RS256 con el JWKS, iss, aud, exp, nonce) y entra sólo el rol admin; las
+#   cookies de ITHub van cifradas, secure y httponly; el aviso de cierre valida la firma (400 si no);
+#   salir pasa por /oauth/logout de ITHub; y el acceso de emergencia del administrador sigue. El detalle
+#   se prueba en tests/probar_ithub.py; acá queda el contrato que no se puede perder.
+try:
+    _ith = leer(os.path.join(APP, "central", "ithub.py"))
+    _pnl89 = leer(os.path.join(APP, "central", "panel.py"))
+    _req89 = leer(os.path.join(APP, "central", "requirements.txt"))
+    contrato = all(m in _ith for m in (
+        '"code_challenge_method": "S256"', 'cab.get("alg") != "RS256"', 'raise ErrorITHub("firma")',
+        'raise ErrorITHub("iss/aud")', 'raise ErrorITHub("vencido")', 'raise ErrorITHub("nonce")',
+        "EVENTO_LOGOUT not in eventos", 'ROLES_GESTOR = ("admin",)', "AESGCM", "secure=True",
+        "httponly=True", "/oauth/logout?", "id_token_hint", "def habilitado"))
+    rutas = all(m in _pnl89 for m in ('"/ithub-login"', '"/ithub-callback"', '"/ithub-logout"',
+                                      "status_code=400", "ITHUB.habilitado()", '"manual"'))
+    sin_deps = "cryptography" in _req89 and "jwt" not in _req89.lower()
+    # La suite cambia variables de entorno (ITHUB_*, ITHOS_ADMIN_TOKEN, ITHOS_DATA) y reemplaza el
+    # HTTP de ithub.py: se restauran al terminar para que el resto de esta batería no corra con ITHub.
+    _env89 = dict(os.environ)
+    import ithub as _ITH89
+    _http89 = _ITH89._http
+    try:
+        import runpy as _rp89
+        _rp89.run_path(os.path.join(RAIZ, "tests", "probar_ithub.py"), run_name="__main__")
+        suite = True
+    except SystemExit as _se89:
+        suite = not _se89.code
+    finally:
+        os.environ.clear()
+        os.environ.update(_env89)
+        _ITH89._http = _http89
+    if contrato and rutas and sin_deps and suite:
+        ok("ingreso con ITHub: PKCE S256, id_token RS256 validado entero, sólo rol admin, cookies cifradas, "
+           "aviso de cierre firmado y salida por ITHub; sin config, el login de siempre")
+    else:
+        fail("el ingreso con ITHub no cumple el contrato",
+             f"contrato={contrato} rutas={rutas} sin_deps={sin_deps} suite={suite}")
+except Exception as e:  # noqa: BLE001
+    fail("no se pudo verificar el ingreso con ITHub", repr(e))
 
 
 # H27) COMUNICACIÓN ENTRE REDES DISTINTAS (Gestor en Hostinger VPS <-> Agente en el cliente con otra
@@ -3432,6 +3475,15 @@ CAPACIDADES = [
      "codigo": [("ITHOS/comun/cifrado.py", "AES")],
      "docs": {"DOCUMENTO_MAESTRO.md": ["AES-256-GCM"], "README.md": ["AES-256-GCM"],
               "SECURITY.md": ["AES-256-GCM"]}},
+    {"que": "ingreso con ITHub (sesión única, OpenID Connect) con acceso de emergencia",
+     "codigo": [("ITHOS/central/ithub.py", "def validar_jwt"),
+                ("ITHOS/central/panel.py", "@app.post(\"/ithub-logout\")")],
+     "docs": {"DOCUMENTO_MAESTRO.md": ["Ingreso con ITHub", "/login?manual=1"],
+              "README.md": ["Ingreso con ITHub", "/login?manual=1"],
+              "CHANGELOG.md": ["Ingreso con ITHub"], "SECURITY.md": ["back-channel logout"],
+              "docs/HOSTINGER.md": ["ithub-callback", "ithub-logout"],
+              ".env.example": ["ITHUB_CLIENT_SECRET="]},
+     "diagrama": ["ITHub: sesión única"]},
 ]
 try:
     _txt85 = {}

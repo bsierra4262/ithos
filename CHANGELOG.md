@@ -6,6 +6,17 @@ y el versionado, [SemVer](https://semver.org/lang/es/).
 
 ## [Unreleased]
 
+### Added
+
+- **Ingreso con ITHub (sesión única de INTELLIHELP).** Con `ITHUB_CLIENT_ID` y `ITHUB_CLIENT_SECRET` en
+  `ITHOS/.env`, `/login` manda a ITHub por OpenID Connect (código + PKCE) y, si la sesión única ya estaba
+  abierta, se entra sin ver nada. El id_token se valida entero: RS256 con la clave de `/oauth/jwks` (en caché
+  una hora, se vuelve a bajar si ITHub rota la clave), emisor, destinatario, vencimiento y nonce. Entra sólo
+  el rol `admin`. Cerrar sesión cierra la sesión única (`/oauth/logout` con `id_token_hint`) y ITHub avisa los
+  cierres por detrás a `/ithub-logout`, que corta la sesión con ese `sid`. El usuario y la contraseña del
+  administrador quedan como acceso de emergencia en `/login?manual=1`. Sin las variables, todo sigue como
+  antes. Sin dependencias nuevas (`cryptography` + urllib). Pruebas en `tests/probar_ithub.py`. Gestor **1.2.2**.
+
 **Auditoría del 18-nov-2026 — ITHOS queda como herramienta interna de INTELLIHELP.** Deja de ser un producto
 para vender: hay un Gestor (VPS Hostinger KVM 2) y un agente (PC de la oficina), y todo lo que no era de uso
 interno salió del código. Gestor **1.2.0**. Regresión de los bugs en `tests/probar_auditoria_18nov.py`.
