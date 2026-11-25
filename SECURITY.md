@@ -30,6 +30,12 @@ y una posible mitigación. El reporte recibirá respuesta a la brevedad.
   con sus claves.
 - Cookies `secure`/`httponly`, *rate-limit* en el login (contando la IP real detrás de Caddy),
   HSTS en Caddy y cierre de sesión.
+- **Ingreso con ITHub** (opcional, `ITHUB_CLIENT_ID` + `ITHUB_CLIENT_SECRET` en el `.env`): OpenID
+  Connect con código + PKCE S256; el id_token se valida entero (RS256 con el JWKS de ITHub, `iss`,
+  `aud`, `exp`, `nonce`) y entra sólo el rol `admin`. State, nonce y verificador viajan en una cookie
+  cifrada (AES-256-GCM) de 10 minutos; la sesión, en otra cifrada de 8 horas. El aviso de cierre
+  (back-channel logout, `/ithub-logout`) valida la firma del logout_token y corta la sesión de ese
+  `sid`. El usuario y la contraseña del administrador quedan como acceso de emergencia.
 - El agente se autentica con `api_key` + contraseña de agente, comparadas en tiempo constante.
 - La autorización de las funciones sensibles del asistente es por **identidad** (número, correo
   o usuario del dueño), nunca por el grupo de origen; por micrófono se exige además la clave y
@@ -45,7 +51,7 @@ flowchart TD
         FW --> TLS
     end
     TLS --> Q{"¿quién entra?"}
-    Q -->|"administrador de INTELLIHELP"| AD["Todo el panel:<br/>usuario + contraseña (scrypt),<br/>cookie secure/httponly,<br/>rate-limit y cierre de sesión"]
+    Q -->|"administrador de INTELLIHELP"| AD["Todo el panel:<br/>ITHub (OIDC, rol admin) o<br/>usuario + contraseña (scrypt),<br/>cookie secure/httponly,<br/>rate-limit y cierre de sesión"]
     Q -->|"cualquier otro"| NO["Sólo ve /login<br/>(denegar por defecto)"]
     Q -->|"agente"| AG["api_key + contraseña de agente,<br/>comparadas con hmac"]
     AD --> DAT[("Configuración y datos:<br/>secretos cifrados AES-256-GCM<br/>clave maestra en el .env, aparte")]

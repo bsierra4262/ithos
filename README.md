@@ -588,6 +588,7 @@ estado persiste en disco para no perder los movimientos ocurridos mientras el Ge
 
 ```mermaid
 flowchart LR
+    ITH["ITHub: sesión única de INTELLIHELP<br/>(OpenID Connect, rol admin)"] -->|"/ithub-callback<br/>id_token RS256 validado"| ADM
     ADM["Administrador de INTELLIHELP<br/>(login: todo el panel lo exige)"] --> PAN["Panel: configuración · terminales ·<br/>grupos · KB"]
     PAN --> CFG["clientes.json<br/>(secretos cifrados AES-256-GCM)"]
     CFG -->|"cambió: el Gestor lo nota<br/>(cada 15 s) y se reinicia solo"| GES["El Gestor aplica la configuración"]
@@ -607,7 +608,14 @@ configuración vacía.
 
 Los secretos quedan **cifrados en reposo** con AES-256-GCM bajo una clave maestra que vive aparte de los
 datos. **Todo el panel exige el login del administrador** —sólo `/login` y `/logout` quedan abiertos, y una
-ruta nueva nace privada—, con contraseña hasheada, cookies seguras, límite de intentos y HSTS. No hay alta
+ruta nueva nace privada—, con contraseña hasheada, cookies seguras, límite de intentos y HSTS.
+
+**Ingreso con ITHub.** Con `ITHUB_CLIENT_ID` y `ITHUB_CLIENT_SECRET` en `ITHOS/.env`, el panel entra con la
+sesión única de INTELLIHELP (OpenID Connect, código + PKCE): `/login` manda a ITHub y entra quien tenga ITHOS
+habilitado ahí con el rol `admin`. El id_token se valida entero (RS256 con el JWKS de ITHub, emisor,
+destinatario, vencimiento y nonce), cerrar sesión cierra la sesión única y ITHub avisa los cierres por detrás
+a `/ithub-logout`. El usuario y la contraseña del administrador quedan como acceso de emergencia en
+`/login?manual=1`. Sin esas variables, el login de siempre. No hay alta
 por enlace, ni portal de cliente, ni ninguna ruta que devuelva la configuración con sus claves.
 
 ## Stack técnico
@@ -692,6 +700,7 @@ versionan**: el repositorio incluye únicamente plantillas (`ITHOS/central/clien
 | `planka_integrador.py` · `planka_rollover.py` | Tareas del equipo: resumen 9:00, seguimiento horario, alta/movimiento por WhatsApp y rollover semanal/mensual/anual. |
 | `panel.py` · `panel_ui.py` | Panel del administrador (responsive, todo con login): estado, métricas, SLA, reportes, KB, terminales y configuración. |
 | `autenticacion.py` | Login del Gestor (hash scrypt), cookies seguras y límite de intentos. |
+| `ithub.py` | Ingreso con ITHub (OpenID Connect, código + PKCE): valida el id_token RS256 con el JWKS, sesión cifrada, aviso de cierre (back-channel) y salida por ITHub. |
 | `procesador.py` · `protocolo.py` | Eventos del agente (portero: saludo por hora, dedup) y el protocolo Gestor↔Agente. |
 
 **`ITHOS/agente/` — el Agente (en la PC de la oficina)**
